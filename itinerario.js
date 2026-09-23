@@ -3024,12 +3024,6 @@ async function openPendientesPanel(modo = 'grupo') {
       }))
       .filter(g => g.pendientes.length > 0)
       .sort(ordenarGruposRevision);
-        return String(a.numeroNegocio).localeCompare(
-          String(b.numeroNegocio),
-          'es',
-          { numeric: true }
-        );
-      });
 
     const totalPendientes = gruposConPendientes.reduce(
       (total, g) => total + g.pendientes.length,
