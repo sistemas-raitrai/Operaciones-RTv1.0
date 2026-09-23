@@ -3017,10 +3017,13 @@ async function openPendientesPanel(modo = 'grupo') {
         grupoId: String(g.id),
         numeroNegocio: g.numeroNegocio || g.id,
         nombreGrupo: g.nombreGrupo || '',
+        destino: g.destino || '',
+        fechaInicio: g.fechaInicio || '',
+        itinerario: g.itinerario || {},
         pendientes: obtenerPendientesGrupo(g)
       }))
       .filter(g => g.pendientes.length > 0)
-      .sort((a, b) => {
+      .sort(ordenarGruposRevision);
         return String(a.numeroNegocio).localeCompare(
           String(b.numeroNegocio),
           'es',
@@ -3880,6 +3883,43 @@ function escapeHTMLAlertas(value) {
     .replaceAll("'", '&#039;');
 }
 
+function fechaInicioOrdenGrupo(g) {
+  const fechasItinerario = Object.keys(g?.itinerario || {})
+    .filter(fecha => /^\d{4}-\d{2}-\d{2}$/.test(fecha))
+    .sort();
+
+  const fecha = fechasItinerario[0] ||
+    g?.fechaInicio ||
+    '';
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(fecha))
+    ? String(fecha)
+    : '9999-12-31';
+}
+
+function ordenarGruposRevision(a, b) {
+  const fechaA = fechaInicioOrdenGrupo(a);
+  const fechaB = fechaInicioOrdenGrupo(b);
+
+  if (fechaA !== fechaB) {
+    return fechaA.localeCompare(fechaB);
+  }
+
+  const destino = String(a.destino || '').localeCompare(
+    String(b.destino || ''),
+    'es',
+    { sensitivity: 'base' }
+  );
+
+  if (destino !== 0) return destino;
+
+  return String(a.nombreGrupo || '').localeCompare(
+    String(b.nombreGrupo || ''),
+    'es',
+    { sensitivity: 'base' }
+  );
+}
+
 function agruparAlertasRevisionPorGrupo(alertas) {
   const grupos = new Map();
 
@@ -3892,20 +3932,19 @@ function agruparAlertasRevisionPorGrupo(alertas) {
         grupoId,
         numeroNegocio: alerta.numeroNegocio || grupoId,
         nombreGrupo: alerta.nombreGrupo || '',
-        alertas: [],
-        ultimaAlerta: alerta.creadoEn || null
+        destino: alerta._grupo?.destino || '',
+        fechaInicio: alerta._grupo?.fechaInicio || '',
+        itinerario: alerta._grupo?.itinerario || {},
+        alertas: []
       });
     }
 
     grupos.get(grupoId).alertas.push(alerta);
   }
 
-  return [...grupos.values()].sort((a, b) => {
-    return ordenarAlertasDesc(
-      { creadoEn: a.ultimaAlerta },
-      { creadoEn: b.ultimaAlerta }
-    );
-  });
+  return [...grupos.values()].sort(
+    ordenarGruposRevision
+  );
 }
 
 function renderGruposAlertasRevision(
