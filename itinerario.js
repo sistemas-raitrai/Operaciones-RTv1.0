@@ -2975,7 +2975,7 @@ async function openPendientesPanel(modo = 'grupo') {
             #${escapar(g.numeroNegocio || grupoIdActual)}
             ·
             ${escapar(
-              (g.nombreGrupo || '').toString().toUpperCase()
+              String(g.nombreGrupo || '').toUpperCase()
             )}
           </strong>
 
@@ -3007,7 +3007,7 @@ async function openPendientesPanel(modo = 'grupo') {
   }
 
   // ==============================================
-  // GENERAL: LISTA DE GRUPOS
+  // GENERAL: GRUPOS POR FECHA Y DESTINO
   // ==============================================
   try {
     const grupos = await getGruposAnoOperativo();
@@ -3025,10 +3025,17 @@ async function openPendientesPanel(modo = 'grupo') {
       .filter(g => g.pendientes.length > 0)
       .sort(ordenarGruposRevision);
 
-    const totalPendientes = gruposConPendientes.reduce(
-      (total, g) => total + g.pendientes.length,
-      0
-    );
+    const totalPendientes =
+      gruposConPendientes.reduce(
+        (total, grupo) =>
+          total + grupo.pendientes.length,
+        0
+      );
+
+    const bloques =
+      agruparGruposPorFechaDestino(
+        gruposConPendientes
+      );
 
     let posicionLista = 0;
 
@@ -3078,7 +3085,8 @@ async function openPendientesPanel(modo = 'grupo') {
               #${escapar(grupo.numeroNegocio)}
               ·
               ${escapar(
-                grupo.nombreGrupo.toString().toUpperCase()
+                String(grupo.nombreGrupo || '')
+                  .toUpperCase()
               )}
             </strong>
           </div>
@@ -3094,87 +3102,130 @@ async function openPendientesPanel(modo = 'grupo') {
           ?.addEventListener('click', mostrarLista);
       }
 
-      renderPendientes(grupo.pendientes, false);
+      renderPendientes(
+        grupo.pendientes,
+        false
+      );
 
       modalPendientes.scrollTop = 0;
     };
 
     const mostrarLista = () => {
       if (pendientesEncabezado) {
-        pendientesEncabezado.innerHTML = encabezadoGeneral;
+        pendientesEncabezado.innerHTML =
+          encabezadoGeneral;
       }
 
-      if (!gruposConPendientes.length) {
+      if (!bloques.length) {
         pendientesList.innerHTML = `
           <li class="alert-item">
             — No existen grupos con pendientes —
           </li>
         `;
-
         return;
       }
 
-      pendientesList.innerHTML = gruposConPendientes
-        .map(grupo => {
-          const cantidad = grupo.pendientes.length;
-
-          return `
-            <li
-              class="alert-item"
-              style="margin-bottom:10px"
+      pendientesList.innerHTML = bloques
+        .map(bloque => `
+          <li
+            style="
+              list-style:none;
+              margin:18px 0 8px;
+              padding:8px 10px;
+              border-radius:6px;
+              background:#e8eef9;
+              color:#1e3a5f;
+              font-weight:700;
+            "
+          >
+            ${escapar(bloque.titulo)}
+            <span
+              style="
+                margin-left:6px;
+                font-weight:400;
+                font-size:.85em;
+              "
             >
-              <div style="padding:10px">
-                <strong>
-                  #${escapar(grupo.numeroNegocio)}
-                  ·
-                  ${escapar(
-                    grupo.nombreGrupo.toString().toUpperCase()
-                  )}
-                </strong>
+              (${bloque.grupos.length}
+              ${
+                bloque.grupos.length === 1
+                  ? 'grupo'
+                  : 'grupos'
+              })
+            </span>
+          </li>
 
-                <div
-                  class="meta"
-                  style="margin:6px 0 10px"
-                >
-                  🕒
-                  ${cantidad}
-                  ${
-                    cantidad === 1
-                      ? 'pendiente'
-                      : 'pendientes'
-                  }
+          ${bloque.grupos.map(grupo => {
+            const cantidad =
+              grupo.pendientes.length;
+
+            return `
+              <li
+                class="alert-item"
+                style="margin-bottom:10px"
+              >
+                <div style="padding:10px">
+                  <strong>
+                    #${escapar(grupo.numeroNegocio)}
+                    ·
+                    ${escapar(
+                      String(grupo.nombreGrupo || '')
+                        .toUpperCase()
+                    )}
+                  </strong>
+
+                  <div
+                    class="meta"
+                    style="margin:6px 0 10px"
+                  >
+                    🕒
+                    ${cantidad}
+                    ${
+                      cantidad === 1
+                        ? 'pendiente'
+                        : 'pendientes'
+                    }
+                  </div>
+
+                  <button
+                    type="button"
+                    data-grupo-pendientes="${escapar(
+                      grupo.grupoId
+                    )}"
+                    style="
+                      padding:6px 10px;
+                      border:0;
+                      border-radius:5px;
+                      background:#1d4ed8;
+                      color:white;
+                      font-weight:700;
+                      cursor:pointer;
+                    "
+                  >
+                    Ver detalle
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  data-grupo-pendientes="${escapar(grupo.grupoId)}"
-                  style="
-                    padding:6px 10px;
-                    border:0;
-                    border-radius:5px;
-                    background:#1d4ed8;
-                    color:white;
-                    font-weight:700;
-                    cursor:pointer;
-                  "
-                >
-                  Ver detalle
-                </button>
-              </div>
-            </li>
-          `;
-        })
+              </li>
+            `;
+          }).join('')}
+        `)
         .join('');
 
       pendientesList
-        .querySelectorAll('[data-grupo-pendientes]')
+        .querySelectorAll(
+          '[data-grupo-pendientes]'
+        )
         .forEach(boton => {
-          boton.addEventListener('click', () => {
-            mostrarDetalle(boton.dataset.grupoPendientes);
-          });
+          boton.addEventListener(
+            'click',
+            () => mostrarDetalle(
+              boton.dataset.grupoPendientes
+            )
+          );
         });
 
-      modalPendientes.scrollTop = posicionLista;
+      modalPendientes.scrollTop =
+        posicionLista;
     };
 
     mostrarLista();
@@ -3914,6 +3965,65 @@ function ordenarGruposRevision(a, b) {
   );
 }
 
+function etiquetaFechaDestinoRevision(fecha, destino) {
+  const destinoTexto = String(destino || '')
+    .trim()
+    .toUpperCase() || 'SIN DESTINO';
+
+  if (
+    !fecha ||
+    fecha === '9999-12-31' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(fecha)
+  ) {
+    return `SIN FECHA DEFINIDA · ${destinoTexto}`;
+  }
+
+  const [ano, mes, dia] = fecha.split('-');
+
+  const meses = [
+    'ENE', 'FEB', 'MAR', 'ABR',
+    'MAY', 'JUN', 'JUL', 'AGO',
+    'SEP', 'OCT', 'NOV', 'DIC'
+  ];
+
+  const nombreMes = meses[Number(mes) - 1];
+
+  if (!nombreMes) {
+    return `SIN FECHA DEFINIDA · ${destinoTexto}`;
+  }
+
+  return `${Number(dia)} ${nombreMes} ${ano} · ${destinoTexto}`;
+}
+
+function agruparGruposPorFechaDestino(grupos) {
+  const bloques = [];
+
+  for (const grupo of grupos) {
+    const fecha = fechaInicioOrdenGrupo(grupo);
+    const destino = String(grupo.destino || '')
+      .trim()
+      .toUpperCase() || 'SIN DESTINO';
+
+    const clave = `${fecha}\u0000${destino}`;
+    const ultimoBloque = bloques[bloques.length - 1];
+
+    if (ultimoBloque?.clave === clave) {
+      ultimoBloque.grupos.push(grupo);
+    } else {
+      bloques.push({
+        clave,
+        titulo: etiquetaFechaDestinoRevision(
+          fecha,
+          destino
+        ),
+        grupos: [grupo]
+      });
+    }
+  }
+
+  return bloques;
+}
+
 function agruparAlertasRevisionPorGrupo(alertas) {
   const grupos = new Map();
 
@@ -3964,60 +4074,107 @@ function renderGruposAlertasRevision(
     return;
   }
 
-  contenedor.innerHTML = grupos.map(grupo => {
-    const cantidad = grupo.alertas.length;
-    const sustantivo = cantidad === 1 ? 'rechazo' : 'rechazos';
+  const bloques = agruparGruposPorFechaDestino(grupos);
 
-    return `
-      <li class="alert-item" style="margin-bottom:10px">
-        <div style="padding:10px">
-          <strong>
-            #${escapeHTMLAlertas(grupo.numeroNegocio)}
-            ·
-            ${escapeHTMLAlertas(
-              grupo.nombreGrupo.toString().toUpperCase()
-            )}
-          </strong>
+  contenedor.innerHTML = bloques.map(bloque => `
+    <li
+      style="
+        list-style:none;
+        margin:18px 0 8px;
+        padding:8px 10px;
+        border-radius:6px;
+        background:#e8eef9;
+        color:#1e3a5f;
+        font-weight:700;
+      "
+    >
+      ${escapeHTMLAlertas(bloque.titulo)}
+      <span
+        style="
+          margin-left:6px;
+          font-weight:400;
+          font-size:.85em;
+        "
+      >
+        (${bloque.grupos.length}
+        ${
+          bloque.grupos.length === 1
+            ? 'grupo'
+            : 'grupos'
+        })
+      </span>
+    </li>
 
-          <div class="meta" style="margin:6px 0 10px">
-            ${
-              tipo === 'resueltas'
-                ? '✅'
-                : '❌'
-            }
-            ${cantidad}
-            ${sustantivo}
-            ${
-              tipo === 'resueltas'
-                ? 'resueltos'
-                : 'activos'
-            }
+    ${bloque.grupos.map(grupo => {
+      const cantidad = grupo.alertas.length;
+
+      return `
+        <li
+          class="alert-item"
+          style="margin-bottom:10px"
+        >
+          <div style="padding:10px">
+            <strong>
+              #${escapeHTMLAlertas(grupo.numeroNegocio)}
+              ·
+              ${escapeHTMLAlertas(
+                String(grupo.nombreGrupo || '')
+                  .toUpperCase()
+              )}
+            </strong>
+
+            <div
+              class="meta"
+              style="margin:6px 0 10px"
+            >
+              ${
+                tipo === 'resueltas'
+                  ? '✅'
+                  : '❌'
+              }
+              ${cantidad}
+              ${
+                cantidad === 1
+                  ? 'rechazo'
+                  : 'rechazos'
+              }
+              ${
+                tipo === 'resueltas'
+                  ? 'resueltos'
+                  : 'activos'
+              }
+            </div>
+
+            <button
+              type="button"
+              data-grupo-alertas="${escapeHTMLAlertas(
+                grupo.grupoId
+              )}"
+              style="
+                padding:6px 10px;
+                border:0;
+                border-radius:5px;
+                background:#1d4ed8;
+                color:white;
+                font-weight:700;
+                cursor:pointer;
+              "
+            >
+              Ver detalle
+            </button>
           </div>
+        </li>
+      `;
+    }).join('')}
+  `).join('');
 
-          <button
-            type="button"
-            data-grupo-alertas="${escapeHTMLAlertas(grupo.grupoId)}"
-            style="
-              padding:6px 10px;
-              border:0;
-              border-radius:5px;
-              background:#1d4ed8;
-              color:white;
-              font-weight:700;
-              cursor:pointer;
-            "
-          >
-            Ver detalle
-          </button>
-        </div>
-      </li>
-    `;
-  }).join('');
-
-  contenedor.querySelectorAll('[data-grupo-alertas]')
+  contenedor
+    .querySelectorAll('[data-grupo-alertas]')
     .forEach(boton => {
       boton.addEventListener('click', () => {
-        alVerDetalle(boton.dataset.grupoAlertas);
+        alVerDetalle(
+          boton.dataset.grupoAlertas
+        );
       });
     });
 }
