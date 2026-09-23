@@ -12835,169 +12835,338 @@ window.repararDuracionItinerarioGrupo =
 
 window.diagnosticarRechazosAnteriores =
   async function diagnosticarRechazosAnteriores(
-    grupoId
+    numeroNegocio = null
   ) {
-    const id = String(
-      grupoId || selectNum.value || ''
-    );
+    const anoViaje = 2026;
 
-    if (!id) {
-      throw new Error(
-        'Indica el idGrupo o selecciona un grupo.'
-      );
-    }
+    // Se consultan ambos formatos usados en la base:
+    // anoViaje: 2026 y anoViaje: "2026".
+    const gruposRef = collection(db, 'grupos');
 
-    const [grupoSnap, alertasSnap, historialSnap] =
-      await Promise.all([
-        getDoc(doc(db, 'grupos', id)),
-
-        getDocs(
-          collection(
-            db,
-            'grupos',
-            id,
-            'alertas'
-          )
-        ),
-
-        getDocs(
-          query(
-            collection(db, 'historial'),
-            where('grupoId', '==', id)
-          )
+    const [snapNumero, snapTexto] = await Promise.all([
+      getDocs(
+        query(
+          gruposRef,
+          where('anoViaje', '==', anoViaje)
         )
-      ]);
-
-    if (!grupoSnap.exists()) {
-      throw new Error(
-        `No existe el grupo ${id}.`
-      );
-    }
-
-    const grupo = grupoSnap.data() || {};
-
-    const historial = historialSnap.docs
-      .map(d => ({
-        id: d.id,
-        ...d.data()
-      }));
-
-    const resultados = alertasSnap.docs
-      .map(d => ({
-        id: d.id,
-        ...d.data()
-      }))
-      .filter(alerta =>
-        alertaRevisionEstaActiva(
-          alerta,
-          grupo
+      ),
+      getDocs(
+        query(
+          gruposRef,
+          where('anoViaje', '==', String(anoViaje))
         )
       )
-      .map(alerta => {
-        const inicio =
-          fechaMillisRevision(
-            alerta.creadoEn
-          );
+    ]);
 
-        const candidatos = historial
-          .filter(h =>
-            fechaMillisRevision(
-              h.timestamp
-            ) > inicio
-          )
-          .filter(h =>
-            !alerta.fecha ||
-            (
-              h.fechaActividad ||
-              h.fecha ||
-              ''
-            ) === alerta.fecha
-          )
-          .filter(h => {
-            const accion = String(
-              h.accion || ''
-            ).toUpperCase();
+    const gruposMap = new Map();
 
-            return [
-              'MODIFICAR ACTIVIDAD',
-              'CREAR ACTIVIDAD',
-              'CAMBIAR REVISION DIA',
-              'GRUPO VUELVE A PENDIENTE'
-            ].includes(accion);
-          })
-          .map(h => ({
-            historialId: h.id,
-            accion: h.accion,
-            actividad: h.actividad || '',
-            fecha:
-              h.fechaActividad ||
-              h.fecha ||
-              '',
-            idx:
-              Number.isInteger(h.idx)
-                ? h.idx
-                : null,
-            usuario: h.usuario || '',
-            timestamp: h.timestamp || null,
-            cambios:
-              h.cambiosCorreccion || []
-          }));
+    [...snapNumero.docs, ...snapTexto.docs].forEach(d => {
+      gruposMap.set(d.id, {
+        idGrupo: d.id,
+        ...d.data()
+      });
+    });
 
-        const exactos = candidatos.filter(
-          h =>
-            alerta.tipo === 'actividad' &&
-            h.accion ===
-              'MODIFICAR ACTIVIDAD' &&
-            Number.isInteger(
-              alerta.idx
-            ) &&
-            h.idx === alerta.idx
+    const filtroNegocio =
+      numeroNegocio === null ||
+      numeroNegocio === undefined ||
+      String(numeroNegocio).trim() === ''
+        ? null
+        : String(numeroNegocio).trim();
+
+    const grupos = [...gruposMap.values()]
+      .filter(g =>
+        !filtroNegocio ||
+        String(g.numeroNegocio ?? '').trim() ===
+          filtroNegocio
+      )
+      .sort((a, b) =>
+        String(a.numeroNegocio ?? '').localeCompare(
+          String(b.numeroNegocio ?? ''),
+          'es',
+          { numeric: true }
+        )
+      );
+
+    if (filtroNegocio && !grupos.length) {
+      throw new Error(
+        `No encontré el negocio #${filtroNegocio} ` +
+        `entre los grupos con año de viaje ${anoViaje}.`
+      );
+    }
+
+    const resumenGrupos = [];
+    const resultados = [];
+    const errores = [];
+
+    // Limita las consultas simultáneas para no cargar
+    // todos los historiales de 2026 al mismo tiempo.
+    let siguiente = 0;
+    const trabajadores = Math.min(5, grupos.length);
+
+    async function procesarGrupo() {
+      while (siguiente < grupos.length) {
+        const grupo = grupos[siguiente++];
+        const idGrupo = grupo.idGrupo;
+        const numero = String(
+          grupo.numeroNegocio ?? ''
         );
 
-        return {
-          alertaId: alerta.id,
-          tipo:
-            alerta.tipo ||
-            'actividad',
-          fecha: alerta.fecha || '',
-          idx:
-            Number.isInteger(
-              alerta.idx
+        try {
+          const alertasSnap = await getDocs(
+            collection(
+              db,
+              'grupos',
+              idGrupo,
+              'alertas'
             )
-              ? alerta.idx
-              : null,
-          actividad:
-            alerta.actividad || '',
-          motivo:
-            alerta.motivo || '',
-          estadoActual:
-            alerta.estadoCorreccion ||
-            'requiere_correccion',
-          coincidenciasExactas:
-            exactos.length,
-          candidatos:
-            candidatos.length,
-          propuesta:
-            exactos.length === 1
-              ? 'REVISAR CAMBIO EXACTO'
-              : candidatos.length
-                ? 'REVISAR MANUALMENTE'
-                : 'SIN EVIDENCIA EN HISTORIAL',
-          detalle:
-            candidatos
-        };
-      });
+          );
 
+          const alertasActivas = alertasSnap.docs
+            .map(d => ({
+              id: d.id,
+              ...d.data()
+            }))
+            .filter(alerta =>
+              alertaRevisionEstaActiva(
+                alerta,
+                grupo
+              )
+            );
+
+          resumenGrupos.push({
+            numeroNegocio: numero,
+            nombreGrupo:
+              grupo.nombreGrupo || '',
+            destino:
+              grupo.destino || '',
+            idGrupo,
+            alertasTotales:
+              alertasSnap.size,
+            rechazosActivos:
+              alertasActivas.length,
+            conEvidencia:
+              0,
+            sinEvidencia:
+              0
+          });
+
+          // Solo hace falta leer el historial cuando
+          // existen rechazos que siguen activos.
+          if (!alertasActivas.length) {
+            continue;
+          }
+
+          const historialSnap = await getDocs(
+            query(
+              collection(db, 'historial'),
+              where('grupoId', '==', idGrupo)
+            )
+          );
+
+          const historial = historialSnap.docs.map(d => ({
+            id: d.id,
+            ...d.data()
+          }));
+
+          for (const alerta of alertasActivas) {
+            const inicio = fechaMillisRevision(
+              alerta.creadoEn
+            );
+
+            const candidatos = historial
+              .filter(h =>
+                fechaMillisRevision(
+                  h.timestamp
+                ) > inicio
+              )
+              .filter(h =>
+                !alerta.fecha ||
+                (
+                  h.fechaActividad ||
+                  h.fecha ||
+                  ''
+                ) === alerta.fecha
+              )
+              .filter(h => {
+                const accion = String(
+                  h.accion || ''
+                ).toUpperCase();
+
+                return [
+                  'MODIFICAR ACTIVIDAD',
+                  'CREAR ACTIVIDAD',
+                  'CAMBIAR REVISION DIA',
+                  'GRUPO VUELVE A PENDIENTE'
+                ].includes(accion);
+              })
+              .map(h => ({
+                historialId: h.id,
+                accion: h.accion,
+                actividad:
+                  h.actividad || '',
+                fecha:
+                  h.fechaActividad ||
+                  h.fecha ||
+                  '',
+                idx:
+                  Number.isInteger(h.idx)
+                    ? h.idx
+                    : null,
+                usuario:
+                  h.usuario || '',
+                timestamp:
+                  h.timestamp || null,
+                cambios:
+                  h.cambiosCorreccion || []
+              }));
+
+            const exactos = candidatos.filter(h =>
+              alerta.tipo === 'actividad' &&
+              h.accion ===
+                'MODIFICAR ACTIVIDAD' &&
+              Number.isInteger(alerta.idx) &&
+              h.idx === alerta.idx
+            );
+
+            const propuesta =
+              exactos.length === 1
+                ? 'REVISAR CAMBIO EXACTO'
+                : candidatos.length
+                  ? 'REVISAR MANUALMENTE'
+                  : 'SIN EVIDENCIA EN HISTORIAL';
+
+            resultados.push({
+              numeroNegocio: numero,
+              nombreGrupo:
+                grupo.nombreGrupo || '',
+              destino:
+                grupo.destino || '',
+              idGrupo,
+              alertaId:
+                alerta.id,
+              tipo:
+                alerta.tipo ||
+                'actividad',
+              fecha:
+                alerta.fecha || '',
+              idx:
+                Number.isInteger(alerta.idx)
+                  ? alerta.idx
+                  : null,
+              actividad:
+                alerta.actividad || '',
+              motivo:
+                alerta.motivo || '',
+              estadoActual:
+                alerta.estadoCorreccion ||
+                'requiere_correccion',
+              coincidenciasExactas:
+                exactos.length,
+              candidatos:
+                candidatos.length,
+              propuesta,
+              detalle:
+                candidatos
+            });
+
+            const filaGrupo = resumenGrupos.find(
+              fila => fila.idGrupo === idGrupo
+            );
+
+            if (candidatos.length) {
+              filaGrupo.conEvidencia++;
+            } else {
+              filaGrupo.sinEvidencia++;
+            }
+          }
+        } catch (error) {
+          errores.push({
+            numeroNegocio: numero,
+            idGrupo,
+            error:
+              error?.message ||
+              String(error)
+          });
+        }
+      }
+    }
+
+    await Promise.all(
+      Array.from(
+        { length: trabajadores },
+        () => procesarGrupo()
+      )
+    );
+
+    resumenGrupos.sort((a, b) =>
+      String(a.numeroNegocio).localeCompare(
+        String(b.numeroNegocio),
+        'es',
+        { numeric: true }
+      )
+    );
+
+    resultados.sort((a, b) =>
+      String(a.numeroNegocio).localeCompare(
+        String(b.numeroNegocio),
+        'es',
+        { numeric: true }
+      )
+    );
+
+    const resumen = {
+      anoViaje,
+      gruposRevisados:
+        resumenGrupos.length,
+      gruposConRechazosActivos:
+        resumenGrupos.filter(
+          g => g.rechazosActivos > 0
+        ).length,
+      rechazosActivos:
+        resultados.length,
+      conEvidenciaPosterior:
+        resultados.filter(
+          r => r.candidatos > 0
+        ).length,
+      sinEvidenciaEnHistorial:
+        resultados.filter(
+          r => r.candidatos === 0
+        ).length,
+      gruposConError:
+        errores.length
+    };
+
+    console.log(
+      'RESUMEN DIAGNÓSTICO 2026 — SIN ESCRITURAS'
+    );
+    console.table([resumen]);
+
+    console.log(
+      'GRUPOS 2026 — IDENTIFICADOS POR NÚMERO DE NEGOCIO'
+    );
+    console.table(resumenGrupos);
+
+    console.log(
+      'RECHAZOS ACTIVOS Y POSIBLES CAMBIOS POSTERIORES'
+    );
     console.table(
       resultados.map(
         ({ detalle, ...fila }) => fila
       )
     );
 
-    console.log(
-      'Diagnóstico sin escrituras:',
-      resultados
-    );
+    if (errores.length) {
+      console.warn(
+        'Grupos que no se pudieron revisar:',
+        errores
+      );
+    }
 
-    return resultados;
+    return {
+      resumen,
+      grupos: resumenGrupos,
+      alertas: resultados,
+      errores
+    };
   };
