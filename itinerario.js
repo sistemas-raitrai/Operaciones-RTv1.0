@@ -423,7 +423,8 @@ async function guardarRevisionDia(
   await updateDoc(
     ref,
     {
-      revisionDias
+      revisionDias,
+      revisionIniciada: true
     }
   );
 
@@ -1581,7 +1582,9 @@ async function guardarRevisionGrupo(
       revisionGrupo,
 
       estadoRevisionItinerario:
-        estadoCompat
+        estadoCompat,
+
+      revisionIniciada: true
     }
   );
 
@@ -7409,7 +7412,9 @@ async function guardarRevisionActividad(
     ref,
     {
       [`itinerario.${fecha}`]:
-        arr
+        arr,
+
+      revisionIniciada: true
     }
   );
 
@@ -8896,6 +8901,8 @@ async function guardarRevisionCompleta(
         cambiosFirestore
       ).length
     ) {
+      cambiosFirestore.revisionIniciada = true;
+
       await updateDoc(
         refGrupo,
         cambiosFirestore
@@ -13450,6 +13457,8 @@ window.vincularRechazosAnteriores2026 =
         // Esto vincula evidencia al rechazo.
         // NO aprueba ni resuelve la alerta.
         await updateDoc(refGrupo, {
+          revisionIniciada: true,
+
           pendientesRechazosHistoricos: [
             ...anteriores,
             ...nuevos
