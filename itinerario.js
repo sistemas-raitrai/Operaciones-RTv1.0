@@ -2960,136 +2960,89 @@ async function updateEstadoRevisionAndBadge(
 // PENDIENTES
 // ======================================================
 
-function obtenerPendientesGrupo(
-  g
-) {
-  const out =
-    [];
+function obtenerPendientesGrupo(g) {
+  const filas = [];
+  const grupoId = String(
+    g.id || g.idGrupo || ''
+  );
 
-  const revGrupo =
-    getRevisionGrupo(g);
+  // Las actividades iniciales nacen pendientes,
+  // pero aún no son trabajo de una segunda revisión.
+  if (g.revisionIniciada !== true) {
+    return filas;
+  }
 
-  if (
-    revGrupo.estado ===
-    'pendiente'
+  const itinerario =
+    g.itinerario || {};
+
+  for (
+    const fecha
+    of Object.keys(itinerario)
+      .sort(sortDiasItinerario)
   ) {
-    out.push({
-      tipo:
-        'GRUPO',
+    const dia =
+      g.revisionDias?.[fecha];
 
-      fecha:
-        '',
+    if (
+      dia?.estado === 'pendiente' &&
+      dia?.timestamp &&
+      dia?.usuario
+    ) {
+      filas.push({
+        grupoId,
+        tipo: 'DÍA',
+        fecha,
+        actividad: `Día ${fecha}`,
+        observacion:
+          dia.observacion || '',
+        usuario: dia.usuario,
+        timestamp: dia.timestamp
+      });
+    }
 
-      actividad:
-        'REVISIÓN GENERAL',
+    (
+      itinerario[fecha] ||
+      []
+    ).forEach((act, idx) => {
+      if (
+        (act.revision || 'pendiente') !==
+        'pendiente'
+      ) {
+        return;
+      }
 
-      observacion:
-        revGrupo.observacion ||
-        '',
+      // Se agregó tras comenzar la revisión,
+      // o fue editada y enviada nuevamente.
+      if (
+        !act.requiereRevision &&
+        !act.revisionTimestamp
+      ) {
+        return;
+      }
 
-      usuario:
-        revGrupo.usuario ||
-        '',
-
-      timestamp:
-        revGrupo.timestamp ||
-        null
+      filas.push({
+        grupoId,
+        tipo: 'ACTIVIDAD',
+        fecha,
+        idx,
+        actividad:
+          act.actividad ||
+          '(actividad)',
+        observacion:
+          act.revisionObservacion ||
+          '',
+        usuario:
+          act.revisionUsuario ||
+          '',
+        timestamp:
+          act.revisionTimestamp ||
+          null
+      });
     });
   }
 
-  const IT =
-    g.itinerario ||
-    {};
-
-  Object.keys(IT)
-    .sort(
-      sortDiasItinerario
-    )
-    .forEach(fecha => {
-
-      const revDia =
-        getRevisionDia(
-          g,
-          fecha
-        );
-
-      if (
-        revDia.estado ===
-        'pendiente'
-      ) {
-        out.push({
-          tipo:
-            'DÍA',
-
-          fecha,
-
-          actividad:
-            `Día ${fecha}`,
-
-          observacion:
-            revDia.observacion ||
-            '',
-
-          usuario:
-            revDia.usuario ||
-            '',
-
-          timestamp:
-            revDia.timestamp ||
-            null
-        });
-      }
-
-      (
-        IT[fecha] ||
-        []
-      ).forEach(
-        (
-          act,
-          idx
-        ) => {
-          const estado =
-            act.revision ||
-            'pendiente';
-
-          if (
-            estado !==
-            'pendiente'
-          ) {
-            return;
-          }
-
-          out.push({
-            tipo:
-              'ACTIVIDAD',
-
-            fecha,
-
-            idx,
-
-            actividad:
-              act.actividad ||
-              '(actividad)',
-
-            observacion:
-              act.revisionObservacion ||
-              '',
-
-            usuario:
-              act.revisionUsuario ||
-              '',
-
-            timestamp:
-              act.revisionTimestamp ||
-              null
-          });
-        }
-      );
-    });
-
-  return out;
+  return filas;
 }
-
 
 function renderPendientes(
   rows,
@@ -3105,249 +3058,273 @@ function renderPendientes(
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
 
-  if (!rows.length) {
-    pendientesList.innerHTML = `
-      <li class="alert-item">
-        — No existen pendientes —
-      </li>
-    `;
-
-    return;
-  }
-
   pendientesList.innerHTML =
-    rows.map((item, indice) => {
-      if (item.alertaId) {
-        const cambios = (
-          item.cambios || []
-        )
-          .map(cambio => `
-            <li>
-              ${esc(cambio.accion)}:
-              ${esc(
-                cambio.actividad ||
-                '(revisión)'
-              )}
-
-              <small>
-                ${esc(cambio.usuario)}
-                ·
-                ${
-                  cambio.timestamp
-                    ? esc(
-                        fmtTS(
-                          cambio.timestamp
-                        )
-                      )
-                    : ''
-                }
-              </small>
-            </li>
-          `)
-          .join('');
-
-        return `
-          <li
-            class="alert-item"
-            style="
-              padding:10px;
-              margin-bottom:10px
-            "
-          >
-            ${
-              mostrarGrupo
-                ? `
-                    <strong>
+    rows.length
+      ? rows.map((p, indice) => {
+          const grupo =
+            mostrarGrupo
+              ? `
+                  <div>
+                    <b>
                       #${esc(
-                        item.numeroNegocio
+                        p.numeroNegocio
                       )}
                       ·
                       ${esc(
-                        item.nombreGrupo
+                        p.nombreGrupo
                       )}
-                    </strong>
-                    <br>
-                  `
-                : ''
-            }
-
-            <strong>
-              🔎 CORRECCIÓN POR REVISAR
-              ·
-              ${esc(
-                item.tipoAlerta
-              ).toUpperCase()}
-            </strong>
-
-            <div>
-              ${esc(item.fecha)}
-              ·
-              ${esc(item.actividad)}
-            </div>
-
-            <div>
-              <b>Se pidió:</b>
-              ${esc(item.motivo)}
-            </div>
-
-            ${
-              item.respuesta
-                ? `
-                    <div>
-                      <b>Respuesta:</b>
-                      ${esc(item.respuesta)}
-                    </div>
-                  `
-                : ''
-            }
-
-            <div>
-              <b>Se hizo:</b>
-
-              <ul>
-                ${
-                  cambios ||
-                  '<li>Respuesta registrada; revisar el itinerario.</li>'
-                }
-              </ul>
-            </div>
-
-            <div
-              style="color:#92400e"
-            >
-              <b>
-                ⚠️ Advertencia:
-              </b>
-
-              ${esc(
-                item.advertencia
-              )}
-            </div>
-
-            <button
-              type="button"
-              data-revision-historica="${indice}"
-              data-estado="ok"
-            >
-              Aprobar ${esc(
-                item.tipoAlerta
-              )}
-            </button>
-
-            <button
-              type="button"
-              data-revision-historica="${indice}"
-              data-estado="rechazado"
-            >
-              Volver a rechazar
-            </button>
-          </li>
-        `;
-      }
-
-      return `
-        <li
-          class="alert-item"
-          style="padding:10px"
-        >
-          ${
-            mostrarGrupo
-              ? `
-                  <strong>
-                    #${esc(
-                      item.numeroNegocio
-                    )}
-                    ·
-                    ${esc(
-                      item.nombreGrupo
-                    )}
-                  </strong>
-                  <br>
-                `
-              : ''
-          }
-
-          <strong>
-            🕒
-            ${esc(item.tipo)}
-            ·
-            ${esc(
-              item.actividad
-            )}
-          </strong>
-
-          ${
-            item.fecha
-              ? `
-                  <div>
-                    <small>
-                      ${esc(item.fecha)}
-                    </small>
+                    </b>
                   </div>
                 `
-              : ''
-          }
+              : '';
 
-          <div class="motivo">
-            ${
-              item.observacion
-                ? `
-                    Observación:
+          if (p.alertaId) {
+            const cambios = (
+              p.cambios || []
+            )
+              .map(cambio => `
+                <li>
+                  <b>
                     ${esc(
-                      item.observacion
+                      cambio.accion
                     )}
-                  `
-                : 'Sin observación.'
-            }
-          </div>
+                  </b>
 
-          ${
-            item.usuario
-              ? `
-                  <div class="meta">
+                  ·
+
+                  ${esc(
+                    cambio.actividad ||
+                    '(revisión)'
+                  )}
+
+                  <small>
                     ${esc(
-                      item.usuario
+                      cambio.usuario
                     )}
 
                     ${
-                      item.timestamp
+                      cambio.timestamp
                         ? `
                             ·
                             ${esc(
                               fmtTS(
-                                item.timestamp
+                                cambio.timestamp
                               )
                             )}
                           `
                         : ''
                     }
-                  </div>
-                `
-              : ''
+                  </small>
+                </li>
+              `)
+              .join('');
+
+            const tipo =
+              p.tipoAlerta === 'dia'
+                ? 'día'
+                : p.tipoAlerta ===
+                    'grupo'
+                  ? 'grupo'
+                  : 'actividad';
+
+            return `
+              <li
+                class="alert-item"
+                style="
+                  padding:12px;
+                  margin-bottom:10px;
+                  line-height:1.45
+                "
+              >
+                ${grupo}
+
+                <div>
+                  <strong>
+                    🔎 Corrección de
+                    ${tipo}
+                    ·
+                    ${esc(p.fecha)}
+                  </strong>
+                </div>
+
+                <div>
+                  <b>Elemento:</b>
+                  ${esc(
+                    p.actividad
+                  )}
+                </div>
+
+                <div>
+                  <b>Se pidió:</b>
+                  ${esc(
+                    p.motivo
+                  )}
+                </div>
+
+                <div>
+                  <b>Se hizo:</b>
+
+                  <ol
+                    style="
+                      margin:4px 0 4px 22px
+                    "
+                  >
+                    ${
+                      cambios ||
+                      '<li>Respuesta enviada; revisar el itinerario.</li>'
+                    }
+                  </ol>
+                </div>
+
+                ${
+                  p.respuesta
+                    ? `
+                        <div>
+                          <b>
+                            Respuesta:
+                          </b>
+
+                          ${esc(
+                            p.respuesta
+                          )}
+                        </div>
+                      `
+                    : ''
+                }
+
+                <div
+                  style="
+                    padding:6px;
+                    background:#fffbeb
+                  "
+                >
+                  <b>
+                    ⚠️ Revisar:
+                  </b>
+
+                  ${esc(
+                    p.advertencia
+                  )}
+                </div>
+
+                <div
+                  style="margin-top:9px"
+                >
+                  <button
+                    type="button"
+                    data-pendiente-indice="${indice}"
+                    data-estado="ok"
+                  >
+                    Aprobar ${tipo}
+                  </button>
+
+                  <button
+                    type="button"
+                    data-pendiente-indice="${indice}"
+                    data-estado="rechazado"
+                  >
+                    Volver a rechazar
+                  </button>
+                </div>
+              </li>
+            `;
           }
-        </li>
-      `;
-    })
-      .join('');
+
+          return `
+            <li
+              class="alert-item"
+              style="
+                padding:12px;
+                margin-bottom:10px;
+                line-height:1.45
+              "
+            >
+              ${grupo}
+
+              <div>
+                <strong>
+                  🕒
+                  ${esc(p.tipo)}
+                  ·
+                  ${esc(p.fecha)}
+                </strong>
+              </div>
+
+              <div>
+                ${esc(
+                  p.actividad
+                )}
+              </div>
+
+              <div>
+                ${
+                  p.observacion
+                    ? `
+                        <b>
+                          Nota:
+                        </b>
+
+                        ${esc(
+                          p.observacion
+                        )}
+                      `
+                    : `
+                        Cambio nuevo:
+                        requiere revisión.
+                      `
+                }
+              </div>
+
+              <div
+                style="margin-top:9px"
+              >
+                <button
+                  type="button"
+                  data-pendiente-indice="${indice}"
+                  data-estado="ok"
+                >
+                  Aprobar
+                </button>
+
+                <button
+                  type="button"
+                  data-pendiente-indice="${indice}"
+                  data-estado="rechazado"
+                >
+                  Rechazar
+                </button>
+              </div>
+            </li>
+          `;
+        })
+          .join('')
+
+      : `
+          <li class="alert-item">
+            — No hay correcciones
+            ni cambios enviados
+            para revisión —
+          </li>
+        `;
 
   pendientesList
     .querySelectorAll(
-      '[data-revision-historica]'
+      '[data-pendiente-indice]'
     )
     .forEach(boton => {
       boton.addEventListener(
         'click',
         async () => {
-          const item =
+          const pendiente =
             rows[
               Number(
                 boton.dataset
-                  .revisionHistorica
+                  .pendienteIndice
               )
             ];
 
           const grupoId =
-            item.grupoId ||
+            pendiente.grupoId ||
             modalPendientes
               .dataset
               .exportarGrupo;
@@ -3356,27 +3333,85 @@ function renderPendientes(
             alert(
               'No se pudo identificar el grupo.'
             );
+
             return;
           }
 
           boton.disabled = true;
 
           try {
-            const guardado =
-              await decidirRechazoDesdePendientes(
-                grupoId,
-                item,
-                boton.dataset.estado
-              );
+            let guardado;
+
+            if (
+              pendiente.alertaId
+            ) {
+              // Rechazo previo con cambios:
+              // usa la función que ya tienes.
+              guardado =
+                await decidirRechazoDesdePendientes(
+                  grupoId,
+                  pendiente,
+                  boton.dataset.estado
+                );
+
+            } else {
+              // Actividad o día nuevo,
+              // posterior a la primera revisión.
+              const estado =
+                boton.dataset.estado;
+
+              const motivo =
+                estado ===
+                  'rechazado'
+                  ? prompt(
+                      'Motivo del rechazo:',
+                      ''
+                    )
+                  : '';
+
+              if (
+                estado ===
+                  'rechazado' &&
+                !motivo?.trim()
+              ) {
+                return;
+              }
+
+              if (
+                estado === 'ok' &&
+                !confirm(
+                  `¿Aprobar ${
+                    pendiente.tipo
+                      .toLowerCase()
+                  } "${
+                    pendiente.actividad
+                  }"?`
+                )
+              ) {
+                return;
+              }
+
+              guardado =
+                pendiente.tipo ===
+                  'DÍA'
+                  ? await guardarRevisionDia(
+                      grupoId,
+                      pendiente.fecha,
+                      estado,
+                      motivo
+                    )
+                  : await guardarRevisionActividad(
+                      grupoId,
+                      pendiente.fecha,
+                      pendiente.idx,
+                      estado,
+                      motivo
+                    );
+            }
 
             if (guardado) {
               await openPendientesPanel(
-                modalPendientes
-                  .dataset
-                  .exportarGrupo ===
-                  selectNum.value
-                  ? 'grupo'
-                  : 'general'
+                'general'
               );
             }
 
@@ -4819,6 +4854,14 @@ async function openAlertasPanel(modo = 'grupo') {
   }
 
   document.body.classList.add('modal-open');
+
+  modalPendientes.dataset.exportarGrupo =
+    modo === 'grupo' ? grupoIdActual : '';
+  
+  instalarExportacionRevision(
+    modalPendientes,
+    'pendientes'
+  );
 
   modalAlertas.dataset.exportarGrupo =
     modo === 'grupo'
@@ -13635,260 +13678,375 @@ async function decidirRechazoDesdePendientes(
 }
 
 
-function pendientesConCorreccionesHistoricas(grupo) {
-  const pendientesNormales =
-    obtenerPendientesGrupo(grupo);
+function pendientesConCorreccionesHistoricas(g) {
+  const grupoId = String(
+    g.id || g.idGrupo || ''
+  );
 
   const historicos = Array.isArray(
-    grupo.pendientesRechazosHistoricos
+    g.pendientesRechazosHistoricos
   )
-    ? grupo.pendientesRechazosHistoricos
+    ? g.pendientesRechazosHistoricos
     : [];
 
-  return [
-    ...pendientesNormales,
+  const nombresVinculados =
+    new Set();
 
-    ...historicos.map(item => ({
-      tipo:
-        'CORRECCIÓN POR REVISAR',
-
-      tipoAlerta:
-        item.tipo,
-
-      alertaId:
-        item.alertaId,
-
-      fecha:
-        item.fecha,
-
-      idx:
-        item.idx,
-
-      actividad:
-        item.actividad,
-
-      motivo:
-        item.motivo,
-
-      respuesta:
-        item.respuesta || '',
-
-      advertencia:
-        item.advertencia,
-
-      cambios:
-        item.cambios || [],
-
-      observacion:
-        item.motivo,
-
-      grupoId:
-        grupo.id ||
-        grupo.idGrupo ||
-        ''
-    }))
-  ];
-}
-
-
-function instalarExportacionRevision(
-  modal,
-  tipo
-) {
-  if (!modal) return;
-
-  let boton = modal.querySelector(
-    `[data-exportar-revision="${tipo}"]`
-  );
-
-  if (boton) return;
-
-  boton = document.createElement('button');
-  boton.type = 'button';
-  boton.dataset.exportarRevision = tipo;
-  boton.textContent = '📗 Exportar XLS';
-
-  boton.style.cssText = `
-    margin:8px;
-    padding:6px 10px;
-    background:#187c48;
-    color:white;
-    border:0;
-    border-radius:5px;
-    cursor:pointer
-  `;
-
-  modal.insertBefore(
-    boton,
-    modal.firstChild
-  );
-
-  boton.addEventListener(
-    'click',
-    async () => {
-      try {
-        boton.disabled = true;
-
-        const grupoId =
-          modal.dataset.exportarGrupo || '';
-
-        const grupos = grupoId
-          ? [
-              await getDoc(
-                doc(
-                  db,
-                  'grupos',
-                  grupoId
-                )
-              )
-            ]
-              .filter(snap => snap.exists())
-              .map(snap => ({
-                id: snap.id,
-                ...snap.data()
-              }))
-
-          : await getGruposAnoOperativo();
-
-        const filas = [];
-
-        for (
-          const grupo
-          of grupos.sort(
-            ordenarGruposRevision
-          )
-        ) {
-          const datos =
-            tipo === 'pendientes'
-              ? pendientesConCorreccionesHistoricas(
-                  grupo
-                )
-
-              : (
-                  await getDocs(
-                    collection(
-                      db,
-                      'grupos',
-                      grupo.id,
-                      'alertas'
-                    )
-                  )
-                ).docs.map(snap => ({
-                  id: snap.id,
-                  ...snap.data(),
-
-                  estadoAlerta:
-                    alertaRevisionEstaActiva(
-                      snap.data(),
-                      grupo
-                    )
-                      ? 'ACTIVA'
-                      : 'RESUELTA'
-                }));
-
-          for (const dato of datos) {
-            const vinculo =
-              tipo === 'alertas'
-                ? (
-                    grupo
-                      .pendientesRechazosHistoricos ||
-                    []
-                  ).find(
-                    item =>
-                      item.alertaId ===
-                      dato.id
-                  )
-                : null;
-
-            filas.push({
-              'N° negocio':
-                grupo.numeroNegocio ||
-                grupo.id,
-
-              'Grupo':
-                grupo.nombreGrupo || '',
-
-              'Destino':
-                grupo.destino || '',
-
-              'Inicio':
-                String(
-                  grupo.fechaInicio ||
-                  ''
-                ),
-
-              'Tipo':
-                dato.tipo || '',
-
-              'Fecha':
-                dato.fecha || '',
-
-              'Actividad':
-                dato.actividad || '',
-
-              'Estado':
-                dato.estadoAlerta ||
-                dato.tipo ||
-                '',
-
-              'Solicitado / motivo':
-                dato.motivo ||
-                dato.observacion ||
-                '',
-
-              'Cambios realizados':
-                (
-                  dato.cambios ||
-                  vinculo?.cambios ||
-                  dato.correcciones ||
-                  []
-                )
-                  .map(
-                    cambio =>
-                      `${cambio.accion || cambio.campo || ''}: ` +
-                      `${cambio.actividad || cambio.nuevo || ''}`
-                  )
-                  .join(' | '),
-
-              'Respuesta':
-                dato.respuestaRevision ||
-                vinculo?.respuesta ||
-                '',
-
-              'Advertencia':
-                dato.advertencia ||
-                vinculo?.advertencia ||
-                ''
-            });
-          }
-        }
-
-        exportarFilasRevisionXls(
-          filas,
-          `${tipo}_${
-            grupoId ||
-            getAnoViajeOperativoActual()
-          }.xls`
+  for (const historico of historicos) {
+    for (
+      const cambio
+      of historico.cambios || []
+    ) {
+      if (
+        cambio.fecha &&
+        cambio.actividad
+      ) {
+        nombresVinculados.add(
+          `${cambio.fecha}|${K(
+            cambio.actividad
+          )}`
         );
-
-      } catch (error) {
-        console.error(
-          'Error exportando revisión:',
-          error
-        );
-
-        alert(
-          error.message ||
-          'No se pudo exportar la revisión.'
-        );
-
-      } finally {
-        boton.disabled = false;
       }
     }
+
+    if (
+      historico.tipo ===
+        'actividad' &&
+      historico.fecha &&
+      historico.actividad
+    ) {
+      nombresVinculados.add(
+        `${historico.fecha}|${K(
+          historico.actividad
+        )}`
+      );
+    }
+  }
+
+  const normales =
+    obtenerPendientesGrupo(g)
+      .filter(pendiente =>
+        !nombresVinculados.has(
+          `${pendiente.fecha}|${K(
+            pendiente.actividad
+          )}`
+        ) &&
+        !(
+          pendiente.tipo ===
+            'DÍA' &&
+          historicos.some(
+            historico =>
+              historico.tipo ===
+                'dia' &&
+              historico.fecha ===
+                pendiente.fecha
+          )
+        )
+      );
+
+  return [
+    ...historicos.map(
+      historico => ({
+        grupoId,
+
+        // Este tipo se usa para aprobar
+        // el elemento correcto.
+        tipo:
+          historico.tipo,
+
+        tipoAlerta:
+          historico.tipo,
+
+        alertaId:
+          historico.alertaId,
+
+        fecha:
+          historico.fecha ||
+          '',
+
+        idx:
+          historico.idx,
+
+        actividad:
+          historico.actividad ||
+          'Revisión general',
+
+        motivo:
+          historico.motivo ||
+          '',
+
+        respuesta:
+          historico.respuesta ||
+          '',
+
+        advertencia:
+          historico.advertencia ||
+          '',
+
+        cambios:
+          historico.cambios ||
+          []
+      })
+    ),
+
+    ...normales
+  ].sort(
+    (a, b) =>
+      String(a.fecha)
+        .localeCompare(
+          String(b.fecha)
+        )
   );
 }
 
+function instalarExportacionRevision(modal, tipo) {
+  if (!modal) return;
+
+  const id = tipo === 'pendientes'
+    ? 'exportar-pendientes-xls'
+    : 'exportar-alertas-xls';
+
+  let boton = document.getElementById(id);
+
+  if (!boton) {
+    boton = document.createElement('button');
+    boton.id = id;
+    boton.type = 'button';
+    boton.textContent = '📊 Exportar XLS';
+    boton.style.cssText =
+      'margin-left:8px;padding:6px 10px;background:#187c48;' +
+      'color:white;border:0;border-radius:5px;cursor:pointer';
+
+    const pestaña = tipo === 'pendientes'
+      ? btnPendientesGeneral
+      : btnAlertasGeneral;
+
+    if (pestaña) {
+      pestaña.insertAdjacentElement('afterend', boton);
+    } else {
+      modal.insertBefore(boton, modal.firstChild);
+    }
+  }
+
+  boton.onclick = async () => {
+    boton.disabled = true;
+
+    try {
+      const grupoId = modal.dataset.exportarGrupo || '';
+
+      const grupos = grupoId
+        ? [await getDoc(doc(db, 'grupos', grupoId))]
+            .filter(s => s.exists())
+            .map(s => ({ id: s.id, ...s.data() }))
+        : await getGruposAnoOperativo();
+
+      grupos.sort(ordenarGruposRevision);
+
+      const hojas = [];
+      const resumen = [];
+      const nombresUsados = new Set();
+
+      for (const grupo of grupos) {
+        const registros = tipo === 'pendientes'
+          ? pendientesConCorreccionesHistoricas(grupo)
+          : (
+              await getDocs(
+                collection(db, 'grupos', grupo.id, 'alertas')
+              )
+            ).docs.map(d => ({
+              id: d.id,
+              ...d.data(),
+              estadoAlerta: alertaRevisionEstaActiva(
+                d.data(),
+                grupo
+              ) ? 'ACTIVA' : 'RESUELTA'
+            }));
+
+        if (!grupoId && registros.length === 0) {
+          continue;
+        }
+
+        resumen.push({
+          Negocio: grupo.numeroNegocio || grupo.id,
+          Grupo: grupo.nombreGrupo || '',
+          Destino: grupo.destino || '',
+          Inicio: String(grupo.fechaInicio || ''),
+          Casos: registros.length
+        });
+
+        const base = `N${grupo.numeroNegocio || grupo.id}`
+          .replace(/[\\/:?*\[\]]/g, '')
+          .slice(0, 26);
+
+        let nombre = base;
+        let numero = 2;
+
+        while (nombresUsados.has(nombre)) {
+          nombre = `${base.slice(0, 24)}_${numero++}`;
+        }
+
+        nombresUsados.add(nombre);
+
+        hojas.push({
+          nombre,
+          filas: registros.map(registro => {
+            const vinculo = (
+              grupo.pendientesRechazosHistoricos || []
+            ).find(h =>
+              h.alertaId === registro.id ||
+              h.alertaId === registro.alertaId
+            );
+
+            const cambios =
+              registro.cambios ||
+              vinculo?.cambios ||
+              registro.correcciones ||
+              [];
+
+            return {
+              Negocio: grupo.numeroNegocio || grupo.id,
+              Grupo: grupo.nombreGrupo || '',
+              Destino: grupo.destino || '',
+              Inicio: String(grupo.fechaInicio || ''),
+              Fecha: registro.fecha || '',
+              Tipo:
+                registro.tipoAlerta ||
+                registro.tipo ||
+                '',
+              Actividad: registro.actividad || '',
+              Estado:
+                registro.estadoAlerta ||
+                (
+                  registro.alertaId
+                    ? 'POR REVISAR'
+                    : 'PENDIENTE'
+                ),
+              'Se pidió':
+                registro.motivo ||
+                registro.observacion ||
+                '',
+              'Se hizo': cambios.map(c =>
+                `${c.accion || c.campo || ''}: ` +
+                `${c.actividad || c.nuevo || ''}`
+              ).join(' | '),
+              Respuesta:
+                registro.respuesta ||
+                registro.respuestaRevision ||
+                vinculo?.respuesta ||
+                '',
+              Advertencia:
+                registro.advertencia ||
+                vinculo?.advertencia ||
+                ''
+            };
+          })
+        });
+      }
+
+      if (!grupoId) {
+        hojas.unshift({
+          nombre: 'Resumen',
+          filas: resumen
+        });
+      }
+
+      exportarLibroRevisionXls(
+        hojas,
+        `${tipo}_${grupoId || getAnoViajeOperativoActual()}.xls`
+      );
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      alert(error.message || 'No se pudo exportar.');
+    } finally {
+      boton.disabled = false;
+    }
+  };
+}
+
+function exportarLibroRevisionXls(hojas, nombreArchivo) {
+  const escapar = valor =>
+    String(valor ?? '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
+
+  const generarHoja = ({ nombre, filas }) => {
+    const columnas = nombre === 'Resumen'
+      ? [
+          'Negocio',
+          'Grupo',
+          'Destino',
+          'Inicio',
+          'Casos'
+        ]
+      : [
+          'Negocio',
+          'Grupo',
+          'Destino',
+          'Inicio',
+          'Fecha',
+          'Tipo',
+          'Actividad',
+          'Estado',
+          'Se pidió',
+          'Se hizo',
+          'Respuesta',
+          'Advertencia'
+        ];
+
+    const generarFila = valores =>
+      `<Row>${valores.map(valor =>
+        `<Cell><Data ss:Type="String">` +
+        `${escapar(valor)}` +
+        `</Data></Cell>`
+      ).join('')}</Row>`;
+
+    return (
+      `<Worksheet ss:Name="${escapar(nombre)}">` +
+      `<Table>` +
+      generarFila(columnas) +
+      filas.map(fila =>
+        generarFila(
+          columnas.map(columna => fila[columna])
+        )
+      ).join('') +
+      `</Table></Worksheet>`
+    );
+  };
+
+  const contenido =
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<Workbook ' +
+    'xmlns="urn:schemas-microsoft-com:office:spreadsheet" ' +
+    'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
+    hojas.map(generarHoja).join('') +
+    '</Workbook>';
+
+  const url = URL.createObjectURL(
+    new Blob(
+      [contenido],
+      {
+        type: 'application/vnd.ms-excel;charset=utf-8'
+      }
+    )
+  );
+
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+
+  setTimeout(
+    () => URL.revokeObjectURL(url),
+    30000
+  );
+}
 
 function exportarFilasRevisionXls(
   filas,
