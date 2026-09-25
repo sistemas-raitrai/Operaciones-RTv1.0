@@ -2925,6 +2925,12 @@ function injectPdfStyles(){
     width:auto;
   }
 
+  .itinerario-doc .it-day-table.sin-horario th,
+  .itinerario-doc .it-day-table.sin-horario td {
+    width: 100%;
+    white-space: normal;
+  }
+
   .confirm-doc .confirm-recomendaciones.force-page-break{
     break-before: page !important;
     page-break-before: always !important;
@@ -8001,7 +8007,79 @@ async function buildVouchersHTML(
   );
 }
 
-function buildItinerarioDoc(grupo){
+function elegirHorarioItinerario(){
+  return new Promise(resolve => {
+    const fondo = document.createElement('div');
+
+    fondo.style.cssText = `
+      position:fixed;
+      inset:0;
+      z-index:100001;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      background:rgba(0,0,0,.5);
+    `;
+
+    fondo.innerHTML = `
+      <div role="dialog" aria-modal="true" aria-labelledby="tituloHorarioItinerario"
+           style="width:min(420px,100%);background:#fff;color:#111;border-radius:10px;
+                  padding:20px;box-shadow:0 12px 35px rgba(0,0,0,.3)">
+        <h3 id="tituloHorarioItinerario" style="margin:0 0 12px">
+          Horario del itinerario
+        </h3>
+
+        <label for="opcionHorarioItinerario"
+               style="display:block;margin-bottom:6px">
+          ¿Cómo quieres imprimir el documento I?
+        </label>
+
+        <select id="opcionHorarioItinerario"
+                style="width:100%;padding:9px;margin-bottom:18px">
+          <option value="con">Con columna de horario</option>
+          <option value="sin">Sin columna de horario</option>
+        </select>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+          <button type="button" data-accion="cancelar"
+                  style="padding:9px 14px;cursor:pointer">
+            Cancelar
+          </button>
+          <button type="button" data-accion="continuar"
+                  style="padding:9px 14px;cursor:pointer">
+            Imprimir
+          </button>
+        </div>
+      </div>
+    `;
+
+    const cerrar = resultado => {
+      document.removeEventListener('keydown', alPresionarTecla);
+      fondo.remove();
+      resolve(resultado);
+    };
+
+    const alPresionarTecla = event => {
+      if (event.key === 'Escape') cerrar(null);
+    };
+
+    fondo.querySelector('[data-accion="cancelar"]').onclick = () => cerrar(null);
+
+    fondo.querySelector('[data-accion="continuar"]').onclick = () => {
+      const mostrarHorario =
+        fondo.querySelector('#opcionHorarioItinerario').value === 'con';
+
+      cerrar(mostrarHorario);
+    };
+
+    document.addEventListener('keydown', alPresionarTecla);
+    document.body.appendChild(fondo);
+    fondo.querySelector('#opcionHorarioItinerario').focus();
+  });
+}
+
+function buildItinerarioDoc(grupo, mostrarHorario = true){
   const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
   const curso   = getCursoOperacional(grupo);
@@ -8080,17 +8158,19 @@ function buildItinerarioDoc(grupo){
           if (horaTxt !== '—') horaTxt += ' HRS';
     
           const nombre = (act.actividad || act.servicio || act.nombre || '').toString().trim();
-    
+
           return `
             <tr>
-              <td class="hora">${horaTxt}</td>
+              ${mostrarHorario ? `<td class="hora">${horaTxt}</td>` : ''}
               <td><strong>${nombre.toUpperCase()}</strong></td>
             </tr>
           `;
         }).join('')
       : `
         <tr>
-          <td colspan="2">— Sin actividades registradas para este día —</td>
+          <td colspan="${mostrarHorario ? 2 : 1}">
+            — Sin actividades registradas para este día —
+          </td>
         </tr>
       `;
 
@@ -8099,10 +8179,10 @@ function buildItinerarioDoc(grupo){
         <div class="it-day-head">
           <span>DÍA ${idx+1} – ${etiquetaFecha}</span>
         </div>
-        <table class="it-day-table">
+        <table class="it-day-table${mostrarHorario ? '' : ' sin-horario'}">
           <thead>
             <tr>
-              <th>HORA</th>
+              ${mostrarHorario ? '<th>HORA</th>' : ''}
               <th>ACTIVIDAD</th>
             </tr>
           </thead>
@@ -10780,16 +10860,23 @@ async function descargarVouchers(grupoId){
 // ITINERARIO: imprimir documento de itinerario del grupo
 // ──────────────────────────────────────────────────────────────
 async function descargarItinerario(grupoId){
-  const d = await getDoc(doc(db,'grupos', grupoId));
+  const mostrarHorario = await elegirHorarioItinerario();
+  if (mostrarHorario === null) return;
+
+  const d = await getDoc(doc(db, 'grupos', grupoId));
   if (!d.exists()) return;
 
-  const g = { id:d.id, ...d.data() };
-  const htmlAuto = buildItinerarioDoc(g);
+  const g = { id: d.id, ...d.data() };
+  const htmlAuto = buildItinerarioDoc(g, mostrarHorario);
 
-  const html = await aplicarDocumentoManualSiExiste(grupoId, 'I', htmlAuto);
+  const html = await aplicarDocumentoManualSiExiste(
+    grupoId,
+    'I',
+    htmlAuto
+  );
+
   imprimirHtml(html);
 }
-
 
 /* ──────────────────────────────────────────────────────────────────────
    Exportación / IMPRESIÓN de CONFIRMACIÓN (uno)
@@ -11043,62 +11130,88 @@ async function descargarVouchersTodos(){
 //   → Botón: IMPRIMIR ITINERARIOS (seleccionados)
 // ──────────────────────────────────────────────────────────────
 async function descargarItinerariosSeleccionados(){
-  const tb   = document.getElementById('tbody');
+  const tb = document.getElementById('tbody');
   const prog = document.getElementById('progressTxt');
 
-  // Sólo los grupos con checkbox marcado
   const ids = [...tb.querySelectorAll('tr')]
     .filter(tr => tr.querySelector('.rowchk')?.checked)
     .map(tr => tr.dataset.id);
 
   if (!ids.length){
-    if (prog) prog.textContent = 'Selecciona al menos un grupo para imprimir ITINERARIOS.';
-    setTimeout(()=>{ if (prog) prog.textContent = ''; }, 3000);
+    if (prog){
+      prog.textContent =
+        'Selecciona al menos un grupo para imprimir ITINERARIOS.';
+
+      setTimeout(() => {
+        if (prog) prog.textContent = '';
+      }, 3000);
+    }
     return;
   }
 
-  let ok = 0, fail = 0;
+  const mostrarHorario = await elegirHorarioItinerario();
+  if (mostrarHorario === null) return;
+
+  let ok = 0;
+  let fail = 0;
   const partes = [];
 
   for (let i = 0; i < ids.length; i++){
     const grupoId = ids[i];
-    if (prog) prog.textContent = `Preparando itinerario ${i+1}/${ids.length}…`;
 
-    try{
-      const d = await getDoc(doc(db,'grupos', grupoId));
+    if (prog){
+      prog.textContent =
+        `Preparando itinerario ${i + 1}/${ids.length}…`;
+    }
+
+    try {
+      const d = await getDoc(doc(db, 'grupos', grupoId));
+
       if (!d.exists()){
         fail++;
         continue;
       }
 
-      const g = { id:d.id, ...d.data() };
-      const htmlIt = buildItinerarioDoc(g);
+      const g = { id: d.id, ...d.data() };
+      const htmlAuto = buildItinerarioDoc(g, mostrarHorario);
 
-      if (htmlIt){
-        // 1× ITINERARIO por grupo
-        partes.push(htmlIt);
+      if (htmlAuto){
+        const html = await aplicarDocumentoManualSiExiste(
+          grupoId,
+          'I',
+          htmlAuto
+        );
+
+        partes.push(html);
         ok++;
-      }else{
+      } else {
         fail++;
       }
-
-    }catch(e){
-      console.error('Error generando itinerario para grupo', grupoId, e);
+    } catch (e){
+      console.error(
+        'Error generando itinerario para grupo',
+        grupoId,
+        e
+      );
       fail++;
     }
   }
 
   if (prog){
-    prog.textContent = `Itinerarios listos: ${ok} grupo(s) ok${fail ? `, ${fail} con error` : ''}.`;
-    setTimeout(()=>{ if (prog) prog.textContent = ''; }, 4000);
+    prog.textContent =
+      `Itinerarios listos: ${ok} grupo(s) ok` +
+      (fail ? `, ${fail} con error` : '') +
+      '.';
+
+    setTimeout(() => {
+      if (prog) prog.textContent = '';
+    }, 4000);
   }
 
   if (!partes.length) return;
 
-  // Un único documento imprimible con todos los itinerarios
   imprimirHtml(partes.join(''));
 }
-
 
 
 async function pdfDesdeMiViaje(grupoId, filename){
