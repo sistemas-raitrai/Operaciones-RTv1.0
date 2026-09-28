@@ -3454,6 +3454,16 @@ async function openPendientesPanel(modo = 'grupo') {
 
   document.body.classList.add('modal-open');
 
+  modalPendientes.dataset.exportarGrupo =
+    modo === 'grupo'
+      ? grupoIdActual
+      : '';
+
+  instalarExportacionRevision(
+    modalPendientes,
+    'pendientes'
+  );
+
   pendientesList.innerHTML = `
     <li class="alert-item">Cargando…</li>
   `;
@@ -4058,9 +4068,7 @@ function renderListaAlertasRevision(
           `;
 
         } else if (
-          tieneCorrecciones ||
-          a.estadoCorreccion ===
-            'corregido_pendiente_ok'
+          alertaTieneRespuestaEnviada(a)
         ) {
           estadoHTML = `
             <div
@@ -4075,7 +4083,7 @@ function renderListaAlertasRevision(
                 font-weight:700;
               "
             >
-              🟠 CORREGIDO · PENDIENTE DE OK
+              🟠  RESPUESTA ENVIADA · PENDIENTE DE REVISIÓN
             </div>
           `;
 
@@ -4684,6 +4692,33 @@ function agruparGruposPorFechaDestino(grupos) {
   return bloques;
 }
 
+function alertaTieneRespuestaEnviada(alerta) {
+  const respuesta = String(
+    alerta.respuestaRevision || ''
+  ).trim();
+
+  return (
+    alerta.estadoCorreccion === 'enviado_revision' &&
+    respuesta.length > 0
+  );
+}
+
+function resumenEnvioAlertas(alertas) {
+  const lista = Array.isArray(alertas)
+    ? alertas
+    : [];
+
+  const enviadas = lista.filter(
+    alertaTieneRespuestaEnviada
+  ).length;
+
+  return {
+    total: lista.length,
+    enviadas,
+    porResponder: lista.length - enviadas
+  };
+}
+
 function agruparAlertasRevisionPorGrupo(alertas) {
   const grupos = new Map();
 
@@ -4734,7 +4769,9 @@ function renderGruposAlertasRevision(
     return;
   }
 
-  const bloques = agruparGruposPorFechaDestino(grupos);
+  const bloques = agruparGruposPorFechaDestino(
+    grupos
+  );
 
   contenedor.innerHTML = bloques.map(bloque => `
     <li
@@ -4767,6 +4804,38 @@ function renderGruposAlertasRevision(
 
     ${bloque.grupos.map(grupo => {
       const cantidad = grupo.alertas.length;
+      const avance = resumenEnvioAlertas(
+        grupo.alertas
+      );
+
+      const estadoEnvio =
+        tipo === 'resueltas'
+          ? ''
+          : avance.porResponder === 0
+            ? `
+              <div
+                style="
+                  margin:5px 0 10px;
+                  color:#166534;
+                  font-weight:700;
+                "
+              >
+                ✅ Todo enviado a revisión
+                (${avance.enviadas}/${avance.total})
+              </div>
+            `
+            : `
+              <div
+                style="
+                  margin:5px 0 10px;
+                  color:#9a3412;
+                  font-weight:700;
+                "
+              >
+                📝 ${avance.enviadas} enviados a revisión
+                · ${avance.porResponder} por responder
+              </div>
+            `;
 
       return `
         <li
@@ -4775,17 +4844,20 @@ function renderGruposAlertasRevision(
         >
           <div style="padding:10px">
             <strong>
-              #${escapeHTMLAlertas(grupo.numeroNegocio)}
+              #${escapeHTMLAlertas(
+                grupo.numeroNegocio
+              )}
               ·
               ${escapeHTMLAlertas(
-                String(grupo.nombreGrupo || '')
-                  .toUpperCase()
+                String(
+                  grupo.nombreGrupo || ''
+                ).toUpperCase()
               )}
             </strong>
 
             <div
               class="meta"
-              style="margin:6px 0 10px"
+              style="margin:6px 0 4px"
             >
               ${
                 tipo === 'resueltas'
@@ -4804,6 +4876,8 @@ function renderGruposAlertasRevision(
                   : 'activos'
               }
             </div>
+
+            ${estadoEnvio}
 
             <button
               type="button"
@@ -4857,14 +4931,6 @@ async function openAlertasPanel(modo = 'grupo') {
   }
 
   document.body.classList.add('modal-open');
-
-  modalPendientes.dataset.exportarGrupo =
-    modo === 'grupo' ? grupoIdActual : '';
-  
-  instalarExportacionRevision(
-    modalPendientes,
-    'pendientes'
-  );
 
   modalAlertas.dataset.exportarGrupo =
     modo === 'grupo'
@@ -5217,6 +5283,20 @@ async function openAlertasPanel(modo = 'grupo') {
       modalAlertas.scrollTop = 0;
     };
 
+    const avanceGeneral =
+      resumenEnvioAlertas(activas);
+
+    const gruposTodoEnviado =
+      gruposActivos.filter(grupo =>
+        resumenEnvioAlertas(
+          grupo.alertas
+        ).porResponder === 0
+      ).length;
+
+    const gruposConRespuestaPendiente =
+      gruposActivos.length -
+      gruposTodoEnviado;
+
     const encabezadoGeneral = `
       <strong>
         ALERTAS GENERALES
@@ -5229,6 +5309,22 @@ async function openAlertasPanel(modo = 'grupo') {
         ·
         Grupos con rechazos activos:
         <b>${gruposActivos.length}</b>
+      </div>
+
+      <div style="margin-top:4px">
+        📝 Enviados a revisión:
+        <b>${avanceGeneral.enviadas}</b>
+        ·
+        Por responder:
+        <b>${avanceGeneral.porResponder}</b>
+      </div>
+
+      <div style="margin-top:4px">
+        ✅ Grupos con todo enviado:
+        <b>${gruposTodoEnviado}</b>
+        ·
+        Grupos que faltan responder:
+        <b>${gruposConRespuestaPendiente}</b>
       </div>
 
       <div style="margin-top:4px">
