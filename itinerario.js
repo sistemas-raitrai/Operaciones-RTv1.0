@@ -3507,9 +3507,24 @@ async function openPendientesPanel(modo = 'grupo') {
         `;
       }
 
+      const filasGrupo =
+        pendientesConCorreccionesHistoricas(g);
+      
       renderPendientes(
-        pendientesConCorreccionesHistoricas(g),
+        filasGrupo,
         false
+      );
+      
+      instalarBuscadorRevision(
+        modalPendientes,
+        'pendientes',
+        'detalle',
+        {
+          listas: [{
+            elemento: pendientesList,
+            registros: filasGrupo
+          }]
+        }
       );
 
     } catch (error) {
@@ -3631,7 +3646,19 @@ async function openPendientesPanel(modo = 'grupo') {
         grupo.pendientes,
         false
       );
-
+      
+      instalarBuscadorRevision(
+        modalPendientes,
+        'pendientes',
+        'detalle',
+        {
+          listas: [{
+            elemento: pendientesList,
+            registros: grupo.pendientes
+          }]
+        }
+      );
+      
       modalPendientes.scrollTop = 0;
     };
 
@@ -3685,6 +3712,14 @@ async function openPendientesPanel(modo = 'grupo') {
           ${bloque.grupos.map(grupo => {
             const cantidad =
               grupo.pendientes.length;
+            
+            const correcciones =
+              grupo.pendientes.filter(
+                pendiente => !!pendiente.alertaId
+              ).length;
+            
+            const cambiosNuevos =
+              cantidad - correcciones;
 
             return `
               <li
@@ -3703,9 +3738,37 @@ async function openPendientesPanel(modo = 'grupo') {
 
                   <div
                     class="meta"
-                    style="margin:6px 0 10px"
+                    style="margin:6px 0 4px"
                   >
-                    🕒
+                    🕒 ${cantidad}
+                    ${
+                      cantidad === 1
+                        ? 'caso por decidir'
+                        : 'casos por decidir'
+                    }
+                  </div>
+                  
+                  <div
+                    style="
+                      margin:0 0 10px;
+                      color:#92400e;
+                      font-weight:700;
+                    "
+                  >
+                    ${correcciones}
+                    ${
+                      correcciones === 1
+                        ? 'corrección'
+                        : 'correcciones'
+                    }
+                    ·
+                    ${cambiosNuevos}
+                    ${
+                      cambiosNuevos === 1
+                        ? 'cambio nuevo'
+                        : 'cambios nuevos'
+                    }
+                  </div>
                     ${cantidad}
                     ${
                       cantidad === 1
@@ -3750,6 +3813,18 @@ async function openPendientesPanel(modo = 'grupo') {
             )
           );
         });
+
+      instalarBuscadorRevision(
+        modalPendientes,
+        'pendientes',
+        'general',
+        {
+          grupos: gruposConPendientes,
+          listas: [{
+            elemento: pendientesList
+          }]
+        }
+      );
 
       modalPendientes.scrollTop =
         posicionLista;
@@ -5053,6 +5128,24 @@ async function openAlertasPanel(modo = 'grupo') {
         }
       );
 
+      instalarBuscadorRevision(
+        modalAlertas,
+        'alertas',
+        'detalle',
+        {
+          listas: [
+            {
+              elemento: listAlertasActual,
+              registros: activas
+            },
+            {
+              elemento: listAlertasLeidas,
+              registros: resueltas
+            }
+          ]
+        }
+      );
+
       await refreshAlertasCounts(
         grupoIdActual
       );
@@ -5174,6 +5267,22 @@ async function openAlertasPanel(modo = 'grupo') {
         mostrarDetalle
       );
 
+      instalarBuscadorRevision(
+        modalAlertas,
+        'alertas',
+        'general',
+        {
+          grupos: [
+            ...gruposActivos,
+            ...gruposResueltos
+          ],
+          listas: [
+            { elemento: listAlertasActual },
+            { elemento: listAlertasLeidas }
+          ]
+        }
+      );
+
       modalAlertas.scrollTop =
         posicionLista;
     };
@@ -5277,6 +5386,24 @@ async function openAlertasPanel(modo = 'grupo') {
         {
           mostrarGrupo: false,
           resueltas: true
+        }
+      );
+
+      instalarBuscadorRevision(
+        modalAlertas,
+        'alertas',
+        'detalle',
+        {
+          listas: [
+            {
+              elemento: listAlertasActual,
+              registros: activasGrupo
+            },
+            {
+              elemento: listAlertasLeidas,
+              registros: resueltasGrupo
+            }
+          ]
         }
       );
 
@@ -13904,6 +14031,253 @@ function pendientesConCorreccionesHistoricas(g) {
   );
 }
 
+function normalizarBusquedaRevision(valor) {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function instalarBuscadorRevision(
+  modal,
+  tipo,
+  vista,
+  { grupos = [], listas = [] } = {}
+) {
+  if (!modal) return;
+
+  const id = `buscador-${tipo}-revision`;
+  let buscador = document.getElementById(id);
+
+  if (!buscador) {
+    buscador = document.createElement('input');
+    buscador.id = id;
+    buscador.type = 'search';
+    buscador.autocomplete = 'off';
+    buscador.style.cssText =
+      'display:block;box-sizing:border-box;width:100%;' +
+      'margin:8px 0;padding:8px 10px;border:1px solid #cbd5e1;' +
+      'border-radius:5px;font:inherit';
+
+    const botonExportar = document.getElementById(
+      tipo === 'pendientes'
+        ? 'exportar-pendientes-xls'
+        : 'exportar-alertas-xls'
+    );
+
+    if (botonExportar && modal.contains(botonExportar)) {
+      botonExportar.insertAdjacentElement(
+        'afterend',
+        buscador
+      );
+    } else {
+      modal.insertBefore(
+        buscador,
+        modal.firstChild
+      );
+    }
+  }
+
+  // La búsqueda general se conserva al entrar y volver
+  // del detalle. Cada grupo abre su detalle sin filtro previo.
+  const grupoActual =
+    modal.dataset.exportarGrupo || '';
+
+  if (
+    vista === 'detalle' &&
+    modal._grupoBuscadorRevision !== grupoActual
+  ) {
+    modal._busquedaDetalleRevision = '';
+    modal._grupoBuscadorRevision = grupoActual;
+  }
+
+  buscador.placeholder =
+    vista === 'general'
+      ? 'Buscar negocio, grupo, destino o fecha…'
+      : 'Buscar actividad, fecha, motivo o respuesta…';
+
+  buscador.value =
+    vista === 'general'
+      ? modal._busquedaGeneralRevision || ''
+      : modal._busquedaDetalleRevision || '';
+
+  const mapaGrupos = new Map(
+    grupos.map(grupo => [
+      String(grupo.grupoId || grupo.id),
+      grupo
+    ])
+  );
+
+  const aplicarFiltro = () => {
+    const texto = normalizarBusquedaRevision(
+      buscador.value
+    );
+
+    if (vista === 'general') {
+      modal._busquedaGeneralRevision =
+        buscador.value;
+
+      const gruposVisibles = new Set();
+
+      for (const { elemento } of listas) {
+        if (!elemento) continue;
+
+        let encabezado = null;
+        let encabezadoTexto = '';
+        let gruposEnBloque = 0;
+
+        const cerrarBloque = () => {
+          if (encabezado) {
+            encabezado.style.display =
+              gruposEnBloque ? '' : 'none';
+          }
+        };
+
+        for (const fila of elemento.children) {
+          const boton = fila.querySelector(
+            '[data-grupo-pendientes], ' +
+            '[data-grupo-alertas]'
+          );
+
+          if (!boton) {
+            cerrarBloque();
+            encabezado = fila;
+            encabezadoTexto =
+              fila.textContent || '';
+            gruposEnBloque = 0;
+            continue;
+          }
+
+          const grupoId = String(
+            boton.dataset.grupoPendientes ||
+            boton.dataset.grupoAlertas ||
+            ''
+          );
+
+          const grupo =
+            mapaGrupos.get(grupoId) || {};
+
+          const textoGrupo =
+            [
+              grupo.numeroNegocio,
+              grupo.nombreGrupo,
+              grupo.destino,
+              grupo.fechaInicio,
+              fila.textContent,
+              encabezadoTexto
+            ].join(' ');
+
+          const coincide =
+            !texto ||
+            normalizarBusquedaRevision(
+              textoGrupo
+            ).includes(texto);
+
+          fila.style.display =
+            coincide ? '' : 'none';
+
+          if (coincide) {
+            gruposVisibles.add(grupoId);
+            gruposEnBloque++;
+          }
+        }
+
+        cerrarBloque();
+      }
+
+      modal._gruposVisiblesRevision =
+        gruposVisibles;
+
+      modal._filasVisiblesRevision = null;
+
+      buscador.title =
+        `${gruposVisibles.size} grupos visibles`;
+
+      return;
+    }
+
+    modal._busquedaDetalleRevision =
+      buscador.value;
+
+    const filasVisibles = [];
+
+    for (
+      const {
+        elemento,
+        registros = []
+      } of listas
+    ) {
+      if (!elemento) continue;
+
+      const tarjetas = [
+        ...elemento.children
+      ].filter(fila =>
+        fila.classList.contains('alert-item')
+      );
+
+      tarjetas.forEach(
+        (tarjeta, indice) => {
+          const registro =
+            registros[indice];
+
+          if (!registro) return;
+
+          const textoRegistro =
+            [
+              tarjeta.textContent,
+              registro.actividad,
+              registro.fecha,
+              registro.motivo,
+              registro.observacion,
+              registro.respuesta,
+              registro.respuestaRevision,
+              registro.advertencia,
+              ...(registro.cambios || []).map(
+                cambio =>
+                  [
+                    cambio.accion,
+                    cambio.actividad
+                  ].join(' ')
+              )
+            ].join(' ');
+
+          const coincide =
+            !texto ||
+            normalizarBusquedaRevision(
+              textoRegistro
+            ).includes(texto);
+
+          tarjeta.style.display =
+            coincide ? '' : 'none';
+
+          if (coincide) {
+            filasVisibles.push(
+              registro
+            );
+          }
+        }
+      );
+    }
+
+    modal._filasVisiblesRevision =
+      filasVisibles;
+
+    modal._gruposVisiblesRevision =
+      null;
+
+    buscador.title =
+      `${filasVisibles.length} casos visibles`;
+  };
+
+  buscador.oninput = aplicarFiltro;
+
+  modal._vistaBuscadorRevision =
+    vista;
+
+  aplicarFiltro();
+}
+
 function instalarExportacionRevision(modal, tipo) {
   if (!modal) return;
 
@@ -13947,12 +14321,25 @@ function instalarExportacionRevision(modal, tipo) {
 
       grupos.sort(ordenarGruposRevision);
 
+      const gruposParaExportar =
+        !grupoId &&
+        modal._vistaBuscadorRevision ===
+          'general' &&
+        modal._gruposVisiblesRevision
+          ? grupos.filter(grupo =>
+              modal._gruposVisiblesRevision.has(
+                String(grupo.id)
+              )
+            )
+          : grupos;
+
       const hojas = [];
       const resumen = [];
       const nombresUsados = new Set();
 
-      for (const grupo of grupos) {
-        const registros = tipo === 'pendientes'
+      for (const grupo of gruposParaExportar) {
+        const registrosCargados =
+          tipo === 'pendientes'
           ? pendientesConCorreccionesHistoricas(grupo)
           : (
               await getDocs(
@@ -13966,6 +14353,16 @@ function instalarExportacionRevision(modal, tipo) {
                 grupo
               ) ? 'ACTIVA' : 'RESUELTA'
             }));
+
+        const registros =
+          grupoId &&
+          modal._vistaBuscadorRevision ===
+            'detalle' &&
+          Array.isArray(
+            modal._filasVisiblesRevision
+          )
+            ? modal._filasVisiblesRevision
+            : registrosCargados;
 
         if (!grupoId && registros.length === 0) {
           continue;
