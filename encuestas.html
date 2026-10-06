@@ -964,6 +964,20 @@
     }
   </style>
 
+    <!-- Exportación de resultados a Excel -->
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+  ></script>
+
+  <!-- Exportación de resultados a PDF -->
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+  ></script>
+
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"
+  ></script>
+
   <script
     src="./assets/rai-progress.js"
   ></script>
@@ -2115,6 +2129,28 @@
             
               </div>
             
+            </div>
+
+            <div class="enc-toolbar">
+
+              <div class="spacer"></div>
+
+              <button
+                id="btnExportarResultadosXls"
+                type="button"
+                class="enc-btn secondary"
+              >
+                Descargar XLS
+              </button>
+
+              <button
+                id="btnExportarResultadosPdf"
+                type="button"
+                class="enc-btn primary"
+              >
+                Descargar PDF
+              </button>
+
             </div>
 
             <div
