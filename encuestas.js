@@ -5761,6 +5761,1643 @@ function renderResultados() {
   renderResultadosAsistenciaMedica();
 }
 
+/* =========================================================
+   EXPORTACIÓN DE RESULTADOS
+========================================================= */
+
+function getSegmentoExportacionResultados() {
+  return (
+    state.segmentoResultados ||
+    "general"
+  );
+}
+
+function getEtiquetaExportacionResultados() {
+  const segmento =
+    getSegmentoExportacionResultados();
+
+  const etiquetas = {
+    general:
+      "GENERAL",
+
+    estudiantes:
+      "ESTUDIANTES",
+
+    noEstudiantes:
+      "ADULTOS Y PROFESORES"
+  };
+
+  return (
+    etiquetas[segmento] ||
+    "GENERAL"
+  );
+}
+
+function getResultadoSegmentadoExportacion(
+  resultado = {}
+) {
+  const segmento =
+    getSegmentoExportacionResultados();
+
+  if (
+    segmento === "general"
+  ) {
+    return resultado || {};
+  }
+
+  return (
+    resultado
+      ?.segmentos
+      ?.[segmento] ||
+    {}
+  );
+}
+
+function normalizarResultadoExportacion(
+  resultado = {}
+) {
+  const data =
+    resultado || {};
+
+  const puntuaciones =
+    data.puntuaciones ||
+    {};
+
+  const nota1 =
+    Number(
+      puntuaciones["1"] ??
+      data["1"] ??
+      data.uno ??
+      data.muy_malo ??
+      0
+    );
+
+  const nota2 =
+    Number(
+      puntuaciones["2"] ??
+      data["2"] ??
+      data.dos ??
+      data.malo ??
+      0
+    );
+
+  const nota3 =
+    Number(
+      puntuaciones["3"] ??
+      data["3"] ??
+      data.tres ??
+      data.regular ??
+      0
+    );
+
+  const nota4 =
+    Number(
+      puntuaciones["4"] ??
+      data["4"] ??
+      data.cuatro ??
+      data.bueno ??
+      0
+    );
+
+  const nota5 =
+    Number(
+      puntuaciones["5"] ??
+      data["5"] ??
+      data.cinco ??
+      data.excelente ??
+      data.muy_bueno ??
+      0
+    );
+
+  const total =
+    Number(
+      data.total
+    ) ||
+    (
+      nota1 +
+      nota2 +
+      nota3 +
+      nota4 +
+      nota5
+    );
+
+  const promedioCalculado =
+    total
+      ? (
+          nota1 * 1 +
+          nota2 * 2 +
+          nota3 * 3 +
+          nota4 * 4 +
+          nota5 * 5
+        ) /
+        total
+      : 0;
+
+  const promedio =
+    Number(
+      data.promedio ??
+      promedioCalculado
+    ) ||
+    0;
+
+  return {
+    nota1,
+    nota2,
+    nota3,
+    nota4,
+    nota5,
+    total,
+    promedio
+  };
+}
+
+function getCategoriaPreguntaResultado(
+  preguntaId = ""
+) {
+  const id =
+    cleanText(
+      preguntaId
+    ).toLowerCase();
+
+  if (
+    id === "general:viaje"
+  ) {
+    return "Evaluación general";
+  }
+
+  if (
+    id.startsWith(
+      "actividad:"
+    )
+  ) {
+    return "Actividades";
+  }
+
+  if (
+    id.startsWith(
+      "hotel:"
+    )
+  ) {
+    return "Hoteles";
+  }
+
+  if (
+    id.startsWith(
+      "transporte:"
+    )
+  ) {
+    return "Transportes y aerolíneas";
+  }
+
+  if (
+    id.startsWith(
+      "coordinador:"
+    )
+  ) {
+    return "Coordinadores";
+  }
+
+  return "Otros";
+}
+
+function getFilasResultadosExportacion() {
+  return Object
+    .entries(
+      state.resultados ||
+      {}
+    )
+    .map(
+      ([
+        preguntaId,
+        resultadoGeneral
+      ]) => {
+        const resultado =
+          getResultadoSegmentadoExportacion(
+            resultadoGeneral
+          );
+
+        const valores =
+          normalizarResultadoExportacion(
+            resultado
+          );
+
+        return {
+          categoria:
+            getCategoriaPreguntaResultado(
+              preguntaId
+            ),
+
+          pregunta:
+            getPreguntaNombre(
+              preguntaId
+            ),
+
+          promedio:
+            valores.total
+              ? Number(
+                  valores.promedio
+                    .toFixed(2)
+                )
+              : "",
+
+          nota1:
+            valores.nota1,
+
+          nota2:
+            valores.nota2,
+
+          nota3:
+            valores.nota3,
+
+          nota4:
+            valores.nota4,
+
+          nota5:
+            valores.nota5,
+
+          total:
+            valores.total
+        };
+      }
+    )
+    .sort(
+      (a, b) => {
+        const categorias = [
+          "Evaluación general",
+          "Actividades",
+          "Hoteles",
+          "Transportes y aerolíneas",
+          "Coordinadores",
+          "Otros"
+        ];
+
+        const diferencia =
+          categorias.indexOf(
+            a.categoria
+          ) -
+          categorias.indexOf(
+            b.categoria
+          );
+
+        if (diferencia) {
+          return diferencia;
+        }
+
+        return a.pregunta
+          .localeCompare(
+            b.pregunta,
+            "es"
+          );
+      }
+    );
+}
+
+function getAsistenciaExportacion() {
+  const segmento =
+    getSegmentoExportacionResultados();
+
+  const general =
+    state
+      .resultadosAsistenciaMedica ||
+    {};
+
+  if (
+    segmento === "general"
+  ) {
+    return general;
+  }
+
+  return (
+    general
+      ?.segmentos
+      ?.[segmento] ||
+    {}
+  );
+}
+
+function getComentariosExportacion() {
+  const segmento =
+    getSegmentoExportacionResultados();
+
+  if (
+    segmento === "general"
+  ) {
+    return (
+      state.comentarios ||
+      {
+        positivos: [],
+        mejoras: [],
+        generales: []
+      }
+    );
+  }
+
+  return (
+    state
+      .comentariosPorSegmento
+      ?.[segmento] ||
+    {
+      positivos: [],
+      mejoras: [],
+      generales: []
+    }
+  );
+}
+
+function getResumenParticipacionExportacion() {
+  const seguimiento =
+    state.seguimiento ||
+    {};
+
+  const segmento =
+    getSegmentoExportacionResultados();
+
+  if (
+    segmento === "general"
+  ) {
+    return {
+      total:
+        Number(
+          seguimiento.total ||
+          0
+        ),
+
+      respondieron:
+        Number(
+          seguimiento.respondieron ||
+          0
+        ),
+
+      pendientes:
+        Number(
+          seguimiento.pendientes ||
+          0
+        ),
+
+      porcentaje:
+        Number(
+          seguimiento.porcentaje ||
+          0
+        )
+    };
+  }
+
+  const resumenPorTipo =
+    seguimiento.resumenPorTipo ||
+    {};
+
+  if (
+    segmento === "estudiantes"
+  ) {
+    const estudiantes =
+      resumenPorTipo.estudiante ||
+      {};
+
+    const total =
+      Number(
+        estudiantes.total ||
+        0
+      );
+
+    const respondieron =
+      Number(
+        estudiantes.respondieron ||
+        0
+      );
+
+    return {
+      total,
+
+      respondieron,
+
+      pendientes:
+        Number(
+          estudiantes.pendientes ??
+          Math.max(
+            0,
+            total -
+            respondieron
+          )
+        ),
+
+      porcentaje:
+        total
+          ? Math.round(
+              (
+                respondieron /
+                total
+              ) *
+              1000
+            ) /
+            10
+          : 0
+    };
+  }
+
+  const adulto =
+    resumenPorTipo.adulto ||
+    {};
+
+  const profesor =
+    resumenPorTipo.profesor ||
+    {};
+
+  const total =
+    Number(
+      adulto.total ||
+      0
+    ) +
+    Number(
+      profesor.total ||
+      0
+    );
+
+  const respondieron =
+    Number(
+      adulto.respondieron ||
+      0
+    ) +
+    Number(
+      profesor.respondieron ||
+      0
+    );
+
+  const pendientes =
+    Number(
+      adulto.pendientes ||
+      0
+    ) +
+    Number(
+      profesor.pendientes ||
+      0
+    );
+
+  return {
+    total,
+    respondieron,
+    pendientes,
+
+    porcentaje:
+      total
+        ? Math.round(
+            (
+              respondieron /
+              total
+            ) *
+            1000
+          ) /
+          10
+        : 0
+  };
+}
+
+function getDatosEncabezadoExportacion() {
+  const grupo =
+    state.grupoActual ||
+    {};
+
+  const encuesta =
+    state.encuestaActual ||
+    {};
+
+  return {
+    grupo:
+      getNombreGrupo(
+        grupo
+      ) ||
+      encuesta.colegio ||
+      "GRUPO",
+
+    negocio:
+      getNumeroNegocio(
+        grupo
+      ) ||
+      encuesta.numeroNegocio ||
+      "",
+
+    destino:
+      getDestino(
+        grupo
+      ) ||
+      encuesta.destino ||
+      "",
+
+    fechaInicio:
+      formatDate(
+        grupo.fechaInicio ||
+        encuesta.fechaInicio
+      ),
+
+    fechaFin:
+      formatDate(
+        grupo.fechaFin ||
+        encuesta.fechaFin
+      ),
+
+    segmento:
+      getEtiquetaExportacionResultados()
+  };
+}
+
+function getNombreArchivoResultados(
+  extension
+) {
+  const datos =
+    getDatosEncabezadoExportacion();
+
+  const grupo =
+    cleanText(
+      datos.grupo
+    )
+      .normalize("NFD")
+      .replace(
+        /[\u0300-\u036f]/g,
+        ""
+      )
+      .replace(
+        /[^a-zA-Z0-9]+/g,
+        "_"
+      )
+      .replace(
+        /^_+|_+$/g,
+        ""
+      )
+      .slice(
+        0,
+        60
+      ) ||
+    "grupo";
+
+  const segmento =
+    getSegmentoExportacionResultados();
+
+  return (
+    `resultados_encuesta_${grupo}_${segmento}.${extension}`
+  );
+}
+
+function crearHojaResultadosXls(
+  filas
+) {
+  return window.XLSX
+    .utils
+    .json_to_sheet(
+      filas.map(
+        fila => ({
+          Categoría:
+            fila.categoria,
+
+          Pregunta:
+            fila.pregunta,
+
+          "Promedio estrellas":
+            fila.promedio,
+
+          "1 estrella":
+            fila.nota1,
+
+          "2 estrellas":
+            fila.nota2,
+
+          "3 estrellas":
+            fila.nota3,
+
+          "4 estrellas":
+            fila.nota4,
+
+          "5 estrellas":
+            fila.nota5,
+
+          "Total evaluaciones":
+            fila.total
+        })
+      )
+    );
+}
+
+function agregarHojaResultadosXls(
+  libro,
+  nombre,
+  filas
+) {
+  const filtradas =
+    filas.filter(
+      fila =>
+        fila.categoria === nombre
+    );
+
+  if (!filtradas.length) {
+    return;
+  }
+
+  const nombresHoja = {
+    "Evaluación general":
+      "Evaluacion general",
+
+    "Actividades":
+      "Actividades",
+
+    "Hoteles":
+      "Hoteles",
+
+    "Transportes y aerolíneas":
+      "Transportes",
+
+    "Coordinadores":
+      "Coordinadores",
+
+    "Otros":
+      "Otros"
+  };
+
+  const hoja =
+    crearHojaResultadosXls(
+      filtradas
+    );
+
+  hoja["!cols"] = [
+    {
+      wch: 27
+    },
+    {
+      wch: 65
+    },
+    {
+      wch: 20
+    },
+    {
+      wch: 12
+    },
+    {
+      wch: 12
+    },
+    {
+      wch: 12
+    },
+    {
+      wch: 12
+    },
+    {
+      wch: 12
+    },
+    {
+      wch: 20
+    }
+  ];
+
+  window.XLSX
+    .utils
+    .book_append_sheet(
+      libro,
+      hoja,
+      nombresHoja[nombre] ||
+      nombre.slice(
+        0,
+        31
+      )
+    );
+}
+
+function exportarResultadosXls() {
+  try {
+    if (
+      !window.XLSX
+    ) {
+      throw new Error(
+        "No se cargó la librería de Excel."
+      );
+    }
+
+    const filas =
+      getFilasResultadosExportacion();
+
+    const datos =
+      getDatosEncabezadoExportacion();
+
+    const participacion =
+      getResumenParticipacionExportacion();
+
+    const asistencia =
+      getAsistenciaExportacion();
+
+    const comentarios =
+      getComentariosExportacion();
+
+    const libro =
+      window.XLSX
+        .utils
+        .book_new();
+
+    const hojaResumen =
+      window.XLSX
+        .utils
+        .aoa_to_sheet([
+          [
+            "RESULTADOS DE ENCUESTA DE VIAJE"
+          ],
+          [],
+          [
+            "Grupo",
+            datos.grupo
+          ],
+          [
+            "Número de negocio",
+            datos.negocio
+          ],
+          [
+            "Destino",
+            datos.destino
+          ],
+          [
+            "Fecha de inicio",
+            datos.fechaInicio
+          ],
+          [
+            "Fecha de regreso",
+            datos.fechaFin
+          ],
+          [
+            "Segmento",
+            datos.segmento
+          ],
+          [],
+          [
+            "Nómina del segmento",
+            participacion.total
+          ],
+          [
+            "Respondieron",
+            participacion.respondieron
+          ],
+          [
+            "Pendientes",
+            participacion.pendientes
+          ],
+          [
+            "Avance",
+            `${participacion.porcentaje}%`
+          ],
+          [],
+          [
+            "Preguntas evaluadas",
+            filas.length
+          ]
+        ]);
+
+    hojaResumen["!cols"] = [
+      {
+        wch: 28
+      },
+      {
+        wch: 70
+      }
+    ];
+
+    window.XLSX
+      .utils
+      .book_append_sheet(
+        libro,
+        hojaResumen,
+        "Resumen"
+      );
+
+    [
+      "Evaluación general",
+      "Actividades",
+      "Hoteles",
+      "Transportes y aerolíneas",
+      "Coordinadores",
+      "Otros"
+    ].forEach(
+      categoria => {
+        agregarHojaResultadosXls(
+          libro,
+          categoria,
+          filas
+        );
+      }
+    );
+
+    const asistenciaNormalizada =
+      normalizarResultadoExportacion(
+        asistencia
+      );
+
+    const hojaAsistencia =
+      window.XLSX
+        .utils
+        .aoa_to_sheet([
+          [
+            "ASISTENCIA MÉDICA"
+          ],
+          [],
+          [
+            "Segmento",
+            datos.segmento
+          ],
+          [
+            "Utilizaron asistencia",
+            Number(
+              asistencia.utilizaron ||
+              0
+            )
+          ],
+          [
+            "Evaluaron la atención",
+            Number(
+              asistencia.evaluaron ||
+              0
+            )
+          ],
+          [
+            "Promedio",
+            asistenciaNormalizada.total
+              ? Number(
+                  asistenciaNormalizada
+                    .promedio
+                    .toFixed(2)
+                )
+              : ""
+          ],
+          [
+            "1 estrella",
+            asistenciaNormalizada.nota1
+          ],
+          [
+            "2 estrellas",
+            asistenciaNormalizada.nota2
+          ],
+          [
+            "3 estrellas",
+            asistenciaNormalizada.nota3
+          ],
+          [
+            "4 estrellas",
+            asistenciaNormalizada.nota4
+          ],
+          [
+            "5 estrellas",
+            asistenciaNormalizada.nota5
+          ],
+          [
+            "Total evaluaciones",
+            asistenciaNormalizada.total
+          ],
+          [],
+          [
+            "Comentarios"
+          ],
+          ...(
+            Array.isArray(
+              asistencia.comentarios
+            )
+              ? asistencia
+                  .comentarios
+                  .map(
+                    comentario => [
+                      cleanText(
+                        comentario
+                      )
+                    ]
+                  )
+              : []
+          )
+        ]);
+
+    hojaAsistencia["!cols"] = [
+      {
+        wch: 30
+      },
+      {
+        wch: 90
+      }
+    ];
+
+    window.XLSX
+      .utils
+      .book_append_sheet(
+        libro,
+        hojaAsistencia,
+        "Asistencia medica"
+      );
+
+    const filasComentarios = [
+      ...(
+        comentarios.positivos ||
+        []
+      ).map(
+        comentario => ({
+          Tipo:
+            "Lo mejor del viaje",
+
+          Comentario:
+            cleanText(
+              comentario
+            )
+        })
+      ),
+
+      ...(
+        comentarios.mejoras ||
+        []
+      ).map(
+        comentario => ({
+          Tipo:
+            "Oportunidad de mejora",
+
+          Comentario:
+            cleanText(
+              comentario
+            )
+        })
+      ),
+
+      ...(
+        comentarios.generales ||
+        []
+      ).map(
+        comentario => ({
+          Tipo:
+            "Comentario general",
+
+          Comentario:
+            cleanText(
+              comentario
+            )
+        })
+      )
+    ];
+
+    const hojaComentarios =
+      window.XLSX
+        .utils
+        .json_to_sheet(
+          filasComentarios.length
+            ? filasComentarios
+            : [
+                {
+                  Tipo:
+                    "Sin comentarios",
+
+                  Comentario:
+                    ""
+                }
+              ]
+        );
+
+    hojaComentarios["!cols"] = [
+      {
+        wch: 28
+      },
+      {
+        wch: 100
+      }
+    ];
+
+    window.XLSX
+      .utils
+      .book_append_sheet(
+        libro,
+        hojaComentarios,
+        "Comentarios"
+      );
+
+    window.XLSX.writeFile(
+      libro,
+      getNombreArchivoResultados(
+        "xlsx"
+      )
+    );
+
+    mostrarModalMensaje(
+      "ok",
+      `Resultados ${datos.segmento.toLowerCase()} descargados en Excel.`
+    );
+
+  } catch (error) {
+    console.error(
+      "[ENCUESTAS][EXPORTAR_XLS]",
+      error
+    );
+
+    mostrarModalMensaje(
+      "error",
+      error.message ||
+      "No fue posible generar el archivo Excel."
+    );
+  }
+}
+
+function agregarTituloSeccionPdf(
+  doc,
+  titulo,
+  y
+) {
+  let posicionY =
+    y;
+
+  if (
+    posicionY > 260
+  ) {
+    doc.addPage();
+    posicionY = 18;
+  }
+
+  doc.setTextColor(
+    32,
+    41,
+    87
+  );
+
+  doc.setFontSize(
+    12
+  );
+
+  doc.setFont(
+    "helvetica",
+    "bold"
+  );
+
+  doc.text(
+    titulo,
+    14,
+    posicionY
+  );
+
+  return (
+    posicionY +
+    4
+  );
+}
+
+function agregarComentariosPdf(
+  doc,
+  titulo,
+  comentarios,
+  yInicial
+) {
+  const lista =
+    Array.isArray(
+      comentarios
+    )
+      ? comentarios
+          .map(cleanText)
+          .filter(Boolean)
+      : [];
+
+  let y =
+    agregarTituloSeccionPdf(
+      doc,
+      titulo,
+      yInicial
+    );
+
+  const body =
+    lista.length
+      ? lista.map(
+          (comentario, index) => [
+            index + 1,
+            comentario
+          ]
+        )
+      : [
+          [
+            "",
+            "Sin comentarios."
+          ]
+        ];
+
+  doc.autoTable({
+    startY:
+      y,
+
+    head: [
+      [
+        "N°",
+        "Comentario"
+      ]
+    ],
+
+    body,
+
+    margin: {
+      left:
+        14,
+
+      right:
+        14
+    },
+
+    styles: {
+      fontSize:
+        8,
+
+      cellPadding:
+        3,
+
+      overflow:
+        "linebreak"
+    },
+
+    headStyles: {
+      fillColor:
+        [
+          32,
+          41,
+          87
+        ],
+
+      textColor:
+        255
+    },
+
+    columnStyles: {
+      0: {
+        cellWidth:
+          12,
+
+        halign:
+          "center"
+      },
+
+      1: {
+        cellWidth:
+          "auto"
+      }
+    }
+  });
+
+  return (
+    doc.lastAutoTable
+      ?.finalY ||
+    y
+  ) +
+  8;
+}
+
+function exportarResultadosPdf() {
+  try {
+    const jsPDF =
+      window.jspdf
+        ?.jsPDF;
+
+    if (
+      !jsPDF
+    ) {
+      throw new Error(
+        "No se cargó la librería de PDF."
+      );
+    }
+
+    const doc =
+      new jsPDF({
+        orientation:
+          "landscape",
+
+        unit:
+          "mm",
+
+        format:
+          "a4"
+      });
+
+    const datos =
+      getDatosEncabezadoExportacion();
+
+    const participacion =
+      getResumenParticipacionExportacion();
+
+    const filas =
+      getFilasResultadosExportacion();
+
+    const comentarios =
+      getComentariosExportacion();
+
+    const asistencia =
+      getAsistenciaExportacion();
+
+    doc.setTextColor(
+      32,
+      41,
+      87
+    );
+
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(
+      17
+    );
+
+    doc.text(
+      "RESULTADOS DE ENCUESTA DE VIAJE",
+      14,
+      16
+    );
+
+    doc.setFontSize(
+      10
+    );
+
+    doc.text(
+      `Segmento: ${datos.segmento}`,
+      14,
+      23
+    );
+
+    doc.setTextColor(
+      40,
+      40,
+      40
+    );
+
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.text(
+      `Grupo: ${datos.grupo}`,
+      14,
+      30
+    );
+
+    doc.text(
+      `Negocio: ${datos.negocio || "—"}`,
+      14,
+      36
+    );
+
+    doc.text(
+      `Destino: ${datos.destino || "—"}`,
+      110,
+      30
+    );
+
+    doc.text(
+      `Viaje: ${datos.fechaInicio || "—"} al ${datos.fechaFin || "—"}`,
+      110,
+      36
+    );
+
+    doc.text(
+      `Nómina: ${participacion.total} · Respondieron: ${participacion.respondieron} · Pendientes: ${participacion.pendientes} · Avance: ${participacion.porcentaje}%`,
+      14,
+      44
+    );
+
+    doc.autoTable({
+      startY:
+        50,
+
+      head: [
+        [
+          "Categoría",
+          "Pregunta",
+          "Promedio",
+          "1 ★",
+          "2 ★",
+          "3 ★",
+          "4 ★",
+          "5 ★",
+          "Total"
+        ]
+      ],
+
+      body:
+        filas.length
+          ? filas.map(
+              fila => [
+                fila.categoria,
+                fila.pregunta,
+                fila.promedio === ""
+                  ? "—"
+                  : fila.promedio,
+                fila.nota1,
+                fila.nota2,
+                fila.nota3,
+                fila.nota4,
+                fila.nota5,
+                fila.total
+              ]
+            )
+          : [
+              [
+                "",
+                "Todavía no existen respuestas para este segmento.",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ]
+            ],
+
+      margin: {
+        left:
+          14,
+
+        right:
+          14
+      },
+
+      styles: {
+        fontSize:
+          7.5,
+
+        cellPadding:
+          2.3,
+
+        overflow:
+          "linebreak",
+
+        valign:
+          "middle"
+      },
+
+      headStyles: {
+        fillColor:
+          [
+            32,
+            41,
+            87
+          ],
+
+        textColor:
+          255,
+
+        halign:
+          "center"
+      },
+
+      columnStyles: {
+        0: {
+          cellWidth:
+            34
+        },
+
+        1: {
+          cellWidth:
+            105
+        },
+
+        2: {
+          cellWidth:
+            20,
+
+          halign:
+            "center"
+        },
+
+        3: {
+          cellWidth:
+            14,
+
+          halign:
+            "center"
+        },
+
+        4: {
+          cellWidth:
+            14,
+
+          halign:
+            "center"
+        },
+
+        5: {
+          cellWidth:
+            14,
+
+          halign:
+            "center"
+        },
+
+        6: {
+          cellWidth:
+            14,
+
+          halign:
+            "center"
+        },
+
+        7: {
+          cellWidth:
+            14,
+
+          halign:
+            "center"
+        },
+
+        8: {
+          cellWidth:
+            16,
+
+          halign:
+            "center"
+        }
+      }
+    });
+
+    let y =
+      (
+        doc.lastAutoTable
+          ?.finalY ||
+        50
+      ) +
+      9;
+
+    const asistenciaNormalizada =
+      normalizarResultadoExportacion(
+        asistencia
+      );
+
+    y =
+      agregarTituloSeccionPdf(
+        doc,
+        "ASISTENCIA MÉDICA",
+        y
+      );
+
+    doc.autoTable({
+      startY:
+        y,
+
+      head: [
+        [
+          "Utilizaron",
+          "Evaluaron",
+          "Promedio",
+          "1 ★",
+          "2 ★",
+          "3 ★",
+          "4 ★",
+          "5 ★"
+        ]
+      ],
+
+      body: [
+        [
+          Number(
+            asistencia.utilizaron ||
+            0
+          ),
+
+          Number(
+            asistencia.evaluaron ||
+            0
+          ),
+
+          asistenciaNormalizada.total
+            ? asistenciaNormalizada
+                .promedio
+                .toFixed(2)
+            : "—",
+
+          asistenciaNormalizada.nota1,
+          asistenciaNormalizada.nota2,
+          asistenciaNormalizada.nota3,
+          asistenciaNormalizada.nota4,
+          asistenciaNormalizada.nota5
+        ]
+      ],
+
+      styles: {
+        fontSize:
+          8,
+
+        halign:
+          "center"
+      },
+
+      headStyles: {
+        fillColor:
+          [
+            86,
+            109,
+            168
+          ],
+
+        textColor:
+          255
+      },
+
+      margin: {
+        left:
+          14,
+
+        right:
+          14
+      }
+    });
+
+    y =
+      (
+        doc.lastAutoTable
+          ?.finalY ||
+        y
+      ) +
+      8;
+
+    y =
+      agregarComentariosPdf(
+        doc,
+        "COMENTARIOS SOBRE ASISTENCIA MÉDICA",
+        asistencia.comentarios,
+        y
+      );
+
+    y =
+      agregarComentariosPdf(
+        doc,
+        "LO MEJOR DEL VIAJE",
+        comentarios.positivos,
+        y
+      );
+
+    y =
+      agregarComentariosPdf(
+        doc,
+        "OPORTUNIDADES DE MEJORA",
+        comentarios.mejoras,
+        y
+      );
+
+    agregarComentariosPdf(
+      doc,
+      "COMENTARIOS GENERALES",
+      comentarios.generales,
+      y
+    );
+
+    const paginas =
+      doc.getNumberOfPages();
+
+    for (
+      let pagina = 1;
+      pagina <= paginas;
+      pagina++
+    ) {
+      doc.setPage(
+        pagina
+      );
+
+      doc.setFontSize(
+        7
+      );
+
+      doc.setTextColor(
+        100,
+        100,
+        100
+      );
+
+      doc.text(
+        `Resultados anónimos · ${datos.segmento}`,
+        14,
+        202
+      );
+
+      doc.text(
+        `Página ${pagina} de ${paginas}`,
+        283,
+        202,
+        {
+          align:
+            "right"
+        }
+      );
+    }
+
+    doc.save(
+      getNombreArchivoResultados(
+        "pdf"
+      )
+    );
+
+    mostrarModalMensaje(
+      "ok",
+      `Resultados ${datos.segmento.toLowerCase()} descargados en PDF.`
+    );
+
+  } catch (error) {
+    console.error(
+      "[ENCUESTAS][EXPORTAR_PDF]",
+      error
+    );
+
+    mostrarModalMensaje(
+      "error",
+      error.message ||
+      "No fue posible generar el archivo PDF."
+    );
+  }
+}
+
 function resultadoCelda(
   label,
   value
@@ -6391,6 +8028,18 @@ function conectarEventos() {
     ?.addEventListener(
       "change",
       renderSeguimiento
+    );
+
+  $("btnExportarResultadosXls")
+    ?.addEventListener(
+      "click",
+      exportarResultadosXls
+    );
+
+  $("btnExportarResultadosPdf")
+    ?.addEventListener(
+      "click",
+      exportarResultadosPdf
     );
 
   $("btnConfigGlobal")
