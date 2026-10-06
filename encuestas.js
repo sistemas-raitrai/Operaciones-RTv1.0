@@ -75,6 +75,23 @@ const state = {
 
   seguimiento: null,
   resultados: {},
+
+  segmentoResultados:
+    "general",
+
+  comentariosPorSegmento: {
+    estudiantes: {
+      positivos: [],
+      mejoras: [],
+      generales: []
+    },
+
+    noEstudiantes: {
+      positivos: [],
+      mejoras: [],
+      generales: []
+    }
+  },
   comentarios: {
     positivos: [],
     mejoras: [],
@@ -4932,6 +4949,22 @@ async function cargarGestionActual() {
         generales: []
       };
 
+    state.comentariosPorSegmento =
+      respuesta
+        .comentariosPorSegmento || {
+        estudiantes: {
+          positivos: [],
+          mejoras: [],
+          generales: []
+        },
+
+        noEstudiantes: {
+          positivos: [],
+          mejoras: [],
+          generales: []
+        }
+      };
+
     state.encuestaActual = {
       ...state.encuestaActual,
       ...respuesta.encuesta
@@ -5191,6 +5224,258 @@ function getPreguntaNombre(
   ).toUpperCase();
 }
 
+function crearResultadoVacioSegmento() {
+  return {
+    puntuaciones: {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0
+    },
+
+    total: 0,
+    suma: 0,
+    promedio: 0
+  };
+}
+
+function getResultadoPorSegmento(
+  data = {},
+  segmento =
+    state.segmentoResultados
+) {
+  if (
+    segmento ===
+    "general"
+  ) {
+    return data ||
+      crearResultadoVacioSegmento();
+  }
+
+  return (
+    data?.segmentos
+      ?.[segmento] ||
+    crearResultadoVacioSegmento()
+  );
+}
+
+function getAsistenciaPorSegmento(
+  data = {},
+  segmento =
+    state.segmentoResultados
+) {
+  if (
+    segmento ===
+    "general"
+  ) {
+    return data || {};
+  }
+
+  return (
+    data?.segmentos
+      ?.[segmento] ||
+    {}
+  );
+}
+
+function getComentariosPorSegmento() {
+  if (
+    state.segmentoResultados ===
+    "general"
+  ) {
+    return state.comentarios || {
+      positivos: [],
+      mejoras: [],
+      generales: []
+    };
+  }
+
+  return (
+    state.comentariosPorSegmento
+      ?.[state.segmentoResultados] ||
+    {
+      positivos: [],
+      mejoras: [],
+      generales: []
+    }
+  );
+}
+
+function getEtiquetaSegmentoResultados(
+  segmento =
+    state.segmentoResultados
+) {
+  const etiquetas = {
+    general:
+      "Resultado general",
+
+    estudiantes:
+      "Estudiantes",
+
+    noEstudiantes:
+      "Adultos y profesores"
+  };
+
+  return (
+    etiquetas[segmento] ||
+    etiquetas.general
+  );
+}
+
+function normalizarDatosResultado(
+  data = {}
+) {
+  const puntuaciones =
+    data.puntuaciones ||
+    {};
+
+  const valor1 =
+    Number(
+      puntuaciones["1"] ??
+      data["1"] ??
+      data.uno ??
+      data.muy_malo ??
+      0
+    );
+
+  const valor2 =
+    Number(
+      puntuaciones["2"] ??
+      data["2"] ??
+      data.dos ??
+      data.malo ??
+      0
+    );
+
+  const valor3 =
+    Number(
+      puntuaciones["3"] ??
+      data["3"] ??
+      data.tres ??
+      data.regular ??
+      0
+    );
+
+  const valor4 =
+    Number(
+      puntuaciones["4"] ??
+      data["4"] ??
+      data.cuatro ??
+      data.bueno ??
+      0
+    );
+
+  const valor5 =
+    Number(
+      puntuaciones["5"] ??
+      data["5"] ??
+      data.cinco ??
+      data.excelente ??
+      data.muy_bueno ??
+      0
+    );
+
+  const total =
+    Number(
+      data.total
+    ) ||
+    (
+      valor1 +
+      valor2 +
+      valor3 +
+      valor4 +
+      valor5
+    );
+
+  const promedioCalculado =
+    total
+      ? (
+          (
+            valor1 * 1 +
+            valor2 * 2 +
+            valor3 * 3 +
+            valor4 * 4 +
+            valor5 * 5
+          ) /
+          total
+        )
+      : 0;
+
+  return {
+    valor1,
+    valor2,
+    valor3,
+    valor4,
+    valor5,
+    total,
+
+    promedio:
+      Number(
+        data.promedio ??
+        promedioCalculado
+      )
+  };
+}
+
+function renderResumenSegmentoResultado(
+  etiqueta,
+  data,
+  segmento
+) {
+  const normalizado =
+    normalizarDatosResultado(
+      data
+    );
+
+  const activo =
+    state.segmentoResultados ===
+    segmento;
+
+  return `
+    <div
+      class="enc-result-segment ${
+        activo
+          ? "active"
+          : ""
+      }"
+    >
+      <div class="segment-label">
+        ${escapeHtml(etiqueta)}
+      </div>
+
+      <div class="segment-average">
+        ${
+          normalizado.total
+            ? `${normalizado.promedio.toFixed(1)} ★`
+            : "—"
+        }
+      </div>
+
+      <div class="segment-total">
+        ${normalizado.total} respuestas
+      </div>
+    </div>
+  `;
+}
+
+function actualizarBotonesSegmentoResultados() {
+  document
+    .querySelectorAll(
+      "[data-segmento-resultados]"
+    )
+    .forEach(
+      button => {
+        button.classList.toggle(
+          "active",
+          button.dataset
+            .segmentoResultados ===
+          state.segmentoResultados
+        );
+      }
+    );
+}
+
 function renderResultadosAsistenciaMedica() {
   const section =
     $("resultadosAsistenciaMedica");
@@ -5204,25 +5489,32 @@ function renderResultadosAsistenciaMedica() {
       ?.modalidad ===
     "obligatoria";
 
-  const data =
-    state.resultadosAsistenciaMedica ||
+  const dataGeneral =
+    state
+      .resultadosAsistenciaMedica ||
     {};
+
+  const data =
+    getAsistenciaPorSegmento(
+      dataGeneral
+    );
 
   const tieneDatos =
     Number(
-      data.utilizaron ||
+      dataGeneral.utilizaron ||
       0
     ) > 0 ||
     Number(
-      data.evaluaron ||
+      dataGeneral.evaluaron ||
       0
     ) > 0 ||
     (
       Array.isArray(
-        data.comentarios
+        dataGeneral.comentarios
       ) &&
-      data.comentarios.length >
-      0
+      dataGeneral
+        .comentarios
+        .length > 0
     );
 
   section.classList.toggle(
@@ -5274,9 +5566,7 @@ function renderResultadosAsistenciaMedica() {
   const distribucion =
     $("distribucionAsistencia");
 
-  if (
-    distribucion
-  ) {
+  if (distribucion) {
     distribucion.innerHTML =
       [1, 2, 3, 4, 5]
         .map(
@@ -5314,6 +5604,8 @@ function renderResultadosAsistenciaMedica() {
 }
 
 function renderResultados() {
+  actualizarBotonesSegmentoResultados();
+
   const container =
     $("listaResultados");
 
@@ -5335,96 +5627,30 @@ function renderResultados() {
     container.innerHTML =
       entries.map(
         ([preguntaId, dataRaw]) => {
-          const data =
+          const dataGeneral =
             dataRaw ||
             {};
 
-          /*
-            Compatibilidad:
-            - Backend nuevo: data["1"] ... data["5"]
-            - Backend alternativo: data.puntuaciones
-            - Respuestas antiguas de cuatro opciones
-          */
-          const puntuaciones =
-            data.puntuaciones ||
-            {};
-
-          const valor1 =
-            Number(
-              puntuaciones["1"] ??
-              data["1"] ??
-              data.uno ??
-              data.muy_malo ??
-              0
+          const dataEstudiantes =
+            getResultadoPorSegmento(
+              dataGeneral,
+              "estudiantes"
             );
 
-          const valor2 =
-            Number(
-              puntuaciones["2"] ??
-              data["2"] ??
-              data.dos ??
-              data.malo ??
-              0
+          const dataNoEstudiantes =
+            getResultadoPorSegmento(
+              dataGeneral,
+              "noEstudiantes"
             );
 
-          const valor3 =
-            Number(
-              puntuaciones["3"] ??
-              data["3"] ??
-              data.tres ??
-              data.regular ??
-              0
+          const dataSeleccionada =
+            getResultadoPorSegmento(
+              dataGeneral
             );
 
-          const valor4 =
-            Number(
-              puntuaciones["4"] ??
-              data["4"] ??
-              data.cuatro ??
-              data.bueno ??
-              0
-            );
-
-          const valor5 =
-            Number(
-              puntuaciones["5"] ??
-              data["5"] ??
-              data.cinco ??
-              data.excelente ??
-              data.muy_bueno ??
-              0
-            );
-
-          const total =
-            Number(
-              data.total
-            ) ||
-            (
-              valor1 +
-              valor2 +
-              valor3 +
-              valor4 +
-              valor5
-            );
-
-          const promedioCalculado =
-            total
-              ? (
-                  (
-                    valor1 * 1 +
-                    valor2 * 2 +
-                    valor3 * 3 +
-                    valor4 * 4 +
-                    valor5 * 5
-                  ) /
-                  total
-                )
-              : 0;
-
-          const promedio =
-            Number(
-              data.promedio ??
-              promedioCalculado
+          const resultado =
+            normalizarDatosResultado(
+              dataSeleccionada
             );
 
           return `
@@ -5438,11 +5664,39 @@ function renderResultados() {
                 )}
               </h5>
 
+              <div class="enc-result-segment-summary">
+
+                ${renderResumenSegmentoResultado(
+                  "General",
+                  dataGeneral,
+                  "general"
+                )}
+
+                ${renderResumenSegmentoResultado(
+                  "Estudiantes",
+                  dataEstudiantes,
+                  "estudiantes"
+                )}
+
+                ${renderResumenSegmentoResultado(
+                  "Adultos y profesores",
+                  dataNoEstudiantes,
+                  "noEstudiantes"
+                )}
+
+              </div>
+
+              <div class="enc-results-detail-label">
+                ${escapeHtml(
+                  getEtiquetaSegmentoResultados()
+                )}
+              </div>
+
               <div class="enc-stars-summary">
                 ${
-                  promedio
-                    ? `${promedio.toFixed(1)} ★`
-                    : "Sin promedio"
+                  resultado.total
+                    ? `${resultado.promedio.toFixed(1)} ★`
+                    : "Sin respuestas"
                 }
               </div>
 
@@ -5450,32 +5704,32 @@ function renderResultados() {
 
                 ${resultadoCelda(
                   "1 estrella",
-                  valor1
+                  resultado.valor1
                 )}
 
                 ${resultadoCelda(
                   "2 estrellas",
-                  valor2
+                  resultado.valor2
                 )}
 
                 ${resultadoCelda(
                   "3 estrellas",
-                  valor3
+                  resultado.valor3
                 )}
 
                 ${resultadoCelda(
                   "4 estrellas",
-                  valor4
+                  resultado.valor4
                 )}
 
                 ${resultadoCelda(
                   "5 estrellas",
-                  valor5
+                  resultado.valor5
                 )}
 
                 ${resultadoCelda(
                   "Total",
-                  total
+                  resultado.total
                 )}
 
               </div>
@@ -5486,22 +5740,22 @@ function renderResultados() {
       ).join("");
   }
 
+  const comentarios =
+    getComentariosPorSegmento();
+
   renderComentarios(
     "comentariosPositivos",
-    state.comentarios
-      ?.positivos
+    comentarios.positivos
   );
 
   renderComentarios(
     "comentariosMejoras",
-    state.comentarios
-      ?.mejoras
+    comentarios.mejoras
   );
 
   renderComentarios(
     "comentariosGenerales",
-    state.comentarios
-      ?.generales
+    comentarios.generales
   );
 
   renderResultadosAsistenciaMedica();
@@ -6232,6 +6486,41 @@ function conectarEventos() {
         };
 
         actualizarResumenPreguntas();
+      }
+    );
+    document
+    .querySelectorAll(
+      "[data-segmento-resultados]"
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          "click",
+          () => {
+            const segmento =
+              cleanText(
+                button.dataset
+                  .segmentoResultados
+              );
+
+            if (
+              ![
+                "general",
+                "estudiantes",
+                "noEstudiantes"
+              ].includes(
+                segmento
+              )
+            ) {
+              return;
+            }
+
+            state.segmentoResultados =
+              segmento;
+
+            renderResultados();
+          }
+        );
       }
     );
 }
