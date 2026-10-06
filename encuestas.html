@@ -802,6 +802,96 @@
     #listaHoteles .enc-result-card:nth-child(even) {
       border-left-color: var(--enc-yellow);
     }
+
+    .enc-results-filter {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    
+    .enc-results-filter-btn {
+      padding: 7px 11px;
+      border: 1px solid #bdc7df;
+      border-radius: 999px;
+      color: var(--enc-primary);
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: .82rem;
+      font-weight: 800;
+    }
+    
+    .enc-results-filter-btn:hover {
+      background: var(--enc-primary-light);
+    }
+    
+    .enc-results-filter-btn.active {
+      color: #fff;
+      background: var(--enc-primary);
+      border-color: var(--enc-primary);
+    }
+    
+    .enc-result-segment-summary {
+      display: grid;
+      grid-template-columns:
+        repeat(3, minmax(130px, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    
+    .enc-result-segment {
+      padding: 9px 10px;
+      border: 1px solid var(--enc-border);
+      border-radius: 8px;
+      background: #fafbfc;
+    }
+    
+    .enc-result-segment.active {
+      border-color: var(--enc-primary-medium);
+      background: var(--enc-primary-light);
+    }
+    
+    .enc-result-segment .segment-label {
+      color: var(--enc-muted);
+      font-size: .72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    
+    .enc-result-segment .segment-average {
+      margin-top: 4px;
+      color: var(--enc-primary);
+      font-size: 1.13rem;
+      font-weight: 900;
+    }
+    
+    .enc-result-segment .segment-total {
+      margin-top: 2px;
+      color: var(--enc-muted);
+      font-size: .76rem;
+    }
+    
+    .enc-results-detail-label {
+      margin: 10px 0 7px;
+      color: var(--enc-primary);
+      font-size: .78rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    
+    @media (max-width: 720px) {
+      .enc-result-segment-summary {
+        grid-template-columns: 1fr;
+      }
+    
+      .enc-results-filter {
+        width: 100%;
+      }
+    
+      .enc-results-filter-btn {
+        flex: 1 1 auto;
+      }
+    }
     
     @media (max-width: 720px) {
       .enc-service-config,
@@ -1982,9 +2072,49 @@
           <div class="enc-section">
 
             <div class="enc-section-head">
-              <h4>
-                Resultados anónimos
-              </h4>
+            
+              <div>
+                <h4>
+                  Resultados anónimos
+                </h4>
+            
+                <div class="enc-muted">
+                  Compara el resultado general, estudiantes y adultos.
+                </div>
+              </div>
+            
+              <div
+                class="enc-results-filter"
+                role="group"
+                aria-label="Segmento de resultados"
+              >
+            
+                <button
+                  type="button"
+                  class="enc-results-filter-btn active"
+                  data-segmento-resultados="general"
+                >
+                  General
+                </button>
+            
+                <button
+                  type="button"
+                  class="enc-results-filter-btn"
+                  data-segmento-resultados="estudiantes"
+                >
+                  Estudiantes
+                </button>
+            
+                <button
+                  type="button"
+                  class="enc-results-filter-btn"
+                  data-segmento-resultados="noEstudiantes"
+                >
+                  Adultos y profesores
+                </button>
+            
+              </div>
+            
             </div>
 
             <div
