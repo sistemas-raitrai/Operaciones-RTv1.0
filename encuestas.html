@@ -964,12 +964,22 @@
     }
   </style>
 
-    <!-- Exportación de resultados a Excel -->
+  <!-- Excel con estilos -->
   <script
-    src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+    src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"
   ></script>
 
-  <!-- Exportación de resultados a PDF -->
+  <!-- Descarga de archivos creados en el navegador -->
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"
+  ></script>
+
+  <!-- Gráficos para informes PDF -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+  ></script>
+
+  <!-- Generación de PDF -->
   <script
     src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
   ></script>
@@ -1151,6 +1161,22 @@
           class="enc-btn secondary"
         >
           Plantillas de actividades
+        </button>
+
+        <button
+          id="btnExportarConsolidadoXls"
+          type="button"
+          class="enc-btn secondary"
+        >
+          Info General XLS
+        </button>
+
+        <button
+          id="btnExportarConsolidadoPdf"
+          type="button"
+          class="enc-btn primary"
+        >
+          Info General PDF
         </button>
 
         <button
