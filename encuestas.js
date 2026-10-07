@@ -8249,6 +8249,1045 @@ function exportarResultadosPdf() {
   }
 }
 
+/* =========================================================
+   EXPORTACIONES V2 · EXCELJS Y PDF VISUAL
+
+   Este bloque reemplaza en ejecución las exportaciones
+   antiguas basadas en SheetJS. Mantiene los mismos botones.
+========================================================= */
+
+const ENC_EXPORT_COLORS = Object.freeze({
+  azul: "202957",
+  azulMedio: "566DA8",
+  azulClaro: "E9EEF9",
+  amarillo: "F4C400",
+  verde: "318455",
+  rojo: "C62828",
+  gris: "667085",
+  grisClaro: "F4F6FB",
+  blanco: "FFFFFF"
+});
+
+function verificarLibreriasExportacion() {
+  if (!window.ExcelJS) {
+    throw new Error("No se cargó ExcelJS. Recarga la página e inténtalo nuevamente.");
+  }
+
+  if (!window.saveAs) {
+    throw new Error("No se cargó FileSaver. Recarga la página e inténtalo nuevamente.");
+  }
+}
+
+function limpiarNombreArchivo(value = "") {
+  return cleanText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 70) || "reporte";
+}
+
+async function guardarLibroExcel(libro, nombreArchivo) {
+  const buffer = await libro.xlsx.writeBuffer();
+
+  saveAs(
+    new Blob(
+      [buffer],
+      {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      }
+    ),
+    nombreArchivo
+  );
+}
+
+function aplicarTituloExcel(hoja, titulo, ultimaColumna) {
+  hoja.mergeCells(`A1:${ultimaColumna}1`);
+
+  const celda = hoja.getCell("A1");
+  celda.value = titulo;
+  celda.font = {
+    bold: true,
+    color: { argb: ENC_EXPORT_COLORS.blanco },
+    size: 16
+  };
+  celda.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: ENC_EXPORT_COLORS.azul }
+  };
+  celda.alignment = {
+    horizontal: "left",
+    vertical: "middle"
+  };
+  hoja.getRow(1).height = 28;
+}
+
+function estilizarEncabezadoExcel(fila) {
+  fila.eachCell(celda => {
+    celda.font = {
+      bold: true,
+      color: { argb: ENC_EXPORT_COLORS.blanco }
+    };
+    celda.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: ENC_EXPORT_COLORS.azulMedio }
+    };
+    celda.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true
+    };
+    celda.border = {
+      bottom: {
+        style: "thin",
+        color: { argb: ENC_EXPORT_COLORS.azul }
+      }
+    };
+  });
+
+  fila.height = 30;
+}
+
+function estilizarCuerpoExcel(hoja, filaInicial, filaFinal) {
+  for (let numero = filaInicial; numero <= filaFinal; numero++) {
+    const fila = hoja.getRow(numero);
+
+    fila.eachCell({ includeEmpty: true }, celda => {
+      celda.alignment = {
+        vertical: "top",
+        wrapText: true
+      };
+
+      if (numero % 2 === 0) {
+        celda.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: ENC_EXPORT_COLORS.grisClaro }
+        };
+      }
+
+      celda.border = {
+        bottom: {
+          style: "hair",
+          color: { argb: "D5DBEA" }
+        }
+      };
+    });
+  }
+}
+
+function agregarTablaExcel({
+  hoja,
+  filaInicio,
+  encabezados,
+  filas,
+  anchos = []
+}) {
+  const filaEncabezado = hoja.getRow(filaInicio);
+  filaEncabezado.values = encabezados;
+  estilizarEncabezadoExcel(filaEncabezado);
+
+  filas.forEach((valores, indice) => {
+    hoja.getRow(filaInicio + 1 + indice).values = valores;
+  });
+
+  const filaFinal = filaInicio + Math.max(1, filas.length);
+  estilizarCuerpoExcel(hoja, filaInicio + 1, filaFinal);
+
+  anchos.forEach((ancho, indice) => {
+    hoja.getColumn(indice + 1).width = ancho;
+  });
+
+  hoja.views = [
+    {
+      state: "frozen",
+      ySplit: filaInicio
+    }
+  ];
+
+  hoja.autoFilter = {
+    from: {
+      row: filaInicio,
+      column: 1
+    },
+    to: {
+      row: filaFinal,
+      column: encabezados.length
+    }
+  };
+}
+
+function agregarHojaResumenIndividual(libro) {
+  const hoja = libro.addWorksheet("Resumen", {
+    views: [{ showGridLines: false }]
+  });
+
+  aplicarTituloExcel(hoja, "RESULTADOS DE ENCUESTA DE VIAJE", "E");
+
+  const datos = getDatosEncabezadoExportacion();
+  const detalles = [
+    ["Grupo", datos.grupo],
+    ["Número de negocio", datos.negocio],
+    ["Destino", datos.destino],
+    ["Fecha de inicio", datos.fechaInicio],
+    ["Fecha de regreso", datos.fechaFin]
+  ];
+
+  detalles.forEach((fila, indice) => {
+    hoja.getRow(3 + indice).values = fila;
+    hoja.getCell(3 + indice, 1).font = { bold: true };
+  });
+
+  const segmentos = [
+    ["General", getParticipacionPorSegmentoExportacion("general")],
+    ["Estudiantes", getParticipacionPorSegmentoExportacion("estudiantes")],
+    ["Adultos y profesores", getParticipacionPorSegmentoExportacion("noEstudiantes")]
+  ];
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 10,
+    encabezados: ["Segmento", "Nómina", "Respondieron", "Pendientes", "Avance %"],
+    filas: segmentos.map(([nombre, valor]) => [
+      nombre,
+      valor.total,
+      valor.respondieron,
+      valor.pendientes,
+      valor.porcentaje
+    ]),
+    anchos: [28, 16, 18, 16, 16]
+  });
+
+  hoja.getColumn(5).numFmt = "0.0";
+}
+
+function agregarHojaDatosIndividual(libro) {
+  const hoja = libro.addWorksheet("Datos resultados", {
+    views: [{ showGridLines: false }]
+  });
+
+  aplicarTituloExcel(hoja, "DATOS NUMÉRICOS PARA ANÁLISIS", "AA");
+
+  const encabezados = [
+    "ID pregunta", "Categoría", "Pregunta",
+    "General promedio", "General 1", "General 2", "General 3", "General 4", "General 5", "General total", "General suma",
+    "Estudiantes promedio", "Estudiantes 1", "Estudiantes 2", "Estudiantes 3", "Estudiantes 4", "Estudiantes 5", "Estudiantes total", "Estudiantes suma",
+    "Adultos promedio", "Adultos 1", "Adultos 2", "Adultos 3", "Adultos 4", "Adultos 5", "Adultos total", "Adultos suma"
+  ];
+
+  const filas = getFilasComparativasResultados().map(fila => [
+    fila.preguntaId,
+    fila.categoria,
+    fila.pregunta,
+    fila.general.promedio, fila.general.nota1, fila.general.nota2, fila.general.nota3, fila.general.nota4, fila.general.nota5, fila.general.total, fila.general.suma,
+    fila.estudiantes.promedio, fila.estudiantes.nota1, fila.estudiantes.nota2, fila.estudiantes.nota3, fila.estudiantes.nota4, fila.estudiantes.nota5, fila.estudiantes.total, fila.estudiantes.suma,
+    fila.adultos.promedio, fila.adultos.nota1, fila.adultos.nota2, fila.adultos.nota3, fila.adultos.nota4, fila.adultos.nota5, fila.adultos.total, fila.adultos.suma
+  ]);
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 3,
+    encabezados,
+    filas: filas.length ? filas : [["", "", "Sin respuestas"]],
+    anchos: [35, 27, 60, ...Array(24).fill(17)]
+  });
+
+  for (let columna = 4; columna <= 27; columna++) {
+    hoja.getColumn(columna).numFmt = columna === 4 || columna === 12 || columna === 20
+      ? "0.00"
+      : "0";
+  }
+}
+
+function agregarHojaAsistenciaIndividual(libro) {
+  const hoja = libro.addWorksheet("Asistencia médica", {
+    views: [{ showGridLines: false }]
+  });
+
+  aplicarTituloExcel(hoja, "ASISTENCIA MÉDICA", "K");
+
+  const segmentos = [
+    ["General", getAsistenciaPorSegmentoExportacion("general")],
+    ["Estudiantes", getAsistenciaPorSegmentoExportacion("estudiantes")],
+    ["Adultos y profesores", getAsistenciaPorSegmentoExportacion("noEstudiantes")]
+  ];
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 3,
+    encabezados: ["Segmento", "Utilizaron", "Evaluaron", "Promedio", "Nota 1", "Nota 2", "Nota 3", "Nota 4", "Nota 5", "Total", "Suma"],
+    filas: segmentos.map(([nombre, valor]) => [
+      nombre, valor.utilizaron, valor.evaluaron, valor.promedio,
+      valor.nota1, valor.nota2, valor.nota3, valor.nota4, valor.nota5,
+      valor.total, valor.suma
+    ]),
+    anchos: [28, 17, 17, 16, 13, 13, 13, 13, 13, 13, 13]
+  });
+}
+
+function agregarHojaComentariosIndividual(libro) {
+  const hoja = libro.addWorksheet("Comentarios", {
+    views: [{ showGridLines: false }]
+  });
+
+  aplicarTituloExcel(hoja, "COMENTARIOS ANÓNIMOS", "C");
+
+  const comentarios = getComentariosComparativosExportacion();
+  const asistenciaEstudiantes = getAsistenciaPorSegmentoExportacion("estudiantes");
+  const asistenciaAdultos = getAsistenciaPorSegmentoExportacion("noEstudiantes");
+  const filas = [];
+
+  function sumar(segmento, tipo, lista) {
+    (Array.isArray(lista) ? lista : []).forEach(comentario => {
+      filas.push([segmento, tipo, cleanText(comentario)]);
+    });
+  }
+
+  [
+    ["Estudiantes", comentarios.estudiantes],
+    ["Adultos y profesores", comentarios.adultos]
+  ].forEach(([segmento, bloque]) => {
+    sumar(segmento, "Lo mejor del viaje", bloque.positivos);
+    sumar(segmento, "Oportunidad de mejora", bloque.mejoras);
+    sumar(segmento, "Comentario general", bloque.generales);
+  });
+
+  sumar("Estudiantes", "Asistencia médica", asistenciaEstudiantes.comentarios);
+  sumar("Adultos y profesores", "Asistencia médica", asistenciaAdultos.comentarios);
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 3,
+    encabezados: ["Segmento", "Tipo", "Comentario"],
+    filas: filas.length ? filas : [["", "Sin comentarios", ""]],
+    anchos: [28, 30, 100]
+  });
+}
+
+exportarResultadosXls = async function exportarResultadosXlsV2() {
+  try {
+    verificarLibreriasExportacion();
+    mostrarModalMensaje("info", "Preparando Excel comparativo...");
+
+    const libro = new window.ExcelJS.Workbook();
+    libro.creator = "Rai Trai";
+    libro.created = new Date();
+
+    agregarHojaResumenIndividual(libro);
+    agregarHojaDatosIndividual(libro);
+    agregarHojaAsistenciaIndividual(libro);
+    agregarHojaComentariosIndividual(libro);
+
+    await guardarLibroExcel(
+      libro,
+      getNombreArchivoResultados("xlsx")
+    );
+
+    mostrarModalMensaje("ok", "El Excel comparativo fue descargado correctamente.");
+  } catch (error) {
+    console.error("[ENCUESTAS][EXPORTAR_XLS_V2]", error);
+    mostrarModalMensaje("error", error.message || "No fue posible generar el Excel.");
+  }
+};
+
+function getFiltrosReporteConsolidado() {
+  return {
+    grupo: cleanText($("fGrupo")?.value),
+    numeroNegocio: cleanText($("fCodigo")?.value),
+    anoViaje: cleanText($("fAno")?.value),
+    destino: cleanText($("fDestino")?.value),
+    estado: cleanText($("fEstado")?.value),
+    fechaInicio: cleanText($("fFechaInicio")?.value)
+  };
+}
+
+function getEncuestaIdsReporteConsolidado() {
+  return [...new Set(
+    (state.filas || [])
+      .map(item => cleanText(item.encuesta?.id))
+      .filter(Boolean)
+  )];
+}
+
+async function cargarReporteConsolidado() {
+  const encuestaIds = getEncuestaIdsReporteConsolidado();
+
+  if (!encuestaIds.length) {
+    throw new Error("Los filtros actuales no contienen encuestas creadas para exportar.");
+  }
+
+  const respuesta = await postInterno(
+    FUNCTION_URLS.gestion,
+    {
+      modo: "reporte_consolidado",
+      encuestaIds,
+      filtros: getFiltrosReporteConsolidado()
+    }
+  );
+
+  return respuesta.reporte || respuesta;
+}
+
+function listaDesdeContenedor(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return Object.values(value);
+  return [];
+}
+
+function normalizarSegmentoReporte(resultado = {}, segmento = "general") {
+  const origen = segmento === "general"
+    ? resultado
+    : resultado?.segmentos?.[segmento] || {};
+
+  return crearDatosNumericosExportacion(origen);
+}
+
+function getFilasContenedorReporte(contenedor = {}) {
+  return Object.values(contenedor.resultados || {})
+    .map(item => ({
+      id: cleanText(item.preguntaId || item.id),
+      categoria: cleanText(item.categoria || "Otros"),
+      pregunta: cleanText(item.nombre || item.pregunta || item.preguntaId || "Evaluación"),
+      general: normalizarSegmentoReporte(item, "general"),
+      estudiantes: normalizarSegmentoReporte(item, "estudiantes"),
+      adultos: normalizarSegmentoReporte(item, "noEstudiantes")
+    }))
+    .sort((a, b) =>
+      a.categoria.localeCompare(b.categoria, "es") ||
+      a.pregunta.localeCompare(b.pregunta, "es")
+    );
+}
+
+function getResumenSegmentoContenedor(contenedor = {}, segmento = "general") {
+  if (segmento === "general") {
+    const total = Number(contenedor.participantes || 0);
+    const respuestas = Number(contenedor.respuestas || 0);
+
+    return {
+      total,
+      respuestas,
+      pendientes: Math.max(0, total - respuestas),
+      avance: Number(contenedor.avance || (total ? respuestas / total * 100 : 0))
+    };
+  }
+
+  const bloque = contenedor[segmento] || {};
+  const total = Number(bloque.participantes || bloque.total || 0);
+  const respuestas = Number(bloque.respuestas || bloque.respondieron || 0);
+
+  return {
+    total,
+    respuestas,
+    pendientes: Math.max(0, total - respuestas),
+    avance: total ? Math.round(respuestas / total * 1000) / 10 : 0
+  };
+}
+
+function nombreGrupoReporte(grupo = {}) {
+  return cleanText(
+    grupo.nombre ||
+    grupo.nombreGrupo ||
+    grupo.grupo ||
+    grupo.colegio ||
+    grupo.encuesta?.colegio ||
+    "GRUPO"
+  );
+}
+
+function destinoGrupoReporte(grupo = {}) {
+  return cleanText(
+    grupo.destino ||
+    grupo.encuesta?.destino ||
+    "SIN DESTINO"
+  );
+}
+
+function agregarHojaResumenConsolidado(libro, reporte) {
+  const hoja = libro.addWorksheet("Resumen general", {
+    views: [{ showGridLines: false }]
+  });
+
+  aplicarTituloExcel(hoja, "REPORTE CONSOLIDADO DE ENCUESTAS", "F");
+
+  const filtros = getFiltrosReporteConsolidado();
+  hoja.getRow(3).values = ["Filtros aplicados", Object.entries(filtros).filter(([, valor]) => valor).map(([clave, valor]) => `${clave}: ${valor}`).join(" · ") || "Todos"];
+  hoja.getCell("A3").font = { bold: true };
+
+  const total = reporte.total || reporte.resumen || {};
+  const segmentos = [
+    ["General", getResumenSegmentoContenedor(total, "general")],
+    ["Estudiantes", getResumenSegmentoContenedor(total, "estudiantes")],
+    ["Adultos y profesores", getResumenSegmentoContenedor(total, "noEstudiantes")]
+  ];
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 6,
+    encabezados: ["Segmento", "Grupos", "Nómina", "Respondieron", "Pendientes", "Avance %"],
+    filas: segmentos.map(([nombre, valor]) => [
+      nombre,
+      Number(total.cantidadGrupos || listaDesdeContenedor(reporte.grupos).length || 0),
+      valor.total,
+      valor.respuestas,
+      valor.pendientes,
+      Number(valor.avance.toFixed(1))
+    ]),
+    anchos: [28, 14, 16, 18, 16, 16]
+  });
+}
+
+function agregarHojaGruposConsolidado(libro, reporte) {
+  const hoja = libro.addWorksheet("Por grupo", {
+    views: [{ showGridLines: false }]
+  });
+  aplicarTituloExcel(hoja, "RESULTADOS POR GRUPO", "L");
+
+  const grupos = listaDesdeContenedor(reporte.grupos);
+  const filas = [];
+
+  grupos.forEach(grupo => {
+    const base = grupo.total || grupo;
+    const general = getResumenSegmentoContenedor(base, "general");
+    const estudiantes = getResumenSegmentoContenedor(base, "estudiantes");
+    const adultos = getResumenSegmentoContenedor(base, "noEstudiantes");
+
+    filas.push([
+      nombreGrupoReporte(grupo),
+      cleanText(grupo.numeroNegocio || grupo.negocio || grupo.encuesta?.numeroNegocio),
+      destinoGrupoReporte(grupo),
+      general.total,
+      general.respuestas,
+      Number(general.avance.toFixed(1)),
+      estudiantes.total,
+      estudiantes.respuestas,
+      Number(estudiantes.avance.toFixed(1)),
+      adultos.total,
+      adultos.respuestas,
+      Number(adultos.avance.toFixed(1))
+    ]);
+  });
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 3,
+    encabezados: ["Grupo", "Negocio", "Destino", "Nómina", "Respuestas", "Avance %", "Estudiantes nómina", "Estudiantes respuestas", "Estudiantes avance %", "Adultos nómina", "Adultos respuestas", "Adultos avance %"],
+    filas: filas.length ? filas : [["Sin grupos"]],
+    anchos: [45, 16, 32, 14, 16, 14, 20, 23, 22, 18, 21, 20]
+  });
+}
+
+function agregarHojaDestinosConsolidado(libro, reporte) {
+  const hoja = libro.addWorksheet("Por destino", {
+    views: [{ showGridLines: false }]
+  });
+  aplicarTituloExcel(hoja, "RESULTADOS POR DESTINO", "L");
+
+  const destinos = listaDesdeContenedor(reporte.destinos);
+  const filas = destinos.map(item => {
+    const base = item.total || item;
+    const general = getResumenSegmentoContenedor(base, "general");
+    const estudiantes = getResumenSegmentoContenedor(base, "estudiantes");
+    const adultos = getResumenSegmentoContenedor(base, "noEstudiantes");
+
+    return [
+      cleanText(item.nombre || item.destino || "SIN DESTINO"),
+      Number(base.cantidadGrupos || item.cantidadGrupos || 0),
+      general.total,
+      general.respuestas,
+      Number(general.avance.toFixed(1)),
+      estudiantes.total,
+      estudiantes.respuestas,
+      Number(estudiantes.avance.toFixed(1)),
+      adultos.total,
+      adultos.respuestas,
+      Number(adultos.avance.toFixed(1)),
+      Number((base.promedio || 0).toFixed?.(2) || 0)
+    ];
+  });
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 3,
+    encabezados: ["Destino", "Grupos", "Nómina", "Respuestas", "Avance %", "Estudiantes nómina", "Estudiantes respuestas", "Estudiantes avance %", "Adultos nómina", "Adultos respuestas", "Adultos avance %", "Promedio"],
+    filas: filas.length ? filas : [["Sin destinos"]],
+    anchos: [35, 14, 14, 16, 14, 20, 23, 22, 18, 21, 20, 14]
+  });
+}
+
+function agregarHojaResultadosConsolidado(libro, reporte) {
+  const hoja = libro.addWorksheet("Resultados consolidados", {
+    views: [{ showGridLines: false }]
+  });
+  aplicarTituloExcel(hoja, "RESULTADOS CONSOLIDADOS NUMÉRICOS", "Z");
+
+  const total = reporte.total || reporte.resumen || {};
+  const filas = getFilasContenedorReporte(total).map(fila => [
+    fila.id, fila.categoria, fila.pregunta,
+    fila.general.promedio, fila.general.nota1, fila.general.nota2, fila.general.nota3, fila.general.nota4, fila.general.nota5, fila.general.total,
+    fila.estudiantes.promedio, fila.estudiantes.nota1, fila.estudiantes.nota2, fila.estudiantes.nota3, fila.estudiantes.nota4, fila.estudiantes.nota5, fila.estudiantes.total,
+    fila.adultos.promedio, fila.adultos.nota1, fila.adultos.nota2, fila.adultos.nota3, fila.adultos.nota4, fila.adultos.nota5, fila.adultos.total
+  ]);
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 3,
+    encabezados: [
+      "ID", "Categoría", "Evaluación",
+      "General promedio", "General 1", "General 2", "General 3", "General 4", "General 5", "General total",
+      "Estudiantes promedio", "Estudiantes 1", "Estudiantes 2", "Estudiantes 3", "Estudiantes 4", "Estudiantes 5", "Estudiantes total",
+      "Adultos promedio", "Adultos 1", "Adultos 2", "Adultos 3", "Adultos 4", "Adultos 5", "Adultos total"
+    ],
+    filas: filas.length ? filas : [["", "", "Sin respuestas"]],
+    anchos: [36, 28, 62, ...Array(21).fill(17)]
+  });
+}
+
+function agregarHojaComentariosConsolidado(libro, reporte) {
+  const hoja = libro.addWorksheet("Comentarios consolidados", {
+    views: [{ showGridLines: false }]
+  });
+  aplicarTituloExcel(hoja, "COMENTARIOS CONSOLIDADOS", "C");
+
+  const total = reporte.total || reporte.resumen || {};
+  const filas = [];
+
+  function sumar(segmento, bloque = {}) {
+    [
+      ["Lo mejor del viaje", bloque.positivos],
+      ["Oportunidad de mejora", bloque.mejoras],
+      ["Comentario general", bloque.generales]
+    ].forEach(([tipo, lista]) => {
+      (Array.isArray(lista) ? lista : []).forEach(comentario => {
+        filas.push([segmento, tipo, cleanText(comentario)]);
+      });
+    });
+  }
+
+  sumar("Estudiantes", total.comentarios?.estudiantes);
+  sumar("Adultos y profesores", total.comentarios?.noEstudiantes);
+
+  agregarTablaExcel({
+    hoja,
+    filaInicio: 3,
+    encabezados: ["Segmento", "Tipo", "Comentario"],
+    filas: filas.length ? filas : [["", "Sin comentarios", ""]],
+    anchos: [28, 30, 100]
+  });
+}
+
+async function exportarConsolidadoXls() {
+  const boton = $("btnExportarConsolidadoXls");
+
+  try {
+    verificarLibreriasExportacion();
+    if (boton) boton.disabled = true;
+    mostrarMensaje("info", "Preparando el reporte general en Excel...");
+
+    const reporte = await cargarReporteConsolidado();
+    const libro = new window.ExcelJS.Workbook();
+    libro.creator = "Rai Trai";
+    libro.created = new Date();
+
+    agregarHojaResumenConsolidado(libro, reporte);
+    agregarHojaGruposConsolidado(libro, reporte);
+    agregarHojaDestinosConsolidado(libro, reporte);
+    agregarHojaResultadosConsolidado(libro, reporte);
+    agregarHojaComentariosConsolidado(libro, reporte);
+
+    await guardarLibroExcel(
+      libro,
+      `reporte_general_encuestas_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
+
+    mostrarMensaje("ok", "El Excel general fue descargado correctamente.");
+  } catch (error) {
+    console.error("[ENCUESTAS][XLS_CONSOLIDADO]", error);
+    mostrarMensaje("error", error.message || "No fue posible generar el Excel general.");
+  } finally {
+    if (boton) boton.disabled = false;
+  }
+}
+
+function pdfColor(doc, color) {
+  doc.setTextColor(...color);
+}
+
+function dibujarCabeceraPdf(doc, titulo, subtitulo = "") {
+  const ancho = doc.internal.pageSize.getWidth();
+  doc.setFillColor(32, 41, 87);
+  doc.rect(0, 0, ancho, 26, "F");
+  doc.setFillColor(244, 196, 0);
+  doc.rect(0, 26, ancho, 2, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text(titulo, 14, 12);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.text(subtitulo, 14, 20);
+}
+
+function dibujarTarjetaPdf(doc, x, y, ancho, titulo, valor, color = [32, 41, 87]) {
+  doc.setFillColor(248, 249, 252);
+  doc.setDrawColor(213, 219, 234);
+  doc.roundedRect(x, y, ancho, 23, 2, 2, "FD");
+  doc.setTextColor(102, 112, 133);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text(String(titulo).toUpperCase(), x + 4, y + 7);
+  doc.setTextColor(...color);
+  doc.setFontSize(15);
+  doc.text(String(valor), x + 4, y + 17);
+}
+
+function puntosEstrella(cx, cy, radioExterior, radioInterior) {
+  const puntos = [];
+
+  for (let indice = 0; indice < 10; indice++) {
+    const radio = indice % 2 === 0 ? radioExterior : radioInterior;
+    const angulo = -Math.PI / 2 + indice * Math.PI / 5;
+    puntos.push([
+      cx + Math.cos(angulo) * radio,
+      cy + Math.sin(angulo) * radio
+    ]);
+  }
+
+  return puntos;
+}
+
+function dibujarEstrellaPdf(doc, cx, cy, radio, rellena) {
+  const puntos = puntosEstrella(cx, cy, radio, radio * 0.45);
+  const lineas = [];
+
+  for (let indice = 1; indice < puntos.length; indice++) {
+    lineas.push([
+      puntos[indice][0] - puntos[indice - 1][0],
+      puntos[indice][1] - puntos[indice - 1][1]
+    ]);
+  }
+
+  lineas.push([
+    puntos[0][0] - puntos[puntos.length - 1][0],
+    puntos[0][1] - puntos[puntos.length - 1][1]
+  ]);
+
+  doc.setDrawColor(217, 173, 0);
+  doc.setFillColor(rellena ? 244 : 255, rellena ? 196 : 255, rellena ? 0 : 255);
+  doc.lines(lineas, puntos[0][0], puntos[0][1], [1, 1], rellena ? "FD" : "S", true);
+}
+
+function dibujarPromedioEstrellasPdf(doc, x, y, promedio, etiqueta) {
+  const valor = Number(promedio || 0);
+  doc.setTextColor(32, 41, 87);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text(etiqueta, x, y);
+
+  for (let indice = 0; indice < 5; indice++) {
+    dibujarEstrellaPdf(doc, x + 4 + indice * 7, y + 8, 2.7, valor >= indice + 0.5);
+  }
+
+  doc.setFontSize(11);
+  doc.text(valor ? valor.toFixed(2) : "—", x + 39, y + 10);
+}
+
+function dibujarGraficoBarrasPdf(doc, { x, y, ancho, alto, titulo, items }) {
+  doc.setTextColor(32, 41, 87);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text(titulo, x, y);
+
+  const lista = (items || []).slice(0, 8);
+  const maximo = Math.max(1, ...lista.map(item => Number(item.valor || 0)));
+  const altoFila = Math.max(8, (alto - 8) / Math.max(1, lista.length));
+
+  lista.forEach((item, indice) => {
+    const filaY = y + 7 + indice * altoFila;
+    const etiqueta = cleanText(item.etiqueta).slice(0, 28);
+    const valor = Number(item.valor || 0);
+    const anchoBarra = (ancho - 55) * valor / maximo;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(70, 70, 75);
+    doc.text(etiqueta, x, filaY + 3, { maxWidth: 48 });
+    doc.setFillColor(233, 238, 249);
+    doc.roundedRect(x + 50, filaY, ancho - 55, 4, 1, 1, "F");
+    doc.setFillColor(86, 109, 168);
+    doc.roundedRect(x + 50, filaY, Math.max(0.6, anchoBarra), 4, 1, 1, "F");
+    doc.setTextColor(32, 41, 87);
+    doc.text(String(valor), x + ancho - 1, filaY + 3.2, { align: "right" });
+  });
+}
+
+function promedioPorCategoria(filas, campo = "general") {
+  const mapa = new Map();
+
+  filas.forEach(fila => {
+    const datos = fila[campo] || {};
+    if (!Number(datos.total || 0)) return;
+
+    const actual = mapa.get(fila.categoria) || { suma: 0, total: 0 };
+    actual.suma += Number(datos.suma || 0);
+    actual.total += Number(datos.total || 0);
+    mapa.set(fila.categoria, actual);
+  });
+
+  return [...mapa.entries()].map(([etiqueta, valor]) => ({
+    etiqueta,
+    valor: valor.total ? Number((valor.suma / valor.total).toFixed(2)) : 0
+  }));
+}
+
+function agregarPiePaginasPdf(doc) {
+  const paginas = doc.getNumberOfPages();
+  const alto = doc.internal.pageSize.getHeight();
+  const ancho = doc.internal.pageSize.getWidth();
+
+  for (let pagina = 1; pagina <= paginas; pagina++) {
+    doc.setPage(pagina);
+    doc.setDrawColor(213, 219, 234);
+    doc.line(14, alto - 11, ancho - 14, alto - 11);
+    doc.setTextColor(102, 112, 133);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("Encuesta anónima de viaje · Rai Trai", 14, alto - 6);
+    doc.text(`Página ${pagina} de ${paginas}`, ancho - 14, alto - 6, { align: "right" });
+  }
+}
+
+exportarResultadosPdf = async function exportarResultadosPdfV2() {
+  try {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) throw new Error("No se cargó la librería de PDF.");
+
+    mostrarModalMensaje("info", "Preparando informe PDF visual...");
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const datos = getDatosEncabezadoExportacion();
+    const filas = getFilasComparativasResultados();
+    const general = getParticipacionPorSegmentoExportacion("general");
+    const estudiantes = getParticipacionPorSegmentoExportacion("estudiantes");
+    const adultos = getParticipacionPorSegmentoExportacion("noEstudiantes");
+
+    dibujarCabeceraPdf(
+      doc,
+      "RESULTADOS DE ENCUESTA DE VIAJE",
+      `${datos.grupo} · Negocio ${datos.negocio || "—"} · ${datos.destino || "—"}`
+    );
+
+    dibujarTarjetaPdf(doc, 14, 34, 48, "Nómina", general.total);
+    dibujarTarjetaPdf(doc, 66, 34, 48, "Respondieron", general.respondieron, [49, 132, 85]);
+    dibujarTarjetaPdf(doc, 118, 34, 48, "Pendientes", general.pendientes, [198, 40, 40]);
+    dibujarTarjetaPdf(doc, 170, 34, 48, "Avance", `${general.porcentaje}%`, [86, 109, 168]);
+    dibujarTarjetaPdf(doc, 222, 34, 61, "Período", `${datos.fechaInicio} – ${datos.fechaFin}`);
+
+    const generalViaje = filas.find(fila => fila.preguntaId === "general:viaje") || {};
+    dibujarPromedioEstrellasPdf(doc, 16, 69, generalViaje.general?.promedio, "RESULTADO GENERAL");
+    dibujarPromedioEstrellasPdf(doc, 106, 69, generalViaje.estudiantes?.promedio, "ESTUDIANTES");
+    dibujarPromedioEstrellasPdf(doc, 196, 69, generalViaje.adultos?.promedio, "ADULTOS Y PROFESORES");
+
+    dibujarGraficoBarrasPdf(doc, {
+      x: 14,
+      y: 94,
+      ancho: 128,
+      alto: 72,
+      titulo: "PROMEDIO GENERAL POR CATEGORÍA",
+      items: promedioPorCategoria(filas, "general")
+    });
+
+    dibujarGraficoBarrasPdf(doc, {
+      x: 154,
+      y: 94,
+      ancho: 129,
+      alto: 72,
+      titulo: "PARTICIPACIÓN POR SEGMENTO",
+      items: [
+        { etiqueta: "Estudiantes", valor: estudiantes.respondieron },
+        { etiqueta: "Adultos y profesores", valor: adultos.respondieron },
+        { etiqueta: "Pendientes", valor: general.pendientes }
+      ]
+    });
+
+    doc.addPage();
+    dibujarCabeceraPdf(doc, "DETALLE COMPARATIVO", `${datos.grupo} · resultados expresados de 1 a 5 estrellas`);
+    doc.autoTable({
+      startY: 35,
+      head: [["Categoría", "Evaluación", "General", "Resp.", "Estudiantes", "Resp.", "Adultos y profesores", "Resp."]],
+      body: filas.length
+        ? filas.map(fila => [
+            fila.categoria,
+            fila.pregunta,
+            fila.general.total ? fila.general.promedio.toFixed(2) : "—",
+            fila.general.total,
+            fila.estudiantes.total ? fila.estudiantes.promedio.toFixed(2) : "—",
+            fila.estudiantes.total,
+            fila.adultos.total ? fila.adultos.promedio.toFixed(2) : "—",
+            fila.adultos.total
+          ])
+        : [["", "Sin respuestas", "", "", "", "", "", ""]],
+      theme: "grid",
+      styles: { fontSize: 7.2, cellPadding: 2.2, overflow: "linebreak" },
+      headStyles: { fillColor: [32, 41, 87], textColor: 255, halign: "center" },
+      alternateRowStyles: { fillColor: [244, 246, 251] },
+      columnStyles: {
+        0: { cellWidth: 32 },
+        1: { cellWidth: 91 },
+        2: { halign: "center" }, 3: { halign: "center" },
+        4: { halign: "center" }, 5: { halign: "center" },
+        6: { halign: "center" }, 7: { halign: "center" }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+    const comentarios = getComentariosComparativosExportacion();
+    doc.addPage();
+    dibujarCabeceraPdf(doc, "COMENTARIOS ANÓNIMOS", `${datos.grupo} · separados por tipo de pasajero`);
+    let y = 36;
+    y = agregarComentariosPdf(doc, "LO MEJOR · ESTUDIANTES", comentarios.estudiantes.positivos, y);
+    y = agregarComentariosPdf(doc, "LO MEJOR · ADULTOS Y PROFESORES", comentarios.adultos.positivos, y);
+    y = agregarComentariosPdf(doc, "OPORTUNIDADES DE MEJORA · ESTUDIANTES", comentarios.estudiantes.mejoras, y);
+    agregarComentariosPdf(doc, "OPORTUNIDADES DE MEJORA · ADULTOS Y PROFESORES", comentarios.adultos.mejoras, y);
+
+    agregarPiePaginasPdf(doc);
+    doc.save(getNombreArchivoResultados("pdf"));
+    mostrarModalMensaje("ok", "El informe PDF visual fue descargado correctamente.");
+  } catch (error) {
+    console.error("[ENCUESTAS][EXPORTAR_PDF_V2]", error);
+    mostrarModalMensaje("error", error.message || "No fue posible generar el PDF.");
+  }
+};
+
+async function exportarConsolidadoPdf() {
+  const boton = $("btnExportarConsolidadoPdf");
+
+  try {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) throw new Error("No se cargó la librería de PDF.");
+    if (boton) boton.disabled = true;
+    mostrarMensaje("info", "Preparando el reporte general en PDF...");
+
+    const reporte = await cargarReporteConsolidado();
+    const total = reporte.total || reporte.resumen || {};
+    const filas = getFilasContenedorReporte(total);
+    const general = getResumenSegmentoContenedor(total, "general");
+    const estudiantes = getResumenSegmentoContenedor(total, "estudiantes");
+    const adultos = getResumenSegmentoContenedor(total, "noEstudiantes");
+    const grupos = listaDesdeContenedor(reporte.grupos);
+    const destinos = listaDesdeContenedor(reporte.destinos);
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+
+    const filtrosTexto = Object.entries(getFiltrosReporteConsolidado())
+      .filter(([, valor]) => valor)
+      .map(([clave, valor]) => `${clave}: ${valor}`)
+      .join(" · ") || "Todos los grupos y destinos visibles";
+
+    dibujarCabeceraPdf(doc, "REPORTE GENERAL DE ENCUESTAS", filtrosTexto);
+    dibujarTarjetaPdf(doc, 14, 34, 48, "Grupos", Number(total.cantidadGrupos || grupos.length || 0));
+    dibujarTarjetaPdf(doc, 66, 34, 48, "Nómina", general.total);
+    dibujarTarjetaPdf(doc, 118, 34, 48, "Respuestas", general.respuestas, [49, 132, 85]);
+    dibujarTarjetaPdf(doc, 170, 34, 48, "Pendientes", general.pendientes, [198, 40, 40]);
+    dibujarTarjetaPdf(doc, 222, 34, 61, "Avance", `${Number(general.avance).toFixed(1)}%`, [86, 109, 168]);
+
+    dibujarGraficoBarrasPdf(doc, {
+      x: 14,
+      y: 68,
+      ancho: 128,
+      alto: 90,
+      titulo: "PROMEDIO POR CATEGORÍA",
+      items: promedioPorCategoria(filas, "general")
+    });
+
+    dibujarGraficoBarrasPdf(doc, {
+      x: 154,
+      y: 68,
+      ancho: 129,
+      alto: 90,
+      titulo: "RESPUESTAS POR DESTINO",
+      items: destinos.map(item => ({
+        etiqueta: cleanText(item.nombre || item.destino || "SIN DESTINO"),
+        valor: Number((item.total || item).respuestas || 0)
+      })).sort((a, b) => b.valor - a.valor)
+    });
+
+    doc.setTextColor(32, 41, 87);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(
+      `Estudiantes: ${estudiantes.respuestas}/${estudiantes.total} · Adultos y profesores: ${adultos.respuestas}/${adultos.total}`,
+      14,
+      180
+    );
+
+    doc.addPage();
+    dibujarCabeceraPdf(doc, "RESULTADOS POR GRUPO", "Comparación de participación según los filtros aplicados");
+    doc.autoTable({
+      startY: 35,
+      head: [["Grupo", "Destino", "Nómina", "Respuestas", "Avance", "Estudiantes", "Adultos y profesores"]],
+      body: grupos.length
+        ? grupos.map(grupo => {
+            const base = grupo.total || grupo;
+            const g = getResumenSegmentoContenedor(base, "general");
+            const e = getResumenSegmentoContenedor(base, "estudiantes");
+            const a = getResumenSegmentoContenedor(base, "noEstudiantes");
+            return [
+              nombreGrupoReporte(grupo),
+              destinoGrupoReporte(grupo),
+              g.total,
+              g.respuestas,
+              `${Number(g.avance).toFixed(1)}%`,
+              `${e.respuestas}/${e.total}`,
+              `${a.respuestas}/${a.total}`
+            ];
+          })
+        : [["Sin grupos", "", "", "", "", "", ""]],
+      theme: "grid",
+      styles: { fontSize: 7.5, cellPadding: 2.3, overflow: "linebreak" },
+      headStyles: { fillColor: [32, 41, 87], textColor: 255, halign: "center" },
+      alternateRowStyles: { fillColor: [244, 246, 251] },
+      columnStyles: { 0: { cellWidth: 75 }, 1: { cellWidth: 45 } },
+      margin: { left: 14, right: 14 }
+    });
+
+    doc.addPage();
+    dibujarCabeceraPdf(doc, "DETALLE CONSOLIDADO", "Resultados generales, estudiantes y adultos/profesores");
+    doc.autoTable({
+      startY: 35,
+      head: [["Categoría", "Evaluación", "General", "Resp.", "Estudiantes", "Resp.", "Adultos", "Resp."]],
+      body: filas.length
+        ? filas.map(fila => [
+            fila.categoria,
+            fila.pregunta,
+            fila.general.total ? fila.general.promedio.toFixed(2) : "—",
+            fila.general.total,
+            fila.estudiantes.total ? fila.estudiantes.promedio.toFixed(2) : "—",
+            fila.estudiantes.total,
+            fila.adultos.total ? fila.adultos.promedio.toFixed(2) : "—",
+            fila.adultos.total
+          ])
+        : [["", "Sin respuestas", "", "", "", "", "", ""]],
+      theme: "grid",
+      styles: { fontSize: 7.2, cellPadding: 2.2, overflow: "linebreak" },
+      headStyles: { fillColor: [32, 41, 87], textColor: 255, halign: "center" },
+      alternateRowStyles: { fillColor: [244, 246, 251] },
+      columnStyles: { 0: { cellWidth: 34 }, 1: { cellWidth: 92 } },
+      margin: { left: 14, right: 14 }
+    });
+
+    agregarPiePaginasPdf(doc);
+    doc.save(`reporte_general_encuestas_${new Date().toISOString().slice(0, 10)}.pdf`);
+    mostrarMensaje("ok", "El PDF general fue descargado correctamente.");
+  } catch (error) {
+    console.error("[ENCUESTAS][PDF_CONSOLIDADO]", error);
+    mostrarMensaje("error", error.message || "No fue posible generar el PDF general.");
+  } finally {
+    if (boton) boton.disabled = false;
+  }
+}
+
+
 function resultadoCelda(
   label,
   value
@@ -8891,6 +9930,18 @@ function conectarEventos() {
     ?.addEventListener(
       "click",
       exportarResultadosPdf
+    );
+
+  $("btnExportarConsolidadoXls")
+    ?.addEventListener(
+      "click",
+      exportarConsolidadoXls
+    );
+
+  $("btnExportarConsolidadoPdf")
+    ?.addEventListener(
+      "click",
+      exportarConsolidadoPdf
     );
 
   $("btnConfigGlobal")
