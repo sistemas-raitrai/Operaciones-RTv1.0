@@ -1,4 +1,10 @@
 // viajes.js — Planificación de Viajes (aéreos/terrestres) RT + TRANSFERS
+import {
+  montarHorariosExtra,
+  montarHorariosTramos,
+  aplicarHorariosExtra,
+  camposHorarioExtra
+} from './viajes-horarios-complemento.js';
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
@@ -593,6 +599,7 @@ function openModal(v=null){
   if (isAereo && isRegular && hasTramos){
     if (multitramoChkEl) multitramoChkEl.checked = true;
     editingTramos = v.tramos.map(t => ({
+      ...camposHorarioExtra(t),
       aerolinea: toUpper(t.aerolinea || ''),
       numero:    toUpper(t.numero || ''),
       origen:    toUpper(t.origen || ''),
@@ -730,6 +737,7 @@ function renderTramosList(){
 
     cont.appendChild(row);
   });
+  montarHorariosTramos(editingTramos);
 }
 
 window.removeTramo = (idx) => {
