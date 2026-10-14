@@ -89,11 +89,709 @@ export function crearAmpliacionCoordinadores(api){
  function resumen(){const root=document.getElementById('resumen-wrap');if(!root)return;const gs=filtros(),rows=[];for(const d of DESTINOS_COORD){const list=gs.filter(g=>destinoCoord(g.destino)===d);rows.push([d,list]);}for(const f of [...new Set(gs.map(g=>g.fechaInicio))].sort())rows.push([fecha(f),gs.filter(g=>g.fechaInicio===f)]);root.innerHTML=tabla(['Destino / Fecha de inicio','Grupos'],rows.map(([label,list],i)=>[H(label),`<button class="btn small" data-res="${i}">${list.length}</button>`]));root.querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>mostrarGrupos(rows[Number(b.dataset.res)][0],rows[Number(b.dataset.res)][1]));}
  function hoteles(){const rows=new Map(),gs=filtros();for(const g of gs){const asign=state().SETS.filter(s=>s.confirmado&&s.coordinadorId&&A(s.viajes).includes(g.id));for(const h of A(g.hoteles)){if(!h.checkIn||!h.checkOut)continue;let d=h.checkIn;let guard=0;while(d<h.checkOut&&guard++<400){const k=(h.hotelId||h.nombre)+'|'+d;if(!rows.has(k))rows.set(k,{nombre:h.nombre,d,coords:new Map()});for(const s of asign){const c=getCoord(s.coordinadorId);if(!c)continue;const m=rows.get(k).coords;if(!m.has(c.id))m.set(c.id,{c,grupos:new Set()});m.get(c.id).grupos.add(g.aliasGrupo);}const next=new Date(d+'T12:00:00Z');next.setUTCDate(next.getUTCDate()+1);d=next.toISOString().slice(0,10);}}}
  modal('Hoteles por noche · hotel del grupo · check-out excluido',tabla(['Hotel','Noche','Hombres','Mujeres','Sin informar','Coordinadores y grupos'],[...rows.values()].sort((a,b)=>a.d.localeCompare(b.d)||a.nombre.localeCompare(b.nombre)).map(r=>{const cs=[...r.coords.values()];return [H(r.nombre),fecha(r.d),cs.filter(x=>x.c.sexo==='hombre').length,cs.filter(x=>x.c.sexo==='mujer').length,cs.filter(x=>!['hombre','mujer'].includes(x.c.sexo)).length,cs.map(x=>H(x.c.nombre)+' · '+H([...x.grupos].join(' / '))).join('<br>')];})));}
- async function ficha(cid){if(!cid)return;try{if(!hist.has(cid)){const rows=await getDocs(query(collection(db,'coordinacion_grupos_resumen'),where('coordinadorIds','array-contains',cid)));hist.set(cid,rows.docs.map(d=>({id:d.id,...d.data()})));}
- if(!survey.has(cid)){const rows=await getDocs(query(collection(db,'coordinacion_encuestas_resumen'),where('coordinadorIds','array-contains',cid)));survey.set(cid,rows.docs.map(d=>d.data()));}
- const c=getCoord(cid),grupos=hist.get(cid).slice().sort((a,b)=>b.fechaInicio.localeCompare(a.fechaInicio)),today=(()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return p.year+'-'+p.month+'-'+p.day;})(),past=grupos.filter(g=>g.fechaFin<today),evaluaciones=survey.get(cid).filter(r=>N(r.estado)!=='anulada').flatMap(r=>A(r.coordinadores).filter(x=>x.coordinadorId===cid).map(x=>({...x,ano:r.anoViaje,grupo:r.grupoDocId})));const suma=evaluaciones.reduce((n,r)=>n+r.suma,0),puntos=evaluaciones.reduce((n,r)=>n+r.puntuaciones,0);
- const root=modal('Ficha del coordinador',`<div class="row">${c.fotoURL?`<img class="coord-photo" src="${H(c.fotoURL)}" alt="Foto">`:''}<div><h3>${H(c.nombre)}</h3><p>${H(c.sexo||'Sin informar')} · ${H(c.correo||'')}</p><p>Disponibilidad y aptitud del año ${state().ano}</p><button class="btn" data-perfil>Foto y datos</button></div></div><h3>Experiencia: asignaciones pasadas registradas</h3><p>No acredita por sí sola que el viaje se haya ejecutado.</p>${tabla(['Año','Grupo / Negocio','Destino','Fechas','Hoteles'],past.map(g=>[g.anoViaje,H(g.aliasGrupo)+' / '+H(g.numeroNegocio),H(destinoCoord(g.destino)),fecha(g.fechaInicio)+' → '+fecha(g.fechaFin),A(g.hoteles).map(h=>H(h.nombre)+' '+fecha(h.checkIn)+' → '+fecha(h.checkOut)).join('<br>')]))}<h3>Encuestas desde 2026</h3><p>${puntos?`Promedio ponderado ${ (suma/puntos).toFixed(2)} / 5 · ${puntos} puntuaciones · ${evaluaciones.reduce((n,r)=>n+r.personas,0)} respuestas evaluadoras sumadas entre encuestas`:'Sin evaluaciones disponibles'}</p>${tabla(['Año','Grupo','Personas que evaluaron','Puntuaciones','Promedio'],evaluaciones.map(r=>[r.ano,H(r.grupo),r.personas,r.puntuaciones,r.promedio===null?'—':r.promedio.toFixed(2)]))}<h3>Agenda y hoteles registrados</h3>${tabla(['Año','Grupo','Fechas','Hoteles'],grupos.map(g=>[g.anoViaje,H(g.aliasGrupo),fecha(g.fechaInicio)+' → '+fecha(g.fechaFin),A(g.hoteles).map(h=>H(h.nombre)+' '+fecha(h.checkIn)+' → '+fecha(h.checkOut)).join('<br>')]))}<h3>Transiciones de la planificación actual</h3>${tabla(['Anterior','Siguiente','Horas'],transiciones().filter(r=>r.cid===cid).map(r=>[H(r.anterior.aliasGrupo),H(r.siguiente.aliasGrupo),r.horas===null?'Sin verificar':r.horas.toFixed(1)]))}`);root.querySelector('[data-perfil]').onclick=()=>perfil(cid);
- }catch(e){alert('No fue posible cargar la ficha: '+e.message);}}
+ async function ficha(cid) {
+   if (!cid) {
+     return;
+   }
+ 
+   try {
+     if (!hist.has(cid)) {
+       const rows =
+         await getDocs(
+           query(
+             collection(
+               db,
+               "coordinacion_grupos_resumen"
+             ),
+             where(
+               "coordinadorIds",
+               "array-contains",
+               cid
+             )
+           )
+         );
+ 
+       hist.set(
+         cid,
+         rows.docs.map(
+           documento => ({
+             id:
+               documento.id,
+ 
+             ...documento.data()
+           })
+         )
+       );
+     }
+ 
+     if (!survey.has(cid)) {
+       const rows =
+         await getDocs(
+           query(
+             collection(
+               db,
+               "coordinacion_encuestas_resumen"
+             ),
+             where(
+               "coordinadorIds",
+               "array-contains",
+               cid
+             )
+           )
+         );
+ 
+       survey.set(
+         cid,
+         rows.docs.map(
+           documento =>
+             documento.data()
+         )
+       );
+     }
+ 
+     const c =
+       getCoord(cid);
+ 
+     const grupos =
+       hist
+         .get(cid)
+         .slice()
+         .sort(
+           (a, b) =>
+             String(
+               b.fechaInicio ||
+               ""
+             ).localeCompare(
+               String(
+                 a.fechaInicio ||
+                 ""
+               )
+             )
+         );
+ 
+     const today =
+       (() => {
+         const partes =
+           Object.fromEntries(
+             new Intl.DateTimeFormat(
+               "en-CA",
+               {
+                 timeZone:
+                   "America/Santiago",
+ 
+                 year:
+                   "numeric",
+ 
+                 month:
+                   "2-digit",
+ 
+                 day:
+                   "2-digit"
+               }
+             )
+               .formatToParts(
+                 new Date()
+               )
+               .map(
+                 parte => [
+                   parte.type,
+                   parte.value
+                 ]
+               )
+           );
+ 
+         return (
+           partes.year +
+           "-" +
+           partes.month +
+           "-" +
+           partes.day
+         );
+       })();
+ 
+     /*
+       La experiencia histórica no se limita al año
+       seleccionado en la planificación.
+     */
+     const past =
+       grupos.filter(
+         grupo =>
+           !!grupo.fechaFin &&
+           grupo.fechaFin <
+             today
+       );
+ 
+     const evaluaciones =
+       survey
+         .get(cid)
+         .filter(
+           resumen =>
+             N(
+               resumen.estado
+             ) !==
+             "anulada"
+         )
+         .flatMap(
+           resumen =>
+             A(
+               resumen.coordinadores
+             )
+               .filter(
+                 evaluacion =>
+                   evaluacion
+                     .coordinadorId ===
+                   cid
+               )
+               .map(
+                 evaluacion => ({
+                   ...evaluacion,
+ 
+                   ano:
+                     resumen.anoViaje,
+ 
+                   grupo:
+                     resumen.grupoDocId,
+ 
+                   numeroNegocio:
+                     resumen.numeroNegocio
+                 })
+               )
+         )
+         .sort(
+           (a, b) =>
+             Number(
+               b.ano ||
+               0
+             ) -
+             Number(
+               a.ano ||
+               0
+             )
+         );
+ 
+     function resumirEvaluaciones(
+       segmento =
+         "general"
+     ) {
+       let personas = 0;
+       let puntuaciones = 0;
+       let suma = 0;
+ 
+       evaluaciones.forEach(
+         evaluacion => {
+           const origen =
+             segmento ===
+             "general"
+               ? evaluacion
+               : (
+                   evaluacion
+                     ?.segmentos
+                     ?.[segmento] ||
+                   {}
+                 );
+ 
+           personas +=
+             Number(
+               origen.personas ||
+               0
+             );
+ 
+           puntuaciones +=
+             Number(
+               origen.puntuaciones ||
+               0
+             );
+ 
+           suma +=
+             Number(
+               origen.suma ||
+               0
+             );
+         }
+       );
+ 
+       return {
+         personas,
+         puntuaciones,
+         suma,
+ 
+         promedio:
+           puntuaciones
+             ? suma /
+               puntuaciones
+             : null
+       };
+     }
+ 
+     function textoPromedio(
+       resumen = {}
+     ) {
+       if (
+         !Number(
+           resumen.puntuaciones ||
+           0
+         )
+       ) {
+         return "Sin evaluaciones";
+       }
+ 
+       return (
+         Number(
+           resumen.promedio ||
+           0
+         ).toFixed(2) +
+         " / 5"
+       );
+     }
+ 
+     function getSegmentoEvaluacion(
+       evaluacion = {},
+       segmento =
+         "general"
+     ) {
+       if (
+         segmento ===
+         "general"
+       ) {
+         return evaluacion;
+       }
+ 
+       return (
+         evaluacion
+           ?.segmentos
+           ?.[segmento] ||
+         {}
+       );
+     }
+ 
+     function promedioFila(
+       evaluacion = {},
+       segmento =
+         "general"
+     ) {
+       const datos =
+         getSegmentoEvaluacion(
+           evaluacion,
+           segmento
+         );
+ 
+       const puntuaciones =
+         Number(
+           datos.puntuaciones ||
+           0
+         );
+ 
+       if (!puntuaciones) {
+         return "—";
+       }
+ 
+       const promedio =
+         datos.promedio !==
+         null &&
+         datos.promedio !==
+         undefined
+           ? Number(
+               datos.promedio
+             )
+           : (
+               Number(
+                 datos.suma ||
+                 0
+               ) /
+               puntuaciones
+             );
+ 
+       return (
+         promedio.toFixed(2) +
+         " ★"
+       );
+     }
+ 
+     const resumenGeneral =
+       resumirEvaluaciones(
+         "general"
+       );
+ 
+     const resumenEstudiantes =
+       resumirEvaluaciones(
+         "estudiantes"
+       );
+ 
+     const resumenAdultos =
+       resumirEvaluaciones(
+         "noEstudiantes"
+       );
+ 
+     const evaluacionesHtml =
+       evaluaciones.length
+         ? `
+           <div class="coord-kpis">
+ 
+             <div class="coord-kpi">
+               <span>
+                 Resultado general
+               </span>
+ 
+               <b>
+                 ${H(
+                   textoPromedio(
+                     resumenGeneral
+                   )
+                 )}
+               </b>
+ 
+               <small>
+                 ${
+                   resumenGeneral.personas
+                 } respuestas
+                 ·
+                 ${
+                   resumenGeneral.puntuaciones
+                 } puntuaciones
+               </small>
+             </div>
+ 
+             <div class="coord-kpi">
+               <span>
+                 Estudiantes
+               </span>
+ 
+               <b>
+                 ${H(
+                   textoPromedio(
+                     resumenEstudiantes
+                   )
+                 )}
+               </b>
+ 
+               <small>
+                 ${
+                   resumenEstudiantes.personas
+                 } respuestas
+                 ·
+                 ${
+                   resumenEstudiantes.puntuaciones
+                 } puntuaciones
+               </small>
+             </div>
+ 
+             <div class="coord-kpi">
+               <span>
+                 Adultos y profesores
+               </span>
+ 
+               <b>
+                 ${H(
+                   textoPromedio(
+                     resumenAdultos
+                   )
+                 )}
+               </b>
+ 
+               <small>
+                 ${
+                   resumenAdultos.personas
+                 } respuestas
+                 ·
+                 ${
+                   resumenAdultos.puntuaciones
+                 } puntuaciones
+               </small>
+             </div>
+ 
+           </div>
+ 
+           ${
+             tabla(
+               [
+                 "Año",
+                 "Grupo / Negocio",
+                 "General",
+                 "Estudiantes",
+                 "Adultos y profesores"
+               ],
+ 
+               evaluaciones.map(
+                 evaluacion => [
+                   evaluacion.ano,
+ 
+                   H(
+                     evaluacion.grupo ||
+                     "—"
+                   ) +
+                   (
+                     evaluacion
+                       .numeroNegocio
+                       ? " / " +
+                         H(
+                           evaluacion
+                             .numeroNegocio
+                         )
+                       : ""
+                   ),
+ 
+                   promedioFila(
+                     evaluacion,
+                     "general"
+                   ),
+ 
+                   promedioFila(
+                     evaluacion,
+                     "estudiantes"
+                   ),
+ 
+                   promedioFila(
+                     evaluacion,
+                     "noEstudiantes"
+                   )
+                 ]
+               )
+             )
+           }
+         `
+         : `
+           <p>
+             Sin evaluaciones disponibles.
+             Las encuestas comenzaron en 2026.
+           </p>
+         `;
+ 
+     const root =
+       modal(
+         "Ficha del coordinador",
+         `
+           <div class="row">
+ 
+             ${
+               c.fotoURL
+                 ? `
+                   <img
+                     class="coord-photo"
+                     src="${H(
+                       c.fotoURL
+                     )}"
+                     alt="Foto"
+                   >
+                 `
+                 : ""
+             }
+ 
+             <div>
+               <h3>
+                 ${H(c.nombre)}
+               </h3>
+ 
+               <p>
+                 ${H(
+                   c.sexo ||
+                   "Sin informar"
+                 )}
+                 ·
+                 ${H(
+                   c.correo ||
+                   ""
+                 )}
+               </p>
+ 
+               <p>
+                 Disponibilidad y aptitud del año
+                 ${state().ano}
+               </p>
+ 
+               <button
+                 class="btn"
+                 data-perfil
+               >
+                 Foto y datos
+               </button>
+             </div>
+ 
+           </div>
+ 
+           <h3>
+             Experiencia: asignaciones pasadas registradas
+           </h3>
+ 
+           <p>
+             No acredita por sí sola que el viaje se haya ejecutado.
+           </p>
+ 
+           ${
+             tabla(
+               [
+                 "Año",
+                 "Grupo / Negocio",
+                 "Destino",
+                 "Fechas",
+                 "Hoteles"
+               ],
+ 
+               past.map(
+                 grupo => [
+                   grupo.anoViaje,
+ 
+                   H(
+                     grupo.aliasGrupo
+                   ) +
+                   " / " +
+                   H(
+                     grupo.numeroNegocio
+                   ),
+ 
+                   H(
+                     destinoCoord(
+                       grupo.destino
+                     )
+                   ),
+ 
+                   fecha(
+                     grupo.fechaInicio
+                   ) +
+                   " → " +
+                   fecha(
+                     grupo.fechaFin
+                   ),
+ 
+                   A(
+                     grupo.hoteles
+                   )
+                     .map(
+                       hotel =>
+                         H(
+                           hotel.nombre
+                         ) +
+                         " " +
+                         fecha(
+                           hotel.checkIn
+                         ) +
+                         " → " +
+                         fecha(
+                           hotel.checkOut
+                         )
+                     )
+                     .join("<br>")
+                 ]
+               )
+             )
+           }
+ 
+           <h3>
+             Encuestas desde 2026
+           </h3>
+ 
+           ${evaluacionesHtml}
+ 
+           <h3>
+             Agenda y hoteles registrados
+           </h3>
+ 
+           ${
+             tabla(
+               [
+                 "Año",
+                 "Grupo",
+                 "Fechas",
+                 "Hoteles"
+               ],
+ 
+               grupos.map(
+                 grupo => [
+                   grupo.anoViaje,
+ 
+                   H(
+                     grupo.aliasGrupo
+                   ),
+ 
+                   fecha(
+                     grupo.fechaInicio
+                   ) +
+                   " → " +
+                   fecha(
+                     grupo.fechaFin
+                   ),
+ 
+                   A(
+                     grupo.hoteles
+                   )
+                     .map(
+                       hotel =>
+                         H(
+                           hotel.nombre
+                         ) +
+                         " " +
+                         fecha(
+                           hotel.checkIn
+                         ) +
+                         " → " +
+                         fecha(
+                           hotel.checkOut
+                         )
+                     )
+                     .join("<br>")
+                 ]
+               )
+             )
+           }
+ 
+           <h3>
+             Transiciones de la planificación actual
+           </h3>
+ 
+           ${
+             tabla(
+               [
+                 "Anterior",
+                 "Siguiente",
+                 "Horas"
+               ],
+ 
+               transiciones()
+                 .filter(
+                   transicion =>
+                     transicion.cid ===
+                     cid
+                 )
+                 .map(
+                   transicion => [
+                     H(
+                       transicion
+                         .anterior
+                         .aliasGrupo
+                     ),
+ 
+                     H(
+                       transicion
+                         .siguiente
+                         .aliasGrupo
+                     ),
+ 
+                     transicion.horas ===
+                     null
+                       ? "Sin verificar"
+                       : transicion
+                           .horas
+                           .toFixed(1)
+                   ]
+                 )
+             )
+           }
+         `
+       );
+ 
+     root
+       .querySelector(
+         "[data-perfil]"
+       )
+       .onclick =
+       () => perfil(cid);
+ 
+   } catch (error) {
+     alert(
+       "No fue posible cargar la ficha: " +
+       error.message
+     );
+   }
+ }
  async function perfil(cid){const c=getCoord(cid);if(!c)return;const root=modal('Foto y datos del coordinador',`${c.fotoURL?`<img class="coord-photo" src="${H(c.fotoURL)}" alt="Foto">`:''}<p>${H(c.nombre)}</p><label>Dato para conteos de hoteles <select id="coordSexo"><option value="sin_informar">Sin informar</option><option value="hombre">Hombre</option><option value="mujer">Mujer</option></select></label><p><input id="coordFoto" type="file" accept="image/jpeg,image/png,image/webp"></p><button class="btn" id="coordGuardarPerfil">Guardar foto y datos</button><p id="coordPerfilMsg"></p>`);root.querySelector('#coordSexo').value=c.sexo||'sin_informar';root.querySelector('#coordGuardarPerfil').onclick=async()=>{const btn=root.querySelector('#coordGuardarPerfil');btn.disabled=true;try{const file=root.querySelector('#coordFoto').files[0];let fotoURL=c.fotoURL||'',fotoPath=c.fotoPath||'';if(file){if(file.size>5*1024*1024||!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Use JPG, PNG o WEBP de hasta 5 MB');fotoPath='coordinadores-fotos/'+cid+'/perfil';const r=ref(storage,fotoPath);await uploadBytes(r,file,{contentType:file.type});fotoURL=(await getDownloadURL(r))+'&v='+Date.now();}const sexo=root.querySelector('#coordSexo').value;await setDoc(doc(db,'coordinadores',cid),{sexo,fotoURL,fotoPath,actualizadoAt:serverTimestamp()},{merge:true});Object.assign(c,{sexo,fotoURL,fotoPath});root.querySelector('#coordPerfilMsg').textContent='Guardado';api.refresh();}catch(e){root.querySelector('#coordPerfilMsg').textContent=e.message;}finally{btn.disabled=false;}};}
  function decorar(){document.querySelectorAll('#conjuntos-wrap select[data-coord]').forEach(sel=>{const i=Number(sel.dataset.coord),s=state().SETS[i];if(!s)return;const parent=sel.parentElement;if(parent.querySelector('[data-coord-ficha]'))return;const box=document.createElement('span');box.className='row';box.dataset.coordFicha=String(i);const c=getCoord(s.coordinadorId);box.innerHTML=(c?.fotoURL?`<img class="coord-photo-mini" src="${H(c.fotoURL)}" alt="${H(c.nombre)}">`:'')+`<button class="btn small" ${c?'':'disabled'}>Ver coordinador</button>`;box.querySelector('button').onclick=()=>ficha(s.coordinadorId);parent.append(box);});
  document.querySelectorAll('#conjuntos-wrap input[data-alias]').forEach(input=>{const gid=input.dataset.alias,g=getGroup(gid);if(!g||input.parentElement.querySelector('.coord-salud'))return;const div=document.createElement('div');div.className='coord-salud';div.innerHTML=saludHtml(g)+'<br>'+A(g.transportes).map(t=>H((t.sentido==='ida'?'IDA':'REGRESO')+' · '+t.tipoTransporte+' · '+t.origen+' → '+t.destino)+'<br>Presentación: '+H(fecha(t.fechaPresentacion)+' '+(t.presentacion||'—'))+' · Salida: '+H(fecha(t.fechaSalida)+' '+(t.salida||'—'))+' · Llegada: '+H(fecha(t.fechaLlegada)+' '+(t.llegada||'—'))+(t.fechaLlegadaInferida?' (fecha inferida)':'')).join('<br>');input.parentElement.append(div);});
