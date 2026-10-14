@@ -230,6 +230,7 @@
             <th>NOMBRE *</th>
             <th>RUT</th>
             <th>FECHA NAC.</th>
+            <th>DATOS PARA TRANSFERIR</th>
             <th>TELÉFONO</th>
             <th>CORREO</th>
             <th>DESTINOS</th>
@@ -258,27 +259,22 @@
   <script type="module">
     (async () => {
       try {
-        // 1) Inyectar encabezado común
-        const html = await (await fetch('encabezado.html')).text();
-        document.getElementById('encabezado').innerHTML = html;
+        const html = await (
+          await fetch('encabezado.html')
+        ).text();
   
-        // 2) Cargar Firebase primero (sin depender del DOM)
-        const init = await import('./firebase-init.js');
+        document.getElementById('encabezado').innerHTML =
+          html;
   
-        // 3) Cargar script base del sistema (usa elementos del header: reloj, username, etc.)
+        await import('./firebase-init.js');
         await import('./script.js');
-  
-        // 4) Cargar el módulo de esta página (coordinadores)
         await import('./coordinadores.js');
   
-        // (Opcional) Diagnóstico, usando la misma instancia que ya cargaste:
-        const { getFirestore, collection, getDocs } =
-          await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js');
-        const snap = await getDocs(collection(init.db, 'grupos'));
-        console.log('[coordinadores.html] grupos size =', snap.size);
-        console.log('✅ coordinadores.js cargado tras inyectar encabezado y firebase');
       } catch (err) {
-        console.error('❌ Error cargando encabezado/scripts:', err);
+        console.error(
+          'Error cargando coordinadores:',
+          err
+        );
       }
     })();
   </script>
