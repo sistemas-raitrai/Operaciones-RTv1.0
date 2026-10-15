@@ -732,23 +732,102 @@ function wire(){
 /* ======================
    INIT + AUTH
 ====================== */
-async function init(){
-  await cargarGruposBase();
-  poblarFiltros();
-  wire();
 
-  if(el.modo.value === 'ACTIVIDAD'){
-    recalcularActividadesDisponibles();
-  }
+let inicioBitacoraEnCurso = false;
+let bitacoraInicializada = false;
 
-  renderRows([]);
+function bloquearBotonesInicio(bloquear) {
+  [
+    el.btnCargar,
+    el.btnExportDestino,
+    el.btnExportVisible,
+    el.btnLimpiar
+  ].forEach(boton => {
+    if (boton) boton.disabled = bloquear;
+  });
 }
 
-onAuthStateChanged(auth, async (u) => {
-  if(!u){
-    window.location.href = 'login.html';
-    return;
+function esperarConLimite(promesa, milisegundos = 30000) {
+  let temporizador;
+
+  const limite = new Promise((_, reject) => {
+    temporizador = setTimeout(() => {
+      const error = new Error(
+        'Firestore no respondió dentro de 30 segundos.'
+      );
+
+      error.code = 'bitacora/tiempo-agotado';
+      reject(error);
+    }, milisegundos);
+  });
+
+  return Promise.race([promesa, limite])
+    .finally(() => clearTimeout(temporizador));
+}
+
+async function init() {
+  if (inicioBitacoraEnCurso || bitacoraInicializada) return;
+
+  inicioBitacoraEnCurso = true;
+  bloquearBotonesInicio(true);
+
+  try {
+    await esperarConLimite(cargarGruposBase());
+
+    poblarFiltros();
+    wire();
+
+    if (el.modo.value === 'ACTIVIDAD') {
+      recalcularActividadesDisponibles();
+    }
+
+    renderRows([]);
+
+    bitacoraInicializada = true;
+    bloquearBotonesInicio(false);
+
+    setStatus(
+      `Listo. Grupos cargados: ${state.grupos.length}.`
+    );
+  } catch (error) {
+    console.error(
+      '[Bitácora] Error al cargar los grupos:',
+      error
+    );
+
+    const codigo = error?.code || 'sin-codigo';
+
+    setStatus(
+      `No se pudieron cargar los grupos (${codigo}). ` +
+      'Revisa la consola y recarga la página para reintentar.'
+    );
+  } finally {
+    inicioBitacoraEnCurso = false;
   }
-  state.user = u;
-  await init();
-});
+}
+
+bloquearBotonesInicio(true);
+
+onAuthStateChanged(
+  auth,
+  async usuario => {
+    if (!usuario) {
+      window.location.href = 'login.html';
+      return;
+    }
+
+    state.user = usuario;
+    await init();
+  },
+  error => {
+    console.error(
+      '[Bitácora] Error de autenticación:',
+      error
+    );
+
+    bloquearBotonesInicio(true);
+    setStatus(
+      'No se pudo comprobar la sesión. Recarga la página.'
+    );
+  }
+);
