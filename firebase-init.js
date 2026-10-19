@@ -7,7 +7,7 @@ import {
   signInWithEmailAndPassword,
   signOut
 } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
+import { initializeFirestore } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
 // --- Firebase config (mismo proyecto)
 const firebaseConfig = {
@@ -19,9 +19,12 @@ const firebaseConfig = {
   appId: "1:438607695630:web:f5a16f319e3ea17fbfd15f"
 };
 
-export const app  = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db   = getFirestore(app);
+
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+});
 
 // 👉 URL del portal (GitHub Pages o dominio propio)
 const PORTAL_URL = "https://sistemas-raitrai.github.io/portal-coordinadores-rt/";
