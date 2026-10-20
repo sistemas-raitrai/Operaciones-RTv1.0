@@ -26,7 +26,43 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const esc = valor => String(valor ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const num = valor => Number(valor || 0);
 const norm = valor => String(valor || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toUpperCase();
-const moneda = valor => ['CLP','USD','BRL','ARS','SIN_DEFINIR'].includes(norm(valor)) ? norm(valor) : 'CLP';
+const moneda = valor => {
+  const codigo = norm(valor);
+
+  const equivalencias = {
+    CLP: 'CLP',
+    '$': 'CLP',
+    'PESO CHILENO': 'CLP',
+    'PESOS CHILENOS': 'CLP',
+
+    USD: 'USD',
+    'US$': 'USD',
+    US: 'USD',
+    DOLAR: 'USD',
+    DOLARES: 'USD',
+    DOLLAR: 'USD',
+    DOLLARS: 'USD',
+    'DOLAR AMERICANO': 'USD',
+    'DOLARES AMERICANOS': 'USD',
+    'DOLAR ESTADOUNIDENSE': 'USD',
+    'DOLARES ESTADOUNIDENSES': 'USD',
+
+    BRL: 'BRL',
+    'R$': 'BRL',
+    REAL: 'BRL',
+    REALES: 'BRL',
+    'REAL BRASILENO': 'BRL',
+    'REALES BRASILENOS': 'BRL',
+
+    ARS: 'ARS',
+    'AR$': 'ARS',
+    ARG: 'ARS',
+    'PESO ARGENTINO': 'ARS',
+    'PESOS ARGENTINOS': 'ARS'
+  };
+
+  return equivalencias[codigo] || 'SIN_DEFINIR';
+};
 const fmtNum = valor => num(valor).toLocaleString('es-CL', { maximumFractionDigits: 2 });
 const fmtMoney = (valor, codigo) => {
   if (moneda(codigo) === 'SIN_DEFINIR') return 'PENDIENTE';
@@ -291,9 +327,147 @@ function renderObligaciones() {
 }
 
 function renderAbonos() {
-  const rows = [...state.abonos].sort((a,b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
-  $('#panel-abonos').innerHTML = `<div class="cf-section-head"><h3>Abonos y aplicaciones</h3><span class="cf-muted">El dinero enviado nunca se reemplaza por su equivalencia.</span></div><div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Fecha</th><th class="num">Enviado</th><th class="num">Tipo de cambio</th><th class="num">Aplicado</th><th class="num">Cobertura</th><th>Estado</th><th>Comprobante</th><th></th></tr></thead><tbody>${rows.map(a => `<tr><td>${fechaTexto(a.fecha)}</td><td class="num">${fmtMoney(a.montoEnviado, a.monedaEnviada)}</td><td class="num">${a.tipoCambioAplicado ? fmtNum(a.tipoCambioAplicado) : '—'}</td><td class="num">${fmtMoney(a.montoAplicado, a.monedaAplicada || a.monedaObligacion)}</td><td class="num">${num(a.unidadesCubiertas) ? `${fmtNum(a.unidadesCubiertas)} ${esc(a.tipoAplicacion || 'unidades')}` : '—'}</td><td><span class="cf-badge ${norm(a.estadoRevision) === 'REVISADO' ? 'reviewed' : 'pending'}">${esc(norm(a.estadoRevision || 'PENDIENTE'))}</span></td><td>${a.comprobanteURL ? `<a href="${esc(a.comprobanteURL)}" target="_blank" rel="noopener">Ver</a>` : '—'}</td><td><button class="cf-btn btn-editar-abono" data-id="${esc(a.id)}" type="button">Editar</button></td></tr>`).join('')}</tbody></table></div>${rows.length ? '' : '<div class="cf-empty">No hay abonos registrados.</div>'}`;
-  $$('.btn-editar-abono', $('#panel-abonos')).forEach(btn => btn.addEventListener('click', () => abrirEditorAbono(btn.dataset.id)));
+  const rows = [...state.abonos].sort(
+    (a, b) =>
+      String(b.fecha || '').localeCompare(
+        String(a.fecha || '')
+      )
+  );
+
+  const filas = rows.map(a => {
+    const estado = norm(
+      a.estadoRevision || 'PENDIENTE'
+    );
+
+    const revisado = [
+      'REVISADO',
+      'REVISADO_AUTOMATICO'
+    ].includes(estado);
+
+    return `
+      <tr>
+        <td>${fechaTexto(a.fecha)}</td>
+
+        <td class="num">
+          ${fmtMoney(
+            a.montoEnviado,
+            a.monedaEnviada
+          )}
+        </td>
+
+        <td class="num">
+          ${
+            a.tipoCambioAplicado
+              ? fmtNum(a.tipoCambioAplicado)
+              : '—'
+          }
+        </td>
+
+        <td class="num">
+          ${fmtMoney(
+            a.montoAplicado,
+            a.monedaAplicada || a.monedaObligacion
+          )}
+        </td>
+
+        <td class="num">
+          ${
+            num(a.unidadesCubiertas)
+              ? (
+                  `${fmtNum(a.unidadesCubiertas)} ` +
+                  `${esc(a.tipoAplicacion || 'unidades')}`
+                )
+              : '—'
+          }
+        </td>
+
+        <td>
+          <span
+            class="cf-badge ${
+              revisado ? 'reviewed' : 'pending'
+            }"
+          >
+            ${esc(estado)}
+          </span>
+        </td>
+
+        <td>
+          ${
+            a.comprobanteURL
+              ? `
+                <a
+                  href="${esc(a.comprobanteURL)}"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  Ver
+                </a>
+              `
+              : '—'
+          }
+        </td>
+
+        <td>
+          <button
+            class="cf-btn btn-editar-abono"
+            data-id="${esc(a.id)}"
+            type="button"
+          >
+            Editar
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  $('#panel-abonos').innerHTML = `
+    <div class="cf-section-head">
+      <h3>Abonos y aplicaciones</h3>
+
+      <span class="cf-muted">
+        El dinero enviado nunca se reemplaza
+        por su equivalencia.
+      </span>
+    </div>
+
+    <div class="cf-table-wrap">
+      <table class="cf-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th class="num">Enviado</th>
+            <th class="num">Tipo de cambio</th>
+            <th class="num">Aplicado</th>
+            <th class="num">Cobertura</th>
+            <th>Estado</th>
+            <th>Comprobante</th>
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody>${filas}</tbody>
+      </table>
+    </div>
+
+    ${
+      rows.length
+        ? ''
+        : `
+          <div class="cf-empty">
+            No hay abonos registrados.
+          </div>
+        `
+    }
+  `;
+
+  $$(
+    '.btn-editar-abono',
+    $('#panel-abonos')
+  ).forEach(btn => {
+    btn.addEventListener('click', () => {
+      abrirEditorAbono(btn.dataset.id);
+    });
+  });
 }
 
 function renderReglas() {
@@ -337,31 +511,327 @@ function recalcularMontoDesdeTC() {
 
 async function guardarRevisionAbono(event) {
   event.preventDefault();
-  const id = $('#abonoId').value, actual = state.abonos.find(a => a.id === id); if (!actual) return;
-  const motivo = $('#abMotivo').value.trim(), montoAplicado = num($('#abMontoAplicado').value), tc = num($('#abTipoCambio').value);
-  if (!motivo) { $('#errorEditarAbono').textContent = 'Debe indicar el motivo de la revisión.'; return; }
-  if (montoAplicado < 0) { $('#errorEditarAbono').textContent = 'El monto aplicado no puede ser negativo.'; return; }
-  const despues = { monedaAplicada: $('#abMonedaAplicada').value, tipoCambioAplicado: tc || null, montoAplicado, unidadesCubiertas: num($('#abUnidadesCubiertas').value), estadoRevision: 'REVISADO' };
-  const antes = { monedaAplicada: actual.monedaAplicada || actual.monedaObligacion, tipoCambioAplicado: actual.tipoCambioAplicado ?? null, montoAplicado: num(actual.montoAplicado), unidadesCubiertas: num(actual.unidadesCubiertas), estadoRevision: actual.estadoRevision || 'PENDIENTE' };
-  const diferencia = montoAplicado - num(actual.montoAplicado);
-  const resumenId = actual.resumenId || state.proveedor.id;
+
+  const id = $('#abonoId').value;
+
+  const actual = state.abonos.find(
+    a => a.id === id
+  );
+
+  if (!actual) return;
+
+  const errorNodo = $('#errorEditarAbono');
+  errorNodo.textContent = '';
+
+  const motivo = $('#abMotivo').value.trim();
+
+  const montoAplicado = Number(
+    $('#abMontoAplicado').value
+  );
+
+  const tcTexto = $('#abTipoCambio').value.trim();
+
+  const tc = tcTexto === ''
+    ? null
+    : Number(tcTexto);
+
+  const unidadesCubiertas = Number(
+    $('#abUnidadesCubiertas').value || 0
+  );
+
+  const monedaAplicada = moneda(
+    $('#abMonedaAplicada').value
+  );
+
+  if (!motivo) {
+    errorNodo.textContent =
+      'Debe indicar el motivo de la revisión.';
+    return;
+  }
+
+  if (
+    !Number.isFinite(montoAplicado) ||
+    montoAplicado < 0
+  ) {
+    errorNodo.textContent =
+      'El monto aplicado debe ser un número válido mayor o igual a cero.';
+    return;
+  }
+
+  if (
+    tc !== null &&
+    (!Number.isFinite(tc) || tc <= 0)
+  ) {
+    errorNodo.textContent =
+      'El tipo de cambio debe ser mayor que cero o quedar vacío.';
+    return;
+  }
+
+  if (
+    !Number.isFinite(unidadesCubiertas) ||
+    unidadesCubiertas < 0 ||
+    !Number.isInteger(unidadesCubiertas)
+  ) {
+    errorNodo.textContent =
+      'Los ingresos o cupos cubiertos deben ser un número entero mayor o igual a cero.';
+    return;
+  }
+
+  if (monedaAplicada === 'SIN_DEFINIR') {
+    errorNodo.textContent =
+      'Debe seleccionar una moneda aplicada válida.';
+    return;
+  }
+
+  const proveedorActual = state.proveedor;
+
+  const resumenId =
+    actual.resumenId || proveedorActual?.id;
+
+  if (!resumenId) {
+    errorNodo.textContent =
+      'No se pudo identificar el resumen del proveedor.';
+    return;
+  }
+
+  const despues = {
+    monedaAplicada,
+    tipoCambioAplicado: tc,
+    montoAplicado,
+    unidadesCubiertas,
+    estadoRevision: 'REVISADO'
+  };
+
+  const botonGuardar = $(
+    '#formEditarAbono button[type="submit"]'
+  );
+
+  if (botonGuardar?.disabled) return;
+
+  if (botonGuardar) {
+    botonGuardar.disabled = true;
+  }
+
+  let resultado;
+
   try {
-    setEstado('Guardando revisión…', false, '#detalleEstado');
-    await runTransaction(db, async tx => {
-      const abRef = doc(db, COLECCIONES.ABONOS, id), resumenRef = doc(db, COLECCIONES.RESUMENES, resumenId);
-      const resumenSnap = await tx.get(resumenRef);
-      tx.update(abRef, { ...despues, revisadoAt: serverTimestamp(), revisadoPor: state.usuario?.email || '' });
-      if (resumenSnap.exists()) {
-        const r = resumenSnap.data();
-        tx.update(resumenRef, { totalAplicado: num(r.totalAplicado) + diferencia, saldoPendiente: num(r.totalObligacion) - (num(r.totalAplicado) + diferencia), abonosPendientesRevision: Math.max(0, num(r.abonosPendientesRevision) - (norm(actual.estadoRevision) === 'REVISADO' ? 0 : 1)), actualizadoAt: serverTimestamp() });
+    setEstado(
+      'Guardando revisión…',
+      false,
+      '#detalleEstado'
+    );
+
+    const abRef = doc(
+      db,
+      COLECCIONES.ABONOS,
+      id
+    );
+
+    const resumenRef = doc(
+      db,
+      COLECCIONES.RESUMENES,
+      resumenId
+    );
+
+    const histRef = doc(
+      collection(db, COLECCIONES.HISTORIAL)
+    );
+
+    resultado = await runTransaction(
+      db,
+      async tx => {
+        const abonoSnap = await tx.get(abRef);
+        const resumenSnap = await tx.get(resumenRef);
+
+        if (!abonoSnap.exists()) {
+          throw new Error(
+            'El abono ya no existe. Actualice el detalle.'
+          );
+        }
+
+        if (!resumenSnap.exists()) {
+          throw new Error(
+            'El resumen del proveedor ya no existe. Actualice la información.'
+          );
+        }
+
+        const vigente = abonoSnap.data();
+        const resumen = resumenSnap.data();
+
+        if (
+          vigente.resumenId &&
+          vigente.resumenId !== resumenId
+        ) {
+          throw new Error(
+            'El abono cambió de resumen. Cierre el detalle y vuelva a abrirlo.'
+          );
+        }
+
+        const monedaDeuda = moneda(
+          resumen.monedaObligacion
+        );
+
+        if (
+          monedaDeuda === 'SIN_DEFINIR' ||
+          monedaAplicada !== monedaDeuda
+        ) {
+          throw new Error(
+            'La moneda aplicada debe coincidir con la moneda de la deuda. ' +
+            'Si la deuda no tiene moneda, primero debe configurarse.'
+          );
+        }
+
+        const antes = {
+          monedaAplicada:
+            vigente.monedaAplicada ||
+            vigente.monedaObligacion,
+
+          tipoCambioAplicado:
+            vigente.tipoCambioAplicado ?? null,
+
+          montoAplicado:
+            num(vigente.montoAplicado),
+
+          unidadesCubiertas:
+            num(vigente.unidadesCubiertas),
+
+          estadoRevision:
+            vigente.estadoRevision || 'PENDIENTE'
+        };
+
+        const diferencia =
+          montoAplicado -
+          num(vigente.montoAplicado);
+
+        const diferenciaUnidades =
+          unidadesCubiertas -
+          num(vigente.unidadesCubiertas);
+
+        const estabaPendiente =
+          norm(
+            vigente.estadoRevision || 'PENDIENTE'
+          ) === 'PENDIENTE';
+
+        const totalAplicado =
+          num(resumen.totalAplicado) +
+          diferencia;
+
+        const totalUnidadesCubiertas =
+          num(resumen.unidadesCubiertas) +
+          diferenciaUnidades;
+
+        const cambiosResumen = {
+          totalAplicado,
+
+          saldoPendiente:
+            num(resumen.totalObligacion) -
+            totalAplicado,
+
+          unidadesCubiertas:
+            totalUnidadesCubiertas,
+
+          unidadesPendientes: Math.max(
+            0,
+            num(resumen.unidadesTotales) -
+            totalUnidadesCubiertas
+          ),
+
+          abonosPendientesRevision: Math.max(
+            0,
+            num(resumen.abonosPendientesRevision) -
+            (estabaPendiente ? 1 : 0)
+          )
+        };
+
+        tx.update(abRef, {
+          ...despues,
+          revisadoAt: serverTimestamp(),
+          revisadoPor: state.usuario?.email || ''
+        });
+
+        tx.update(resumenRef, {
+          ...cambiosResumen,
+          actualizadoAt: serverTimestamp()
+        });
+
+        tx.set(histRef, {
+          anoViaje: Number(resumen.anoViaje),
+
+          destinoFinanciero:
+            resumen.destinoFinanciero || '',
+
+          proveedorId:
+            resumen.proveedorId || '',
+
+          proveedorNombre:
+            resumen.proveedorNombre || '',
+
+          abonoId: id,
+          accion: 'REVISION_ABONO',
+          motivo,
+          antes,
+          despues,
+
+          usuarioEmail:
+            state.usuario?.email || '',
+
+          creadoAt: serverTimestamp()
+        });
+
+        return cambiosResumen;
       }
-      const histRef = doc(collection(db, COLECCIONES.HISTORIAL));
-      tx.set(histRef, { anoViaje: Number(state.ano), destinoFinanciero: state.proveedor.destinoFinanciero, proveedorId: state.proveedor.proveedorId, proveedorNombre: state.proveedor.proveedorNombre, abonoId: id, accion: 'REVISION_ABONO', motivo, antes, despues, usuarioEmail: state.usuario?.email || '', creadoAt: serverTimestamp() });
-    });
-    $('#dialogEditarAbono').close();
-    Object.assign(actual, despues); state.proveedor.totalAplicado = num(state.proveedor.totalAplicado) + diferencia; state.proveedor.saldoPendiente = num(state.proveedor.totalObligacion) - num(state.proveedor.totalAplicado);
-    renderMetricas(); renderAbonos(); await cargarResumenes(); setEstado('Revisión guardada correctamente.', false, '#detalleEstado');
-  } catch (e) { console.error(e); $('#errorEditarAbono').textContent = `No fue posible guardar: ${e.message}`; }
+    );
+  } catch (e) {
+    console.error(e);
+
+    errorNodo.textContent =
+      `No fue posible guardar: ${e.message}`;
+
+    setEstado(
+      'No se pudo guardar la revisión.',
+      true,
+      '#detalleEstado'
+    );
+
+    return;
+  } finally {
+    if (botonGuardar) {
+      botonGuardar.disabled = false;
+    }
+  }
+
+  $('#dialogEditarAbono').close();
+
+  Object.assign(actual, despues);
+  Object.assign(proveedorActual, resultado);
+
+  renderMetricas();
+  renderAbonos();
+
+  try {
+    await cargarResumenes();
+
+    state.historial = await consultarHistorial(
+      proveedorActual.proveedorId
+    );
+
+    renderHistorial();
+
+    setEstado(
+      'Revisión guardada correctamente.',
+      false,
+      '#detalleEstado'
+    );
+  } catch (e) {
+    console.error(e);
+
+    setEstado(
+      'La revisión fue guardada, pero no se pudo actualizar toda la información. ' +
+      'Cierre y vuelva a abrir el detalle.',
+      true,
+      '#detalleEstado'
+    );
+  }
 }
 
 function filasResumenes(lista) {
