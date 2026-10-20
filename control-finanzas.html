@@ -45,7 +45,21 @@
     .cf-destinations { display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .cf-destination { text-align: left; padding: 15px; border: 1px solid var(--cf-border); border-radius: 12px; background: var(--cf-card); cursor: pointer; min-height: 115px; }
     .cf-destination.active { border-color: var(--cf-dark); box-shadow: inset 0 0 0 1px var(--cf-dark); }
-    .cf-destination-name { display: block; font-size: 1.04rem; font-weight: 800; margin-bottom: 9px; }
+    .cf-destination-name {
+      display: block;
+      margin-bottom: 9px;
+      font-size: 1.04rem;
+      font-weight: 800;
+      color: var(--cf-text);
+    }
+    
+    .cf-destination {
+      color: var(--cf-text);
+    }
+    
+    .cf-destination.active .cf-destination-name {
+      color: var(--cf-blue);
+    }
     .cf-destination-balance { display: block; margin-top: 4px; font-weight: 700; color: var(--cf-red); }
     .cf-card { background: var(--cf-card); border: 1px solid var(--cf-border); border-radius: 12px; padding: 16px; }
     .cf-financial-groups { display: grid; gap: 20px; }
