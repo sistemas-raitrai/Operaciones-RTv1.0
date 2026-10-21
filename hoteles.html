@@ -280,6 +280,60 @@
           </select>
         </div>
       </fieldset>
+      <fieldset>
+        <legend>Condiciones económicas</legend>
+      
+        <label>
+          Moneda
+          <select id="m-fin-moneda">
+            <option value="">Pendiente de configurar</option>
+            <option value="CLP">Peso chileno — CLP</option>
+            <option value="USD">Dólar — USD</option>
+            <option value="BRL">Real — BRL</option>
+            <option value="ARS">Peso argentino — ARS</option>
+          </select>
+        </label>
+      
+        <p>
+          Tarifas por persona por noche.
+          Dejar vacío significa pendiente; cero significa sin costo.
+        </p>
+      
+        <label>
+          Alojamiento con desayuno
+          <input
+            id="m-fin-ad"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </label>
+      
+        <label>
+          Media pensión
+          <input
+            id="m-fin-mp"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </label>
+      
+        <label>
+          Pensión completa
+          <input
+            id="m-fin-pc"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </label>
+      
+        <label>
+          Observaciones del acuerdo
+          <textarea id="m-fin-nota" rows="3"></textarea>
+        </label>
+      </fieldset>
       <label>Disponible Desde:<input id="m-fechaInicio" type="date" required/></label>
       <label>Hasta:<input id="m-fechaFin" type="date" required/></label>
       <fieldset><legend>Distribución habitaciones</legend>
@@ -308,6 +362,118 @@
         <select id="a-grupo" required></select>
       </label>
       <div id="grupo-fechas" style="font-size:.9em;color:#555;margin:.5em 0;"></div>
+
+      <fieldset>
+        <legend>Acuerdo económico de esta estadía</legend>
+      
+        <label>
+          Pensión
+          <select id="a-fin-pension">
+            <option value="">Usar la del hotel</option>
+            <option value="alojamiento_desayuno">
+              Alojamiento con desayuno
+            </option>
+            <option value="media">Media pensión</option>
+            <option value="completa">Pensión completa</option>
+          </select>
+        </label>
+      
+        <label>
+          Personas cobradas
+          <input
+            id="a-fin-personas"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="Pendiente de confirmar"
+          />
+        </label>
+      
+        <small>
+          No modifica los pasajeros asignados.
+          Indica cuántas personas cobra el hotel,
+          considerando el acuerdo de liberados y personal.
+        </small>
+      
+        <label>
+          Forma de calcular
+          <select id="a-fin-modalidad">
+            <option value="pax_noche">
+              Personas × noches × tarifa
+            </option>
+            <option value="total">
+              Total acordado de la estadía
+            </option>
+          </select>
+        </label>
+      
+        <label>
+          Moneda particular
+          <select id="a-fin-moneda">
+            <option value="">Usar la del hotel</option>
+            <option value="CLP">CLP</option>
+            <option value="USD">USD</option>
+            <option value="BRL">BRL</option>
+            <option value="ARS">ARS</option>
+          </select>
+        </label>
+      
+        <label>
+          Tarifa particular por persona por noche
+          <input
+            id="a-fin-tarifa"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Vacío: usar tarifa del hotel"
+          />
+        </label>
+      
+        <label>
+          Total acordado de la estadía
+          <input
+            id="a-fin-total"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </label>
+      
+        <label>
+          Adicionales
+          <input
+            id="a-fin-adicionales"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </label>
+      
+        <label>
+          Descuentos
+          <input
+            id="a-fin-descuentos"
+            type="number"
+            min="0"
+            step="0.01"
+          />
+        </label>
+      
+        <label>
+          Detalle o motivo del acuerdo
+          <textarea
+            id="a-fin-detalle"
+            rows="3"
+            placeholder="Ej.: suplemento single, habitación extra o descuento acordado."
+          ></textarea>
+        </label>
+      
+        <small>
+          Adicionales y descuentos se expresan en la moneda
+          de esta estadía. En modalidad total, el monto
+          acordado debe incluirlos: no se suman nuevamente.
+        </small>
+      </fieldset>
 
       <!-- COMPARATIVO SISTEMA DE PAGOS -->
       <div id="pagos-comparativo-box" style="border:1px solid #d7dbe3; border-radius:8px; padding:10px; margin:10px 0; background:#f8fafc;">
