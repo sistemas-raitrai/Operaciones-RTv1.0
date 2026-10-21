@@ -320,10 +320,905 @@ function renderCostosHoteles(rows) {
 }
 
 function renderObligaciones() {
-  const rows = [...state.obligaciones].sort((a,b) => String(a.fechaServicio || '').localeCompare(String(b.fechaServicio || '')));
-  const tipo = norm(state.proveedor?.tipo);
-  const tabla = tipo === 'HOTEL' ? renderCostosHoteles(rows) : renderCostosActividades(rows);
-  $('#panel-obligaciones').innerHTML = `<div class="cf-section-head"><div><h3>${tipo === 'HOTEL' ? 'Detalle de costos de hotel' : 'Detalle de costos de actividades'}</h3><div class="cf-muted">Pax acordados, reales y cobrados se conservan como datos independientes.</div></div><span class="cf-muted">${rows.length} registro(s)</span></div>${tabla}${rows.length ? '' : '<div class="cf-empty">No hay costos registrados.</div>'}`;
+  const rows = [...state.obligaciones].sort(
+    (a, b) =>
+      String(a.fechaServicio || '').localeCompare(
+        String(b.fechaServicio || '')
+      )
+  );
+
+  const esHotel =
+    norm(state.proveedor?.tipo) === 'HOTEL';
+
+  const tabla = esHotel
+    ? renderCostosHoteles(rows)
+    : renderCostosActividades(rows);
+
+  let editores = '';
+
+  if (esHotel && rows.length) {
+    const hoteles = [
+      ...new Map(
+        rows
+          .filter(o => o.hotelId)
+          .map(o => [
+            o.hotelId,
+            {
+              hotelId: o.hotelId,
+              nombre:
+                o.servicioNombre ||
+                o.hotelNombre ||
+                o.hotelId
+            }
+          ])
+      ).values()
+    ];
+
+    editores = `
+      <div class="cf-card" style="margin:14px 0;">
+        <h3>Condiciones económicas</h3>
+
+        <p class="cf-muted">
+          Las tarifas generales se comparten con Hoteles.
+          Los acuerdos particulares se guardan
+          en la asignación del grupo.
+        </p>
+
+        <div class="cf-row" style="flex-wrap:wrap;">
+          ${hoteles.map(h => `
+            <button
+              type="button"
+              class="cf-btn btn-tarifa-hotel"
+              data-hotel="${esc(h.hotelId)}"
+            >
+              Tarifas: ${esc(h.nombre)}
+            </button>
+          `).join('')}
+        </div>
+
+        <div class="cf-table-wrap" style="margin-top:14px;">
+          <table class="cf-table">
+            <thead>
+              <tr>
+                <th>Grupo</th>
+                <th>Estadía</th>
+                <th></th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${rows.map(o => `
+                <tr>
+                  <td>
+                    ${esc(o.numeroNegocio || '')}
+                    · ${esc(o.nombreGrupo || '')}
+                  </td>
+
+                  <td>
+                    ${fechaTexto(o.checkIn)}
+                    –
+                    ${fechaTexto(o.checkOut)}
+                  </td>
+
+                  <td>
+                    <button
+                      type="button"
+                      class="cf-btn btn-acuerdo-hotel"
+                      data-obligacion="${esc(o.id)}"
+                    >
+                      Editar acuerdo
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  $('#panel-obligaciones').innerHTML = `
+    <div class="cf-section-head">
+      <div>
+        <h3>
+          ${
+            esHotel
+              ? 'Detalle de costos de hotel'
+              : 'Detalle de costos de actividades'
+          }
+        </h3>
+
+        <div class="cf-muted">
+          Pax acordados, reales y cobrados
+          se conservan como datos independientes.
+        </div>
+      </div>
+
+      <span class="cf-muted">
+        ${rows.length} registro(s)
+      </span>
+    </div>
+
+    ${editores}
+    ${tabla}
+
+    ${
+      rows.length
+        ? ''
+        : '<div class="cf-empty">No hay costos registrados.</div>'
+    }
+  `;
+
+  const panel = $('#panel-obligaciones');
+
+  $$('.btn-tarifa-hotel', panel).forEach(btn => {
+    btn.addEventListener('click', () => {
+      abrirCondicionesHotelFinanzas({
+        tipo: 'general',
+        hotelId: btn.dataset.hotel
+      });
+    });
+  });
+
+  $$('.btn-acuerdo-hotel', panel).forEach(btn => {
+    btn.addEventListener('click', () => {
+      const obligacion = rows.find(
+        o => o.id === btn.dataset.obligacion
+      );
+
+      if (obligacion) {
+        abrirCondicionesHotelFinanzas({
+          tipo: 'grupo',
+          obligacion
+        });
+      }
+    });
+  });
+}
+
+async function abrirCondicionesHotelFinanzas({
+  tipo,
+  hotelId,
+  obligacion
+}) {
+  try {
+    const ano = Number(state.ano);
+
+    hotelId = hotelId || obligacion?.hotelId;
+
+    if (!hotelId) {
+      throw new Error(
+        'No se pudo identificar el hotel.'
+      );
+    }
+
+    const hotelSnap = await getDoc(
+      doc(db, 'hoteles', hotelId)
+    );
+
+    if (!hotelSnap.exists()) {
+      throw new Error(
+        'El hotel ya no existe.'
+      );
+    }
+
+    const hotel = hotelSnap.data();
+
+    let ref;
+    let valores;
+    let datosLeidos;
+
+    if (tipo === 'general') {
+      ref = doc(
+        db,
+        'FinanzasHotelesTarifas',
+        `${ano}__hotel__${hotelId}`
+      );
+
+      const snap = await getDoc(ref);
+
+      datosLeidos = snap.exists()
+        ? snap.data()
+        : null;
+
+      const tarifa = datosLeidos || {};
+
+      valores = {
+        moneda:
+          tarifa.moneda === 'SIN_DEFINIR'
+            ? ''
+            : tarifa.moneda || '',
+
+        ad:
+          tarifa.tarifasPorPension
+            ?.alojamiento_desayuno ?? '',
+
+        mp:
+          tarifa.tarifasPorPension?.media ?? '',
+
+        pc:
+          tarifa.tarifasPorPension?.completa ?? '',
+
+        detalle:
+          tarifa.observaciones || ''
+      };
+    } else {
+      ref = await localizarAsignacionFinanzas(
+        obligacion,
+        ano
+      );
+
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        throw new Error(
+          'La asignación ya no existe.'
+        );
+      }
+
+      datosLeidos = snap.data();
+
+      valores = {
+        ...(datosLeidos.finanzas || {})
+      };
+    }
+
+    mostrarEditorHotelFinanzas({
+      tipo,
+      ano,
+      hotelId,
+      hotel,
+      ref,
+      valores,
+      datosLeidos
+    });
+  } catch (error) {
+    console.error(error);
+
+    setEstado(
+      error.message ||
+      'No se pudieron cargar las condiciones.',
+      true,
+      '#detalleEstado'
+    );
+  }
+}
+
+async function localizarAsignacionFinanzas(
+  obligacion,
+  ano
+) {
+  if (obligacion.fuenteAsignacionId) {
+    const ref = doc(
+      db,
+      'hotelAssignments',
+      obligacion.fuenteAsignacionId
+    );
+
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      throw new Error(
+        'No se encontró la asignación de esta obligación.'
+      );
+    }
+
+    const a = snap.data();
+
+    if (
+      String(a.hotelId) !==
+        String(obligacion.hotelId) ||
+
+      String(a.grupoId) !==
+        String(obligacion.grupoId) ||
+
+      Number(a.anoViaje || 2025) !== ano
+    ) {
+      throw new Error(
+        'La asignación cambió de hotel, grupo o año. ' +
+        'Actualice la información antes de editar.'
+      );
+    }
+
+    return ref;
+  }
+
+  /*
+   * Compatibilidad con obligaciones antiguas
+   * sin fuenteAsignacionId.
+   */
+  const snap = await getDocs(
+    query(
+      collection(db, 'hotelAssignments'),
+      where(
+        'hotelId',
+        '==',
+        obligacion.hotelId
+      )
+    )
+  );
+
+  const coincidencias = snap.docs.filter(d => {
+    const a = d.data();
+
+    return (
+      String(a.grupoId) ===
+        String(obligacion.grupoId) &&
+
+      Number(a.anoViaje || 2025) === ano &&
+
+      String(a.checkIn || '') ===
+        String(obligacion.checkIn || '') &&
+
+      String(a.checkOut || '') ===
+        String(obligacion.checkOut || '')
+    );
+  });
+
+  if (coincidencias.length !== 1) {
+    throw new Error(
+      'No se pudo identificar una asignación única. ' +
+      'Revise esta estadía desde Hoteles.'
+    );
+  }
+
+  return coincidencias[0].ref;
+}
+
+function mostrarEditorHotelFinanzas(contexto) {
+  const {
+    tipo,
+    ano,
+    hotel,
+    valores: v
+  } = contexto;
+
+  let dialogo = $('#dialogCondicionesHotel');
+
+  if (!dialogo) {
+    dialogo = document.createElement('dialog');
+    dialogo.id = 'dialogCondicionesHotel';
+    document.body.appendChild(dialogo);
+  }
+
+  const general = tipo === 'general';
+
+  const campoNumero = (nombre, titulo, valor, entero = false) => `
+    <div class="cf-field">
+      <label for="hf-${nombre}">${titulo}</label>
+
+      <input
+        id="hf-${nombre}"
+        name="${nombre}"
+        type="number"
+        min="0"
+        step="${entero ? '1' : '0.01'}"
+        value="${esc(valor ?? '')}"
+      >
+    </div>
+  `;
+
+  const opcionesMoneda = `
+    <option value="">${
+      general
+        ? 'Pendiente de configurar'
+        : 'Usar moneda del hotel'
+    }</option>
+
+    ${['CLP', 'USD', 'BRL', 'ARS'].map(m => `
+      <option
+        value="${m}"
+        ${v.moneda === m ? 'selected' : ''}
+      >
+        ${m}
+      </option>
+    `).join('')}
+  `;
+
+  dialogo.innerHTML = `
+    <div class="cf-dialog-head">
+      <h3>
+        ${
+          general
+            ? 'Tarifas generales'
+            : 'Acuerdo de la estadía'
+        }
+      </h3>
+
+      <p>${esc(hotel.nombre || '')} · ${ano}</p>
+    </div>
+
+    <form class="cf-dialog-body">
+      <p class="cf-muted">
+        ${
+          general
+            ? 'Tarifas por persona por noche. Vacío significa pendiente; cero significa sin costo.'
+            : 'Los valores vacíos utilizan las condiciones generales cuando corresponda. Las personas cobradas deben confirmarse expresamente.'
+        }
+      </p>
+
+      <div class="cf-form-grid">
+        <div class="cf-field">
+          <label for="hf-moneda">Moneda</label>
+
+          <select id="hf-moneda" name="moneda">
+            ${opcionesMoneda}
+          </select>
+        </div>
+
+        ${
+          general
+            ? `
+              ${campoNumero(
+                'ad',
+                'Alojamiento con desayuno',
+                v.ad
+              )}
+
+              ${campoNumero(
+                'mp',
+                'Media pensión',
+                v.mp
+              )}
+
+              ${campoNumero(
+                'pc',
+                'Pensión completa',
+                v.pc
+              )}
+            `
+            : `
+              <div class="cf-field">
+                <label for="hf-pension">Pensión</label>
+
+                <select id="hf-pension" name="pension">
+                  ${[
+                    ['', 'Usar la del hotel'],
+                    ['alojamiento_desayuno', 'Desayuno'],
+                    ['media', 'Media pensión'],
+                    ['completa', 'Pensión completa']
+                  ].map(([valor, etiqueta]) => `
+                    <option
+                      value="${valor}"
+                      ${
+                        (v.pension || '') === valor
+                          ? 'selected'
+                          : ''
+                      }
+                    >
+                      ${etiqueta}
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+
+              <div class="cf-field">
+                <label for="hf-modalidad">Cálculo</label>
+
+                <select id="hf-modalidad" name="modalidad">
+                  <option
+                    value="pax_noche"
+                    ${
+                      v.modalidad !== 'total'
+                        ? 'selected'
+                        : ''
+                    }
+                  >
+                    Personas × noches × tarifa
+                  </option>
+
+                  <option
+                    value="total"
+                    ${
+                      v.modalidad === 'total'
+                        ? 'selected'
+                        : ''
+                    }
+                  >
+                    Total acordado
+                  </option>
+                </select>
+              </div>
+
+              ${campoNumero(
+                'personasCobradas',
+                'Personas cobradas',
+                v.personasCobradas,
+                true
+              )}
+
+              ${campoNumero(
+                'tarifaParticular',
+                'Tarifa particular por persona por noche',
+                v.tarifaParticular
+              )}
+
+              ${campoNumero(
+                'totalAcordado',
+                'Total acordado de la estadía',
+                v.totalAcordado
+              )}
+
+              ${campoNumero(
+                'adicionales',
+                'Adicionales',
+                v.adicionales
+              )}
+
+              ${campoNumero(
+                'descuentos',
+                'Descuentos',
+                v.descuentos
+              )}
+
+              <p class="cf-muted wide">
+                En modalidad total, el monto debe incluir
+                todos los ajustes. Deje adicionales
+                y descuentos en cero.
+              </p>
+            `
+        }
+
+        <div class="cf-field wide">
+          <label for="hf-detalle">
+            ${
+              general
+                ? 'Observaciones del acuerdo'
+                : 'Detalle del acuerdo particular'
+            }
+          </label>
+
+          <textarea
+            id="hf-detalle"
+            name="detalle"
+            rows="3"
+          >${esc(v.detalle || '')}</textarea>
+        </div>
+
+        <div class="cf-field wide">
+          <label for="hf-motivo">
+            Motivo de esta modificación
+          </label>
+
+          <textarea
+            id="hf-motivo"
+            name="motivo"
+            rows="2"
+            required
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="cf-status error" data-error></div>
+
+      <div class="cf-form-actions">
+        <button type="button" class="cf-btn" data-cancelar>
+          Cancelar
+        </button>
+
+        <button type="submit" class="cf-btn blue">
+          Guardar condiciones
+        </button>
+      </div>
+    </form>
+  `;
+
+  $('[data-cancelar]', dialogo).addEventListener(
+    'click',
+    () => dialogo.close()
+  );
+
+  $('form', dialogo).addEventListener(
+    'submit',
+    event => guardarCondicionesHotelFinanzas(
+      event,
+      contexto,
+      dialogo
+    )
+  );
+
+  if (!dialogo.open) {
+    dialogo.showModal();
+  }
+}
+
+async function guardarCondicionesHotelFinanzas(
+  event,
+  contexto,
+  dialogo
+) {
+  event.preventDefault();
+
+  const {
+    tipo,
+    ano,
+    hotelId,
+    hotel,
+    ref,
+    datosLeidos
+  } = contexto;
+
+  const formulario = event.currentTarget;
+
+  const boton = $(
+    'button[type="submit"]',
+    formulario
+  );
+
+  const errorNodo = $('[data-error]', formulario);
+
+  if (boton.disabled) return;
+
+  errorNodo.textContent = '';
+
+  const valor = nombre =>
+    formulario.elements.namedItem(nombre).value.trim();
+
+  const opcional = nombre => {
+    const texto = valor(nombre);
+
+    if (texto === '') return null;
+
+    const numero = Number(texto);
+
+    if (!Number.isFinite(numero) || numero < 0) {
+      throw new Error(
+        'Los importes deben ser números mayores o iguales a cero.'
+      );
+    }
+
+    return numero;
+  };
+
+  try {
+    const motivo = valor('motivo');
+
+    if (!motivo) {
+      throw new Error(
+        'Indique el motivo de la modificación.'
+      );
+    }
+
+    const codigoMoneda = valor('moneda');
+
+    if (
+      codigoMoneda &&
+      !['CLP', 'USD', 'BRL', 'ARS'].includes(codigoMoneda)
+    ) {
+      throw new Error(
+        'La moneda seleccionada no es válida.'
+      );
+    }
+
+    let condiciones;
+
+    if (tipo === 'general') {
+      const tarifasPorPension = {
+        alojamiento_desayuno: opcional('ad'),
+        media: opcional('mp'),
+        completa: opcional('pc')
+      };
+
+      if (
+        !codigoMoneda &&
+        Object.values(tarifasPorPension).some(
+          n => n !== null
+        )
+      ) {
+        throw new Error(
+          'Seleccione la moneda de las tarifas.'
+        );
+      }
+
+      condiciones = {
+        versionEsquema: 2,
+        anoViaje: ano,
+        hotelId,
+        hotelNombre: hotel.nombre || '',
+        destino: hotel.destino || '',
+        ciudad: hotel.ciudad || '',
+        moneda: codigoMoneda || 'SIN_DEFINIR',
+        tipoTarifa: 'pax_noche',
+        tarifasPorPension,
+        observaciones: valor('detalle')
+      };
+    } else {
+      const modalidad = valor('modalidad');
+      const personas = opcional('personasCobradas');
+      const tarifa = opcional('tarifaParticular');
+      const total = opcional('totalAcordado');
+      const adicionales = opcional('adicionales') ?? 0;
+      const descuentos = opcional('descuentos') ?? 0;
+      const detalle = valor('detalle');
+
+      if (
+        personas !== null &&
+        !Number.isInteger(personas)
+      ) {
+        throw new Error(
+          'Las personas cobradas deben ser un número entero.'
+        );
+      }
+
+      if (!['pax_noche', 'total'].includes(modalidad)) {
+        throw new Error(
+          'La modalidad no es válida.'
+        );
+      }
+
+      if (modalidad === 'total' && total === null) {
+        throw new Error(
+          'Ingrese el total acordado.'
+        );
+      }
+
+      if (
+        modalidad === 'total' &&
+        (adicionales > 0 || descuentos > 0)
+      ) {
+        throw new Error(
+          'El total acordado debe incluir los ajustes. ' +
+          'Deje adicionales y descuentos en cero.'
+        );
+      }
+
+      if (
+        (
+          modalidad === 'total' ||
+          tarifa !== null ||
+          adicionales > 0 ||
+          descuentos > 0
+        ) &&
+        !detalle
+      ) {
+        throw new Error(
+          'Describa el acuerdo particular.'
+        );
+      }
+
+      condiciones = {
+        versionEsquema: 2,
+        pension: valor('pension'),
+        modalidad,
+        moneda: codigoMoneda,
+        personasCobradas: personas,
+
+        tarifaParticular:
+          modalidad === 'pax_noche' ? tarifa : null,
+
+        totalAcordado:
+          modalidad === 'total' ? total : null,
+
+        adicionales,
+        descuentos,
+        detalle
+      };
+    }
+
+    boton.disabled = true;
+
+    const historialRef = doc(
+      collection(db, COLECCIONES.HISTORIAL)
+    );
+
+    const email = state.usuario?.email || '';
+
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(ref);
+
+      const vigente = snap.exists()
+        ? snap.data()
+        : null;
+
+      /*
+       * Si alguien cambió las condiciones mientras
+       * el editor estaba abierto, volver a cargarlas.
+       */
+      const antesComparable = tipo === 'general'
+        ? datosLeidos
+        : datosLeidos?.finanzas || null;
+
+      const vigenteComparable = tipo === 'general'
+        ? vigente
+        : vigente?.finanzas || null;
+
+      if (
+        JSON.stringify(antesComparable) !==
+        JSON.stringify(vigenteComparable)
+      ) {
+        throw new Error(
+          'Las condiciones cambiaron mientras editaba. ' +
+          'Cierre y vuelva a abrir el editor.'
+        );
+      }
+
+      if (
+        tipo !== 'general' &&
+        (
+          !vigente ||
+          String(vigente.hotelId) !== String(hotelId) ||
+          Number(vigente.anoViaje || 2025) !== ano ||
+          String(vigente.grupoId) !==
+            String(datosLeidos.grupoId) ||
+          String(vigente.checkIn || '') !==
+            String(datosLeidos.checkIn || '') ||
+          String(vigente.checkOut || '') !==
+            String(datosLeidos.checkOut || '')
+        )
+      ) {
+        throw new Error(
+          'La asignación cambió. Vuelva a abrir el editor.'
+        );
+      }
+
+      const despues = {
+        ...condiciones,
+        actualizadoPor: email,
+        actualizadoAt: serverTimestamp()
+      };
+
+      if (tipo === 'general') {
+        tx.set(ref, despues, { merge: true });
+      } else {
+        tx.update(ref, {
+          finanzas: despues,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      tx.set(historialRef, {
+        anoViaje: ano,
+
+        proveedorId:
+          state.proveedor?.proveedorId || '',
+
+        proveedorNombre:
+          state.proveedor?.proveedorNombre || '',
+
+        destinoFinanciero:
+          state.proveedor?.destinoFinanciero || '',
+
+        hotelId,
+        fuentePath: ref.path,
+
+        accion: tipo === 'general'
+          ? 'EDICION_TARIFA_HOTEL'
+          : 'EDICION_ACUERDO_HOTEL',
+
+        motivo,
+        antes: vigenteComparable,
+        despues,
+        usuarioEmail: email,
+        creadoAt: serverTimestamp()
+      });
+    });
+  } catch (error) {
+    console.error(error);
+    errorNodo.textContent = error.message;
+    return;
+  } finally {
+    boton.disabled = false;
+  }
+
+  dialogo.close();
+
+  setEstado(
+    'Condiciones guardadas y disponibles en Hoteles. ' +
+    'Los costos y saldos mostrados aún requieren recálculo.',
+    false,
+    '#detalleEstado'
+  );
+
+  try {
+    state.historial = await consultarHistorial(
+      state.proveedor.proveedorId
+    );
+
+    renderHistorial();
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 function renderAbonos() {
@@ -481,8 +1376,60 @@ function renderHistorial() {
 }
 
 function resumenCambio(v) {
-  if (!v || typeof v !== 'object') return '—';
-  return [`TC: ${v.tipoCambioAplicado ?? '—'}`, `Aplicado: ${v.montoAplicado ?? '—'}`, `Cobertura: ${v.unidadesCubiertas ?? '—'}`].join(' · ');
+  if (!v || typeof v !== 'object') {
+    return '—';
+  }
+
+  if (v.tarifasPorPension) {
+    const t = v.tarifasPorPension;
+
+    const tarifa = valor =>
+      valor === null || valor === undefined
+        ? 'Pendiente'
+        : fmtNum(valor);
+
+    return [
+      `Moneda: ${v.moneda || 'Pendiente'}`,
+      `AD: ${tarifa(t.alojamiento_desayuno)}`,
+      `MP: ${tarifa(t.media)}`,
+      `PC: ${tarifa(t.completa)}`,
+      v.observaciones || ''
+    ].filter(Boolean).join(' · ');
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      v,
+      'personasCobradas'
+    )
+  ) {
+    const mostrar = valor =>
+      valor === null || valor === undefined
+        ? 'Pendiente'
+        : fmtNum(valor);
+
+    return [
+      `Modalidad: ${v.modalidad || 'pax_noche'}`,
+      `Pensión: ${v.pension || 'Del hotel'}`,
+      `Moneda: ${v.moneda || 'Del hotel'}`,
+      `Personas: ${mostrar(v.personasCobradas)}`,
+      `Tarifa: ${
+        v.tarifaParticular == null
+          ? 'Del hotel'
+          : fmtNum(v.tarifaParticular)
+      }`,
+      `Total acordado: ${mostrar(v.totalAcordado)}`,
+      `Adicionales: ${fmtNum(v.adicionales || 0)}`,
+      `Descuentos: ${fmtNum(v.descuentos || 0)}`,
+      v.detalle || ''
+    ].filter(Boolean).join(' · ');
+  }
+
+  return [
+    `TC: ${v.tipoCambioAplicado ?? '—'}`,
+    `Aplicado: ${v.montoAplicado ?? '—'}`,
+    `Cobertura: ${v.unidadesCubiertas ?? '—'}`
+  ].join(' · ');
 }
 
 function activarTab(nombre) {
