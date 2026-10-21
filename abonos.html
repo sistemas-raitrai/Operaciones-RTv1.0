@@ -2620,6 +2620,102 @@
               />
             </div>
 
+            <fieldset style="grid-column:1 / -1;">
+              <legend>Aplicación del abono a la deuda</legend>
+            
+              <p>
+                El monto y la moneda del pago se conservan.
+                Aquí se indica cuánto descuenta de la deuda.
+              </p>
+            
+              <div class="field">
+                <label for="abFinMoneda">Moneda de la deuda</label>
+            
+                <select id="abFinMoneda" class="input">
+                  <option value="">Pendiente de definir</option>
+                  <option value="CLP">CLP</option>
+                  <option value="USD">USD</option>
+                  <option value="BRL">BRL</option>
+                  <option value="ARS">ARS</option>
+                </select>
+              </div>
+            
+              <div class="field">
+                <label for="abFinModo">Aplicación</label>
+            
+                <select id="abFinModo" class="input">
+                  <option value="PENDIENTE">
+                    Pendiente de completar
+                  </option>
+            
+                  <option value="MISMA_MONEDA">
+                    Mismo monto y misma moneda
+                  </option>
+            
+                  <option value="TC">
+                    Calcular mediante tipo de cambio
+                  </option>
+            
+                  <option value="MANUAL">
+                    Monto reconocido por el proveedor
+                  </option>
+                </select>
+              </div>
+            
+              <div class="field">
+                <label id="abFinTCLabel" for="abFinTC">
+                  Tipo de cambio
+                </label>
+            
+                <input
+                  id="abFinTC"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="any"
+                />
+            
+                <small>
+                  Se multiplica el monto enviado por este TC.
+                  Ejemplo: 1 USD = 5 BRL.
+                </small>
+              </div>
+            
+              <div class="field">
+                <label for="abFinAplicado">
+                  Monto aplicado en la moneda de la deuda
+                </label>
+            
+                <input
+                  id="abFinAplicado"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  readonly
+                />
+              </div>
+            
+              <div class="field">
+                <label for="abFinDetalle">
+                  Observación de la aplicación
+                </label>
+            
+                <textarea
+                  id="abFinDetalle"
+                  class="input"
+                  rows="3"
+                  placeholder="Obligatorio si ingresas un monto reconocido manualmente."
+                ></textarea>
+              </div>
+            
+              <div
+                id="abFinResumen"
+                role="status"
+                aria-live="polite"
+              ></div>
+            </fieldset>
+
             <div class="field">
               <label for="abFormaPago">
                 Forma de pago
