@@ -6,7 +6,7 @@ import { getAuth, onAuthStateChanged }
 import {
   collection, getDocs, doc, getDoc,
   addDoc, updateDoc, deleteDoc, setDoc,
-  serverTimestamp, query, where, orderBy, Timestamp
+  serverTimestamp, query, where, orderBy, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 let hoteles = [], grupos = [], asignaciones = [];
@@ -31,6 +31,225 @@ function canEditPax() {
   return currentUserEmail && PAX_EDITORS.has(currentUserEmail.toLowerCase());
 }
 
+let tarifasFinancierasHotel = new Map();
+
+function idTarifaHotelFinanzas(hotelId, ano) {
+  return `${Number(ano)}__hotel__${hotelId}`;
+}
+
+function numeroOpcionalHotel(id) {
+  const valor = document.getElementById(id).value.trim();
+
+  if (valor === '') return null;
+
+  const numero = Number(valor);
+
+  if (!Number.isFinite(numero) || numero < 0) {
+    throw new Error(
+      'Los valores económicos deben ser números mayores o iguales a cero.'
+    );
+  }
+
+  return numero;
+}
+
+function leerTarifaGeneralHotel() {
+  const moneda =
+    document.getElementById('m-fin-moneda').value;
+
+  const tarifasPorPension = {
+    alojamiento_desayuno:
+      numeroOpcionalHotel('m-fin-ad'),
+
+    media:
+      numeroOpcionalHotel('m-fin-mp'),
+
+    completa:
+      numeroOpcionalHotel('m-fin-pc')
+  };
+
+  const hayTarifas = Object.values(
+    tarifasPorPension
+  ).some(valor => valor !== null);
+
+  if (hayTarifas && !moneda) {
+    throw new Error(
+      'Selecciona la moneda de las tarifas del hotel.'
+    );
+  }
+
+  return {
+    versionEsquema: 2,
+    moneda: moneda || 'SIN_DEFINIR',
+    tipoTarifa: 'pax_noche',
+    tarifasPorPension,
+
+    observaciones:
+      document.getElementById('m-fin-nota')
+        .value.trim()
+  };
+}
+
+function cargarFormularioTarifaHotel(hotelId) {
+  const id = hotelId
+    ? idTarifaHotelFinanzas(
+        hotelId,
+        anoHotelActivo
+      )
+    : '';
+
+  const tarifa =
+    tarifasFinancierasHotel.get(id);
+
+  const moneda =
+    tarifa?.moneda || '';
+
+  document.getElementById('m-fin-moneda').value =
+    ['CLP', 'USD', 'BRL', 'ARS'].includes(moneda)
+      ? moneda
+      : '';
+
+  document.getElementById('m-fin-ad').value =
+    tarifa?.tarifasPorPension
+      ?.alojamiento_desayuno ?? '';
+
+  document.getElementById('m-fin-mp').value =
+    tarifa?.tarifasPorPension?.media ?? '';
+
+  document.getElementById('m-fin-pc').value =
+    tarifa?.tarifasPorPension?.completa ?? '';
+
+  document.getElementById('m-fin-nota').value =
+    tarifa?.observaciones || '';
+}
+
+function cargarFormularioAcuerdoHotel(asignacion) {
+  const f = asignacion?.finanzas || {};
+
+  document.getElementById('a-fin-pension').value =
+    f.pension || '';
+
+  document.getElementById('a-fin-personas').value =
+    f.personasCobradas ?? '';
+
+  document.getElementById('a-fin-modalidad').value =
+    f.modalidad || 'pax_noche';
+
+  document.getElementById('a-fin-moneda').value =
+    f.moneda || '';
+
+  document.getElementById('a-fin-tarifa').value =
+    f.tarifaParticular ?? '';
+
+  document.getElementById('a-fin-total').value =
+    f.totalAcordado ?? '';
+
+  document.getElementById('a-fin-adicionales').value =
+    f.adicionales ?? '';
+
+  document.getElementById('a-fin-descuentos').value =
+    f.descuentos ?? '';
+
+  document.getElementById('a-fin-detalle').value =
+    f.detalle || '';
+}
+
+function leerAcuerdoEconomicoHotel() {
+  const pension =
+    document.getElementById('a-fin-pension').value;
+
+  const modalidad =
+    document.getElementById('a-fin-modalidad').value;
+
+  const moneda =
+    document.getElementById('a-fin-moneda').value;
+
+  const personasCobradas =
+    numeroOpcionalHotel('a-fin-personas');
+
+  const tarifaParticular =
+    numeroOpcionalHotel('a-fin-tarifa');
+
+  const totalAcordado =
+    numeroOpcionalHotel('a-fin-total');
+
+  const adicionales =
+    numeroOpcionalHotel('a-fin-adicionales') ?? 0;
+
+  const descuentos =
+    numeroOpcionalHotel('a-fin-descuentos') ?? 0;
+
+  const detalle =
+    document.getElementById('a-fin-detalle')
+      .value.trim();
+
+  if (
+    personasCobradas !== null &&
+    !Number.isInteger(personasCobradas)
+  ) {
+    throw new Error(
+      'Las personas cobradas deben ser un número entero.'
+    );
+  }
+
+  if (
+    modalidad === 'total' &&
+    totalAcordado === null
+  ) {
+    throw new Error(
+      'Ingresa el total acordado de la estadía.'
+    );
+  }
+
+  if (
+    modalidad === 'total' &&
+    (adicionales > 0 || descuentos > 0)
+  ) {
+    throw new Error(
+      'En modalidad total, incorpora adicionales y descuentos ' +
+      'en el total acordado y deja esos campos en cero.'
+    );
+  }
+
+  if (
+    (
+      modalidad === 'total' ||
+      tarifaParticular !== null ||
+      adicionales > 0 ||
+      descuentos > 0
+    ) &&
+    !detalle
+  ) {
+    throw new Error(
+      'Indica el detalle o motivo del acuerdo particular.'
+    );
+  }
+
+  return {
+    versionEsquema: 2,
+    pension,
+    modalidad,
+    moneda,
+    personasCobradas,
+
+    tarifaParticular:
+      modalidad === 'pax_noche'
+        ? tarifaParticular
+        : null,
+
+    totalAcordado:
+      modalidad === 'total'
+        ? totalAcordado
+        : null,
+
+    adicionales,
+    descuentos,
+    detalle,
+
+    actualizadoPor: currentUserEmail || '',
+    actualizadoAt: serverTimestamp()
+  };
+}
 
 // ===== Utilitarios =====
 const toUpper = x => typeof x==='string' ? x.toUpperCase() : x;
@@ -673,6 +892,7 @@ function openHotelModal(h){
   document.getElementById('m-contactoTelefono').value = h?.contactoTelefono ?? '';
   document.getElementById('m-contactoWeb').value = h?.contactoWeb ?? '';
   document.getElementById('m-pension').value = h?.pension ?? 'media';
+  cargarFormularioTarifaHotel(h?.id || null);
   document.getElementById('modal-backdrop').style.display='block';
   document.getElementById('modal-hotel').style.display  ='block';
 }
@@ -680,49 +900,204 @@ function openHotelModal(h){
 function closeHotelModal(){ hideModals(); }
 
 // Guardar hotel (normaliza fechas + timestamps)
-async function onSubmitHotel(e){
+async function onSubmitHotel(e) {
   e.preventDefault();
-  const p = {
-    anoViaje: Number(anoHotelActivo),
-    nombre:   document.getElementById('m-nombre').value.trim(),
-    destino:  document.getElementById('m-destino').value,
-    direccion:document.getElementById('m-direccion').value.trim(),
-    ciudad:   document.getElementById('m-ciudad').value.trim(),
-    contactoNombre:  document.getElementById('m-contactoNombre').value.trim(),
-    contactoCorreo:  document.getElementById('m-contactoCorreo').value.trim(),
-    contactoTelefono:document.getElementById('m-contactoTelefono').value.trim(),
-    contactoWeb: document.getElementById('m-contactoWeb').value.trim(),
-    // ✅ NUEVO: tipo de pensión
-    pension:  document.getElementById('m-pension').value, // 'media' | 'completa'
-    // Fechas normalizadas
-    fechaInicio: toISO(document.getElementById('m-fechaInicio').value),
-    fechaFin:    toISO(document.getElementById('m-fechaFin').value),
-    // Capacidades
-    singles:   +document.getElementById('m-singles').value||0,
-    dobles:    +document.getElementById('m-dobles').value||0,
-    triples:   +document.getElementById('m-triples').value||0,
-    cuadruples:+document.getElementById('m-cuadruples').value||0,
-    updatedAt: serverTimestamp()
-  };
 
+  const boton = e.submitter ||
+    document.querySelector(
+      '#modal-form button[type="submit"]'
+    );
 
-  if (isEditHotel){
-    const bef=(await getDoc(doc(db,'hoteles',editHotelId))).data();
-    await updateDoc(doc(db,'hoteles',editHotelId), p);
-    await addDoc(collection(db,'historial'),{
-      tipo:'hotel-edit',hotelId:editHotelId,
-      antes:bef,despues:p,usuario:currentUserEmail,ts:serverTimestamp()
-    });
-  } else {
-    const payload = { ...p, createdAt: serverTimestamp() };
-    const ref=await addDoc(collection(db,'hoteles'), payload);
-    await addDoc(collection(db,'historial'),{
-      tipo:'hotel-new',hotelId:ref.id,
-      antes:null,despues:payload,usuario:currentUserEmail,ts:serverTimestamp()
-    });
+  if (boton?.disabled) return;
+
+  try {
+    const condiciones = leerTarifaGeneralHotel();
+
+    const p = {
+      anoViaje: Number(anoHotelActivo),
+
+      nombre:
+        document.getElementById('m-nombre')
+          .value.trim(),
+
+      destino:
+        document.getElementById('m-destino').value,
+
+      direccion:
+        document.getElementById('m-direccion')
+          .value.trim(),
+
+      ciudad:
+        document.getElementById('m-ciudad')
+          .value.trim(),
+
+      contactoNombre:
+        document.getElementById('m-contactoNombre')
+          .value.trim(),
+
+      contactoCorreo:
+        document.getElementById('m-contactoCorreo')
+          .value.trim(),
+
+      contactoTelefono:
+        document.getElementById('m-contactoTelefono')
+          .value.trim(),
+
+      contactoWeb:
+        document.getElementById('m-contactoWeb')
+          .value.trim(),
+
+      pension:
+        document.getElementById('m-pension').value,
+
+      fechaInicio: toISO(
+        document.getElementById('m-fechaInicio').value
+      ),
+
+      fechaFin: toISO(
+        document.getElementById('m-fechaFin').value
+      ),
+
+      singles:
+        Number(
+          document.getElementById('m-singles').value
+        ) || 0,
+
+      dobles:
+        Number(
+          document.getElementById('m-dobles').value
+        ) || 0,
+
+      triples:
+        Number(
+          document.getElementById('m-triples').value
+        ) || 0,
+
+      cuadruples:
+        Number(
+          document.getElementById('m-cuadruples').value
+        ) || 0,
+
+      updatedAt: serverTimestamp()
+    };
+
+    if (boton) boton.disabled = true;
+
+    const hotelRef = isEditHotel
+      ? doc(db, 'hoteles', editHotelId)
+      : doc(collection(db, 'hoteles'));
+
+    const tarifaRef = doc(
+      db,
+      'FinanzasHotelesTarifas',
+      idTarifaHotelFinanzas(
+        hotelRef.id,
+        anoHotelActivo
+      )
+    );
+
+    const [hotelSnap, tarifaSnap] = await Promise.all([
+      getDoc(hotelRef),
+      getDoc(tarifaRef)
+    ]);
+
+    const hotelAntes = hotelSnap.exists()
+      ? hotelSnap.data()
+      : null;
+
+    const tarifaAntes = tarifaSnap.exists()
+      ? tarifaSnap.data()
+      : null;
+
+    const hotelDespues = {
+      ...p,
+      ...(
+        hotelSnap.exists()
+          ? {}
+          : { createdAt: serverTimestamp() }
+      )
+    };
+
+    const tarifaDespues = {
+      ...condiciones,
+      anoViaje: Number(anoHotelActivo),
+      hotelId: hotelRef.id,
+      hotelNombre: p.nombre,
+      destino: p.destino,
+      ciudad: p.ciudad,
+
+      actualizadoPor: currentUserEmail || '',
+      actualizadoAt: serverTimestamp()
+    };
+
+    const batch = writeBatch(db);
+
+    if (hotelSnap.exists()) {
+      batch.update(hotelRef, hotelDespues);
+    } else {
+      batch.set(hotelRef, hotelDespues);
+    }
+
+    batch.set(
+      tarifaRef,
+      tarifaDespues,
+      { merge: true }
+    );
+
+    batch.set(
+      doc(collection(db, 'historial')),
+      {
+        tipo: hotelSnap.exists()
+          ? 'hotel-edit'
+          : 'hotel-new',
+
+        hotelId: hotelRef.id,
+        antes: hotelAntes,
+        despues: hotelDespues,
+        usuario: currentUserEmail || '',
+        ts: serverTimestamp()
+      }
+    );
+
+    batch.set(
+      doc(collection(db, 'historial')),
+      {
+        tipo: 'hotel-tarifa-guardada',
+        hotelId: hotelRef.id,
+        tarifaId: tarifaRef.id,
+        antes: tarifaAntes,
+        despues: tarifaDespues,
+        usuario: currentUserEmail || '',
+        ts: serverTimestamp()
+      }
+    );
+
+    await batch.commit();
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      error.message ||
+      'No se pudo guardar el hotel.'
+    );
+
+    return;
+  } finally {
+    if (boton) boton.disabled = false;
   }
-  await renderHoteles();
+
   hideModals();
+
+  try {
+    await renderHoteles();
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      'El hotel y sus condiciones fueron guardados, ' +
+      'pero no se pudo actualizar la pantalla. Recarga la página.'
+    );
+  }
 }
 
 // Eliminar hotel
@@ -742,7 +1117,30 @@ async function renderHoteles() {
   const cont = document.getElementById('hoteles-container');
   cont.innerHTML = '';
 
-  const snapH = await getDocs(collection(db, 'hoteles'));
+  const [snapH, snapTarifas] = await Promise.all([
+    getDocs(collection(db, 'hoteles')),
+  
+    getDocs(
+      query(
+        collection(db, 'FinanzasHotelesTarifas'),
+        where(
+          'anoViaje',
+          '==',
+          Number(anoHotelActivo)
+        )
+      )
+    )
+  ]);
+  
+  tarifasFinancierasHotel = new Map(
+    snapTarifas.docs.map(d => [
+      d.id,
+      {
+        ...d.data(),
+        id: d.id
+      }
+    ])
+  );
   hoteles = snapH.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(h => Number(h.anoViaje || 2025) === Number(anoHotelActivo));
@@ -1226,6 +1624,14 @@ function openAssignModal(hotelId, assignId){
     selGrupo.onchange({ target: selGrupo });
   }
 
+  cargarFormularioAcuerdoHotel(
+    isEditAssign
+      ? asignaciones.find(
+          a => a.id === editAssignId
+        )
+      : null
+  );
+
   document.getElementById('assign-backdrop').style.display='block';
   document.getElementById('modal-assign').style.display='block';
 
@@ -1315,6 +1721,16 @@ async function onSavePax() {
     return alert('Solo usuarios autorizados pueden modificar PAX (sistemas, aleoperaciones, yenny).');
   }
 
+  let acuerdoFinanciero;
+
+  try {
+    acuerdoFinanciero =
+      leerAcuerdoEconomicoHotel();
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+
   const gId = document.getElementById('a-grupo').value;
   if (!gId) return alert('Selecciona un grupo');
 
@@ -1392,6 +1808,7 @@ async function onSavePax() {
   );
 
   const assignUpdate = {
+    finanzas: acuerdoFinanciero,
     anoViaje: Number(anoHotelActivo),
     hotelId: hotelIdFinal,
     grupoId: gId,
@@ -1496,6 +1913,16 @@ async function onSavePax() {
 async function onSubmitAssign(e) {
   e.preventDefault();
 
+  let acuerdoFinanciero;
+
+  try {
+    acuerdoFinanciero =
+      leerAcuerdoEconomicoHotel();
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+
   const existing     = isEditAssign ? asignaciones.find(x => x.id === editAssignId) : null;
   const hotelIdFinal = isEditAssign ? (editHotelId || existing?.hotelId) : editHotelId;
 
@@ -1581,6 +2008,7 @@ async function onSubmitAssign(e) {
   }
 
   const payload = {
+    finanzas: acuerdoFinanciero,
     anoViaje:  Number(anoHotelActivo),
     hotelId:   hotelIdFinal,
     grupoId:   gId,
