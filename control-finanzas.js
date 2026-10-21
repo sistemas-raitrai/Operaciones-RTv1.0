@@ -525,11 +525,13 @@ async function guardarRevisionAbono(event) {
 
   const motivo = $('#abMotivo').value.trim();
 
-  const montoAplicado = Number(
-    $('#abMontoAplicado').value
-  );
+  const montoTexto =
+    $('#abMontoAplicado').value.trim();
 
-  const tcTexto = $('#abTipoCambio').value.trim();
+  const montoAplicado = Number(montoTexto);
+
+  const tcTexto =
+    $('#abTipoCambio').value.trim();
 
   const tc = tcTexto === ''
     ? null
@@ -550,6 +552,7 @@ async function guardarRevisionAbono(event) {
   }
 
   if (
+    montoTexto === '' ||
     !Number.isFinite(montoAplicado) ||
     montoAplicado < 0
   ) {
@@ -579,7 +582,7 @@ async function guardarRevisionAbono(event) {
 
   if (monedaAplicada === 'SIN_DEFINIR') {
     errorNodo.textContent =
-      'Debe seleccionar una moneda aplicada válida.';
+      'Seleccione una moneda aplicada válida.';
     return;
   }
 
@@ -594,14 +597,6 @@ async function guardarRevisionAbono(event) {
     return;
   }
 
-  const despues = {
-    monedaAplicada,
-    tipoCambioAplicado: tc,
-    montoAplicado,
-    unidadesCubiertas,
-    estadoRevision: 'REVISADO'
-  };
-
   const botonGuardar = $(
     '#formEditarAbono button[type="submit"]'
   );
@@ -612,11 +607,29 @@ async function guardarRevisionAbono(event) {
     botonGuardar.disabled = true;
   }
 
+  const redondear = valor => Math.round(
+    (valor + Number.EPSILON) * 100
+  ) / 100;
+
+  const importeValido = valor => (
+    valor !== null &&
+    valor !== undefined &&
+    String(valor).trim() !== '' &&
+    Number.isFinite(Number(valor)) &&
+    Number(valor) >= 0
+  );
+
+  const mismoImporte = (a, b) => (
+    importeValido(a) &&
+    importeValido(b) &&
+    redondear(Number(a)) === redondear(Number(b))
+  );
+
   let resultado;
 
   try {
     setEstado(
-      'Guardando revisión…',
+      'Guardando revisión y sincronizando Abonos…',
       false,
       '#detalleEstado'
     );
@@ -640,6 +653,10 @@ async function guardarRevisionAbono(event) {
     resultado = await runTransaction(
       db,
       async tx => {
+        /*
+         * Todas las lecturas se realizan
+         * antes de escribir.
+         */
         const abonoSnap = await tx.get(abRef);
         const resumenSnap = await tx.get(resumenRef);
 
@@ -651,7 +668,7 @@ async function guardarRevisionAbono(event) {
 
         if (!resumenSnap.exists()) {
           throw new Error(
-            'El resumen del proveedor ya no existe. Actualice la información.'
+            'El resumen ya no existe. Actualice la información.'
           );
         }
 
@@ -663,7 +680,42 @@ async function guardarRevisionAbono(event) {
           vigente.resumenId !== resumenId
         ) {
           throw new Error(
-            'El abono cambió de resumen. Cierre el detalle y vuelva a abrirlo.'
+            'El abono cambió de resumen. Cierre y vuelva a abrir el detalle.'
+          );
+        }
+
+        /*
+         * Evitar sobrescribir una revisión realizada
+         * por otra persona desde que se abrió el editor.
+         */
+        const revisionCambio = (
+          !mismoImporte(
+            vigente.montoAplicado,
+            actual.montoAplicado
+          ) ||
+
+          moneda(
+            vigente.monedaAplicada ||
+            vigente.monedaObligacion
+          ) !== moneda(
+            actual.monedaAplicada ||
+            actual.monedaObligacion
+          ) ||
+
+          (vigente.tipoCambioAplicado ?? null) !==
+            (actual.tipoCambioAplicado ?? null) ||
+
+          num(vigente.unidadesCubiertas) !==
+            num(actual.unidadesCubiertas) ||
+
+          norm(vigente.estadoRevision) !==
+            norm(actual.estadoRevision)
+        );
+
+        if (revisionCambio) {
+          throw new Error(
+            'La aplicación del abono cambió desde que abrió el detalle. ' +
+            'Cierre y vuelva a abrirlo antes de editar.'
           );
         }
 
@@ -677,9 +729,213 @@ async function guardarRevisionAbono(event) {
         ) {
           throw new Error(
             'La moneda aplicada debe coincidir con la moneda de la deuda. ' +
-            'Si la deuda no tiene moneda, primero debe configurarse.'
+            'Si falta configurar esa moneda, debe completarla primero.'
           );
         }
+
+        const origenPath = String(
+          vigente.origenPath || ''
+        ).trim();
+
+        const partes = origenPath.split('/');
+
+        const esActividad = (
+          partes.length === 8 &&
+          partes[0] === 'ServiciosPorAno' &&
+          partes[2] === 'Destinos' &&
+          partes[4] === 'Listado' &&
+          partes[6] === 'Abonos'
+        );
+
+        const esHotel = (
+          partes.length === 4 &&
+          partes[0] === 'FinanzasHotelesAbonos' &&
+          partes[2] === 'Abonos'
+        );
+
+        if (
+          (!esActividad && !esHotel) ||
+          partes.some(parte => !parte)
+        ) {
+          throw new Error(
+            'El abono no tiene una ruta de origen reconocida. ' +
+            'Debe revisarse su vinculación antes de guardar.'
+          );
+        }
+
+        const origenRef = doc(db, origenPath);
+        const origenSnap = await tx.get(origenRef);
+
+        if (!origenSnap.exists()) {
+          throw new Error(
+            'No se encontró el pago original del servicio u hotel.'
+          );
+        }
+
+        const origen = origenSnap.data();
+
+        if (norm(origen.estado) === 'ARCHIVADO') {
+          throw new Error(
+            'El pago original está archivado. Actualice la información.'
+          );
+        }
+
+        if (
+          !mismoImporte(
+            origen.monto,
+            vigente.montoEnviado
+          ) ||
+          moneda(origen.moneda) !==
+            moneda(vigente.monedaEnviada)
+        ) {
+          throw new Error(
+            'El monto o la moneda del pago original cambiaron. ' +
+            'Debe actualizarse su reflejo financiero antes de revisarlo.'
+          );
+        }
+
+        const monedaEnviada = moneda(origen.moneda);
+        const montoEnviado = Number(origen.monto);
+
+        if (monedaEnviada === 'SIN_DEFINIR') {
+          throw new Error(
+            'La moneda enviada no está configurada.'
+          );
+        }
+
+        const idCentralOrigen = String(
+          origen.abonoOperacionId || ''
+        ).trim();
+
+        const idCentralFinanzas = String(
+          vigente.abonoOperacionId || ''
+        ).trim();
+
+        if (
+          idCentralOrigen &&
+          idCentralFinanzas &&
+          idCentralOrigen !== idCentralFinanzas
+        ) {
+          throw new Error(
+            'La vinculación del abono central no coincide. ' +
+            'Debe revisarse antes de guardar.'
+          );
+        }
+
+        const idCentral =
+          idCentralOrigen || idCentralFinanzas;
+
+        if (idCentral.includes('/')) {
+          throw new Error(
+            'El identificador del abono central no es válido.'
+          );
+        }
+
+        let centralRef = null;
+        let central = null;
+
+        if (idCentral) {
+          centralRef = doc(
+            db,
+            'AbonosOperaciones',
+            idCentral
+          );
+
+          const centralSnap = await tx.get(
+            centralRef
+          );
+
+          if (!centralSnap.exists()) {
+            throw new Error(
+              'No se encontró el registro central de Abonos.'
+            );
+          }
+
+          central = centralSnap.data();
+
+          if (norm(central.estado) === 'ARCHIVADO') {
+            throw new Error(
+              'El registro central del pago está archivado.'
+            );
+          }
+
+          if (
+            !mismoImporte(
+              central.monto,
+              montoEnviado
+            ) ||
+            moneda(central.moneda) !== monedaEnviada
+          ) {
+            throw new Error(
+              'El registro central y su copia tienen diferencias de monto o moneda. ' +
+              'Corrija el pago desde Abonos antes de continuar.'
+            );
+          }
+        }
+
+        /*
+         * Determinar cómo se documenta la aplicación.
+         *
+         * MISMA_MONEDA: el mismo monto.
+         * TC: coincide con monto enviado × TC.
+         * MANUAL: monto reconocido y justificado.
+         */
+        const aplicado = redondear(montoAplicado);
+
+        let modo = 'MANUAL';
+        let tipoCambioGuardado = null;
+
+        if (
+          monedaEnviada === monedaDeuda &&
+          aplicado === redondear(montoEnviado)
+        ) {
+          modo = 'MISMA_MONEDA';
+          tipoCambioGuardado = 1;
+        } else if (
+          monedaEnviada !== monedaDeuda &&
+          tc !== null &&
+          Number.isFinite(montoEnviado * tc) &&
+          redondear(montoEnviado * tc) === aplicado
+        ) {
+          modo = 'TC';
+          tipoCambioGuardado = tc;
+        }
+
+        if (
+          modo === 'MANUAL' &&
+          tc !== null &&
+          monedaEnviada !== monedaDeuda
+        ) {
+          throw new Error(
+            'El monto aplicado no coincide con monto enviado × TC. ' +
+            'Corrija el TC o déjelo vacío para registrar un monto reconocido manualmente.'
+          );
+        }
+
+        const email = state.usuario?.email || '';
+
+        const aplicacionFinanciera = {
+          versionEsquema: 1,
+          modo,
+          monedaDeuda,
+
+          tipoCambio:
+            tipoCambioGuardado,
+
+          montoAplicado:
+            aplicado,
+
+          monedaEnviadaBase:
+            monedaEnviada,
+
+          montoEnviadoBase:
+            montoEnviado,
+
+          detalle: motivo,
+          estado: 'CONFIGURADO',
+          actualizadoPor: email,
+          actualizadoAt: serverTimestamp()
+        };
 
         const antes = {
           monedaAplicada:
@@ -699,9 +955,16 @@ async function guardarRevisionAbono(event) {
             vigente.estadoRevision || 'PENDIENTE'
         };
 
+        const despues = {
+          monedaAplicada: monedaDeuda,
+          tipoCambioAplicado: tipoCambioGuardado,
+          montoAplicado: aplicado,
+          unidadesCubiertas,
+          estadoRevision: 'REVISADO'
+        };
+
         const diferencia =
-          montoAplicado -
-          num(vigente.montoAplicado);
+          aplicado - num(vigente.montoAplicado);
 
         const diferenciaUnidades =
           unidadesCubiertas -
@@ -712,9 +975,10 @@ async function guardarRevisionAbono(event) {
             vigente.estadoRevision || 'PENDIENTE'
           ) === 'PENDIENTE';
 
-        const totalAplicado =
+        const totalAplicado = redondear(
           num(resumen.totalAplicado) +
-          diferencia;
+          diferencia
+        );
 
         const totalUnidadesCubiertas =
           num(resumen.unidadesCubiertas) +
@@ -723,9 +987,10 @@ async function guardarRevisionAbono(event) {
         const cambiosResumen = {
           totalAplicado,
 
-          saldoPendiente:
+          saldoPendiente: redondear(
             num(resumen.totalObligacion) -
-            totalAplicado,
+            totalAplicado
+          ),
 
           unidadesCubiertas:
             totalUnidadesCubiertas,
@@ -743,10 +1008,73 @@ async function guardarRevisionAbono(event) {
           )
         };
 
+        const cambiosOrigen = {
+          aplicacionFinanciera,
+          unidadesCubiertas,
+
+          actualizadoDesde:
+            'CONTROL_FINANZAS',
+
+          updatedAt: serverTimestamp(),
+          updatedByEmail: email
+        };
+
+        /*
+         * A partir de aquí solamente escrituras.
+         */
+        tx.update(origenRef, cambiosOrigen);
+
+        if (centralRef) {
+          const versionAnterior =
+            num(central.version) || 1;
+
+          const nuevaVersion =
+            versionAnterior + 1;
+
+          tx.update(centralRef, {
+            ...cambiosOrigen,
+            version: nuevaVersion,
+            motivoUltimoCambio: motivo
+          });
+
+          tx.update(origenRef, {
+            version: nuevaVersion
+          });
+
+          const historialCentralRef = doc(
+            collection(
+              db,
+              'AbonosOperaciones',
+              idCentral,
+              'Historial'
+            )
+          );
+
+          tx.set(historialCentralRef, {
+            versionAnterior,
+            datosAnteriores: central,
+
+            tipoCambio:
+              'REVISION_APLICACION_FINANZAS',
+
+            motivoCambio: motivo,
+            changedAt: serverTimestamp(),
+            changedByEmail: email
+          });
+        }
+
         tx.update(abRef, {
           ...despues,
+
+          abonoOperacionId:
+            idCentral || '',
+
+          aplicacionFinancieraOrigen:
+            aplicacionFinanciera,
+
+          motivoPendiente: '',
           revisadoAt: serverTimestamp(),
-          revisadoPor: state.usuario?.email || ''
+          revisadoPor: email
         });
 
         tx.update(resumenRef, {
@@ -767,18 +1095,31 @@ async function guardarRevisionAbono(event) {
             resumen.proveedorNombre || '',
 
           abonoId: id,
-          accion: 'REVISION_ABONO',
+          abonoOperacionId: idCentral || '',
+          origenPath,
+
+          accion:
+            'REVISION_ABONO_SINCRONIZADA',
+
           motivo,
           antes,
           despues,
 
-          usuarioEmail:
-            state.usuario?.email || '',
+          aplicacionAnteriorOrigen:
+            origen.aplicacionFinanciera || null,
 
+          aplicacionNueva:
+            aplicacionFinanciera,
+
+          usuarioEmail: email,
           creadoAt: serverTimestamp()
         });
 
-        return cambiosResumen;
+        return {
+          cambiosResumen,
+          despues,
+          idCentral
+        };
       }
     );
   } catch (e) {
@@ -802,8 +1143,15 @@ async function guardarRevisionAbono(event) {
 
   $('#dialogEditarAbono').close();
 
-  Object.assign(actual, despues);
-  Object.assign(proveedorActual, resultado);
+  Object.assign(
+    actual,
+    resultado.despues
+  );
+
+  Object.assign(
+    proveedorActual,
+    resultado.cambiosResumen
+  );
 
   renderMetricas();
   renderAbonos();
@@ -818,7 +1166,9 @@ async function guardarRevisionAbono(event) {
     renderHistorial();
 
     setEstado(
-      'Revisión guardada correctamente.',
+      resultado.idCentral
+        ? 'Revisión guardada y sincronizada con Abonos.'
+        : 'Revisión guardada en el pago de origen. Este pago antiguo no tiene registro central vinculado.',
       false,
       '#detalleEstado'
     );
@@ -826,14 +1176,13 @@ async function guardarRevisionAbono(event) {
     console.error(e);
 
     setEstado(
-      'La revisión fue guardada, pero no se pudo actualizar toda la información. ' +
+      'La revisión fue guardada, pero no se pudo actualizar toda la pantalla. ' +
       'Cierre y vuelva a abrir el detalle.',
       true,
       '#detalleEstado'
     );
   }
 }
-
 function filasResumenes(lista) {
   return lista.map(r => ({ Año: r.anoViaje, Destino: r.destinoFinanciero, Proveedor: r.proveedorNombre, Tipo: r.tipo, 'Moneda de cobro': r.monedaObligacion, 'Costo total': num(r.totalObligacion), 'Abonos aplicados': num(r.totalAplicado), 'Saldo por pagar': num(r.saldoPendiente), 'Enviado CLP': num(r.totalEnviadoPorMoneda?.CLP), 'Enviado USD': num(r.totalEnviadoPorMoneda?.USD), 'Enviado BRL': num(r.totalEnviadoPorMoneda?.BRL), 'Enviado ARS': num(r.totalEnviadoPorMoneda?.ARS), 'Pendientes de revisión': num(r.abonosPendientesRevision), 'Servicios sin tarifa': num(r.obligacionesSinTarifa) }));
 }
