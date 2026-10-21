@@ -1306,6 +1306,21 @@ function seleccionarEntidad(resultado) {
   el('abMoneda').value =
     normalizarMoneda(resultado.moneda || 'CLP');
 
+  /*
+   * Para actividades, proponemos su moneda configurada.
+   * Para hoteles la moneda se selecciona por ahora:
+   * su catálogo actual todavía puede usar CLP por defecto.
+   */
+  if (
+    !abonoEditandoId &&
+    resultado.tipo === 'actividad'
+  ) {
+    el('abFinMoneda').value =
+      monedaAplicacionAbono(resultado.moneda);
+  }
+  
+  actualizarAplicacionAbono();
+
   el('abSeleccionWrap').classList.remove('hidden');
 }
 
@@ -1475,6 +1490,341 @@ function obtenerEstadoFacturaFormulario() {
   return 'COMPLETA';
 }
 
+function monedaAplicacionAbono(valor) {
+  const codigo = norm(valor);
+
+  const equivalencias = {
+    CLP: 'CLP',
+    '$': 'CLP',
+    'PESO CHILENO': 'CLP',
+    'PESOS CHILENOS': 'CLP',
+
+    USD: 'USD',
+    'US$': 'USD',
+    US: 'USD',
+    DOLAR: 'USD',
+    DOLARES: 'USD',
+    DOLLAR: 'USD',
+    DOLLARS: 'USD',
+    'DOLAR AMERICANO': 'USD',
+    'DOLARES AMERICANOS': 'USD',
+    'DOLAR ESTADOUNIDENSE': 'USD',
+    'DOLARES ESTADOUNIDENSES': 'USD',
+
+    BRL: 'BRL',
+    'R$': 'BRL',
+    REAL: 'BRL',
+    REALES: 'BRL',
+
+    ARS: 'ARS',
+    'AR$': 'ARS',
+    ARG: 'ARS',
+    'PESO ARGENTINO': 'ARS',
+    'PESOS ARGENTINOS': 'ARS'
+  };
+
+  return equivalencias[codigo] || '';
+}
+
+function numeroAplicacionAbono(valor) {
+  if (
+    valor === null ||
+    valor === undefined ||
+    String(valor).trim() === ''
+  ) {
+    return null;
+  }
+
+  const numero = Number(valor);
+
+  return Number.isFinite(numero) && numero >= 0
+    ? numero
+    : null;
+}
+
+function redondearAplicacionAbono(valor) {
+  return Math.round(
+    (valor + Number.EPSILON) * 100
+  ) / 100;
+}
+
+function actualizarAplicacionAbono() {
+  const enviada = monedaAplicacionAbono(
+    el('abMoneda').value
+  );
+
+  const deuda = monedaAplicacionAbono(
+    el('abFinMoneda').value
+  );
+
+  const modo = el('abFinModo').value;
+
+  const monto = numeroAplicacionAbono(
+    el('abMonto').value
+  );
+
+  const tc = numeroAplicacionAbono(
+    el('abFinTC').value
+  );
+
+  el('abFinTC').disabled = modo !== 'TC';
+
+  el('abFinAplicado').readOnly =
+    modo !== 'MANUAL';
+
+  el('abFinTCLabel').textContent =
+    enviada && deuda
+      ? `Tipo de cambio: 1 ${enviada} = ¿cuántos ${deuda}?`
+      : 'Tipo de cambio';
+
+  let aplicado = null;
+  let mensaje = 'Aplicación pendiente de completar.';
+
+  if (modo === 'MISMA_MONEDA') {
+    if (enviada && enviada === deuda && monto !== null) {
+      aplicado = monto;
+    } else {
+      mensaje =
+        'Para aplicar el mismo monto, ambas monedas deben coincidir.';
+    }
+  }
+
+  if (modo === 'TC') {
+    if (
+      enviada &&
+      deuda &&
+      enviada !== deuda &&
+      monto !== null &&
+      tc !== null &&
+      tc > 0
+    ) {
+      const calculado = monto * tc;
+
+      if (Number.isFinite(calculado)) {
+        aplicado = redondearAplicacionAbono(calculado);
+      }
+    }
+  }
+
+  if (modo === 'MANUAL') {
+    aplicado = numeroAplicacionAbono(
+      el('abFinAplicado').value
+    );
+  } else {
+    el('abFinAplicado').value =
+      aplicado === null ? '' : aplicado;
+  }
+
+  if (
+    modo !== 'PENDIENTE' &&
+    enviada &&
+    deuda &&
+    monto !== null &&
+    aplicado !== null
+  ) {
+    mensaje =
+      `Enviado: ${enviada} ${fmtNumero(monto)}. ` +
+      `Aplicado: ${deuda} ${fmtNumero(aplicado)}.`;
+  }
+
+  el('abFinResumen').textContent = mensaje;
+}
+
+function prepararEventosAplicacionAbono() {
+  const selector = el('abFinModo');
+
+  if (selector.dataset.eventosAplicacion === '1') {
+    return;
+  }
+
+  selector.dataset.eventosAplicacion = '1';
+
+  [
+    'abMoneda',
+    'abMonto',
+    'abFinMoneda',
+    'abFinModo',
+    'abFinTC',
+    'abFinAplicado'
+  ].forEach(id => {
+    const nodo = el(id);
+
+    nodo.addEventListener(
+      'input',
+      actualizarAplicacionAbono
+    );
+
+    nodo.addEventListener(
+      'change',
+      actualizarAplicacionAbono
+    );
+  });
+}
+
+function cargarAplicacionAbono(abono = null) {
+  prepararEventosAplicacionAbono();
+
+  /*
+   * Solo cargamos una aplicación explícita.
+   * Los pagos antiguos sin estos datos quedan pendientes.
+   */
+  const f = abono?.aplicacionFinanciera || {};
+
+  el('abFinMoneda').value =
+    monedaAplicacionAbono(f.monedaDeuda);
+
+  const modos = [
+    'PENDIENTE',
+    'MISMA_MONEDA',
+    'TC',
+    'MANUAL'
+  ];
+
+  el('abFinModo').value =
+    modos.includes(f.modo)
+      ? f.modo
+      : 'PENDIENTE';
+
+  el('abFinTC').value =
+    f.tipoCambio ?? '';
+
+  el('abFinAplicado').value =
+    f.montoAplicado ?? '';
+
+  el('abFinDetalle').value =
+    f.detalle || '';
+
+  actualizarAplicacionAbono();
+}
+
+function obtenerAplicacionFinancieraAbono() {
+  actualizarAplicacionAbono();
+
+  const modo = el('abFinModo').value;
+
+  const monedaEnviada = monedaAplicacionAbono(
+    el('abMoneda').value
+  );
+
+  const monedaDeuda = monedaAplicacionAbono(
+    el('abFinMoneda').value
+  );
+
+  const montoEnviado = numeroAplicacionAbono(
+    el('abMonto').value
+  );
+
+  const tipoCambio = numeroAplicacionAbono(
+    el('abFinTC').value
+  );
+
+  const montoAplicado = numeroAplicacionAbono(
+    el('abFinAplicado').value
+  );
+
+  const detalle = el('abFinDetalle').value.trim();
+
+  if (
+    ![
+      'PENDIENTE',
+      'MISMA_MONEDA',
+      'TC',
+      'MANUAL'
+    ].includes(modo)
+  ) {
+    throw new Error(
+      'Selecciona una forma de aplicación válida.'
+    );
+  }
+
+  if (modo !== 'PENDIENTE') {
+    if (!monedaEnviada || !monedaDeuda) {
+      throw new Error(
+        'Define la moneda enviada y la moneda de la deuda.'
+      );
+    }
+
+    if (montoEnviado === null) {
+      throw new Error(
+        'El monto enviado no es válido.'
+      );
+    }
+
+    if (
+      modo === 'MISMA_MONEDA' &&
+      monedaEnviada !== monedaDeuda
+    ) {
+      throw new Error(
+        'Las monedas deben coincidir para aplicar el mismo monto.'
+      );
+    }
+
+    if (modo === 'TC') {
+      if (monedaEnviada === monedaDeuda) {
+        throw new Error(
+          'Si ambas monedas coinciden, selecciona mismo monto y misma moneda.'
+        );
+      }
+
+      if (tipoCambio === null || tipoCambio <= 0) {
+        throw new Error(
+          'Ingresa un tipo de cambio mayor que cero.'
+        );
+      }
+    }
+
+    if (montoAplicado === null) {
+      throw new Error(
+        'El monto aplicado no es válido.'
+      );
+    }
+
+    if (modo === 'MANUAL' && !detalle) {
+      throw new Error(
+        'Explica el monto reconocido por el proveedor.'
+      );
+    }
+  }
+
+  return {
+    versionEsquema: 1,
+    modo,
+
+    monedaDeuda: monedaDeuda || null,
+
+    tipoCambio:
+      modo === 'MISMA_MONEDA'
+        ? 1
+        : modo === 'TC'
+          ? tipoCambio
+          : null,
+
+    montoAplicado:
+      modo === 'PENDIENTE'
+        ? null
+        : redondearAplicacionAbono(montoAplicado),
+
+    /*
+     * Guarda a qué pago corresponde esta conversión.
+     * Servirá para detectar revisiones desactualizadas.
+     */
+    monedaEnviadaBase: monedaEnviada || null,
+    montoEnviadoBase: montoEnviado,
+
+    detalle,
+
+    estado:
+      modo === 'PENDIENTE'
+        ? 'PENDIENTE'
+        : 'CONFIGURADO',
+
+    actualizadoPor:
+      auth.currentUser?.email || '',
+
+    actualizadoAt: serverTimestamp()
+  };
+}
+
 function obtenerDatosFormulario() {
   const tipo = getTipoSeleccionado();
   const ano = el('abAno').value;
@@ -1487,6 +1837,9 @@ function obtenerDatosFormulario() {
     tipo,
     ano,
     destino,
+  
+    aplicacionFinanciera:
+      obtenerAplicacionFinancieraAbono(),
 
     fechaPago: el('abFechaPago').value,
     moneda,
@@ -1720,7 +2073,10 @@ function datosParaEspejo(
     moneda: datos.moneda,
     monto: datos.monto,
     formaPago: datos.formaPago,
-
+    
+    aplicacionFinanciera:
+      datos.aplicacionFinanciera || null,
+    
     referencia: datos.referencia,
     nota: datos.nota,
 
@@ -4445,6 +4801,9 @@ function limpiarFormulario() {
   el('abFormaPago').value = 'transferencia';
   el('abReferencia').value = '';
   el('abNota').value = '';
+  
+  cargarAplicacionAbono();
+  
   el('abMotivoCambio').value = '';
   el('abComprobantes').value = '';
   el('abPendienteFactura').checked =
@@ -4713,6 +5072,8 @@ function iniciarEdicion(abono) {
 
   el('abNota').value =
     abono.nota || '';
+
+  cargarAplicacionAbono(abono);
 
   el('abMotivoCambio').value = '';
   
