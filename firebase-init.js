@@ -45,6 +45,12 @@ const STAFF_EMAILS = new Set([
   "giras@raitrai.cl",
 ].map(e => e.toLowerCase()));
 
+export function isOperationsStaff(user) {
+  return STAFF_EMAILS.has(
+    String(user?.email || '').trim().toLowerCase()
+  );
+}
+
 // Páginas públicas del sistema principal
 const PUBLIC = new Set(["login.html"]);
 
