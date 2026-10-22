@@ -4379,6 +4379,76 @@ function cerrarConfirmacionAbono() {
   document.body.style.overflow = '';
 }
 
+function rutaEspejoValidadaAbono(datos, abonoId) {
+  const ruta = String(datos.rutaDestino || '').replace(/\/+$/, '');
+  if (!['actividad','hotel'].includes(datos.tipo)) return '';
+  const ano = String(datos.ano || '');
+  let esperada;
+  if (datos.tipo === 'actividad') {
+    if (!datos.servicioId || !datos.destino) throw new Error('Selecciona una actividad vigente.');
+    esperada = `ServiciosPorAno/${ano}/Destinos/${datos.destino}/Listado/${datos.servicioId}/Abonos`;
+  } else {
+    if (!datos.hotelKey || !datos.destino) throw new Error('Selecciona un hotel vigente.');
+    esperada = `FinanzasHotelesAbonos/${hotelFinKey({ano, destino:datos.destino, hotelKey:datos.hotelKey})}/Abonos`;
+  }
+  if (!/^\d{4}$/.test(ano) || ruta !== esperada) {
+    throw new Error('La vinculación del abono no coincide con la selección. Vuelve a seleccionar el servicio u hotel.');
+  }
+  return `${ruta}/${abonoId}`;
+}
+async function validarActividadAbonoVigente(datos) {
+  const ruta = rutaEspejoValidadaAbono(datos, 'validacion');
+  if (datos.tipo !== 'actividad') return;
+  const padre = ruta.split('/').slice(0,-2).join('/');
+  const snap = await getDoc(doc(db, padre));
+  if (!snap.exists()) throw new Error('El servicio vinculado ya no existe. Selecciona el servicio vigente antes de guardar; no registres un pago duplicado.');
+}
+async function guardarRegistroAbonoConEspejo(datos, abonoId, archivos, email, esEdicion, version, documento) {
+  const ruta = rutaEspejoValidadaAbono(datos, abonoId);
+  const central = doc(db, RUTA_ABONOS, abonoId);
+  await runTransaction(db, async tx => {
+    const actual = await tx.get(central);
+    if (esEdicion && !actual.exists()) throw new Error('El abono ya no existe.');
+    if (!esEdicion && actual.exists()) throw new Error('El abono ya fue registrado. Recarga antes de continuar.');
+    if (esEdicion && Number(actual.data().version || 1) !== Number(version)-1) {
+      throw new Error('Otra persona modificó este abono. Recarga y vuelve a editar.');
+    }
+    if (datos.tipo === 'actividad') {
+      const servicio = await tx.get(doc(db, ruta.split('/').slice(0,-2).join('/')));
+      if (!servicio.exists()) throw new Error('El servicio ya no existe. Vuelve a seleccionarlo.');
+    }
+    let anteriorRef = null;
+    const viejo = actual.exists() ? actual.data() : null;
+    if (viejo?.rutaDestino && `${viejo.rutaDestino.replace(/\/+$/,'')}/${abonoId}` !== ruta) {
+      // Solo se archiva una copia en una ruta reconocida; nunca un documento arbitrario.
+      const anteriorPath = `${viejo.rutaDestino.replace(/\/+$/,'')}/${abonoId}`;
+      if (/^(ServiciosPorAno\/[^/]+\/Destinos\/[^/]+\/Listado\/[^/]+\/Abonos|FinanzasHotelesAbonos\/[^/]+\/Abonos)\/[^/]+$/.test(anteriorPath)) {
+        const ref = doc(db, anteriorPath);
+        const snap = await tx.get(ref);
+        if (snap.exists()) anteriorRef = ref;
+      }
+    }
+    if (esEdicion) tx.update(central, documento);
+    else tx.set(central, documento);
+    if (ruta) {
+      tx.set(doc(db, ruta), limpiarNulosObjeto(datosParaEspejo(
+        datos, abonoId, archivos, email, esEdicion, version
+      )), {merge:true});
+      if (datos.tipo === 'hotel') {
+        tx.set(doc(db, ruta.split('/').slice(0,-2).join('/')), {
+          anoTarifa:String(datos.ano), destino:datos.destino,
+          hotelKey:datos.hotelKey, hotelId:datos.hotelId || '', hotelNombre:datos.hotelNombre || '',
+          updatedAt:serverTimestamp(), updatedByEmail:email
+        }, {merge:true});
+      }
+    }
+    if (anteriorRef) tx.update(anteriorRef, {
+      estado:'ARCHIVADO', motivoArchivo:'VINCULACION_REEMPLAZADA',
+      abonoOperacionId:abonoId, updatedAt:serverTimestamp(), updatedByEmail:email
+    });
+  });
+}
+
 async function guardarAbono({
   solicitarDespues = false
 } = {}) {
@@ -4412,6 +4482,8 @@ async function guardarAbono({
   try {
     const datos =
       obtenerDatosFormulario();
+
+    await validarActividadAbonoVigente(datos);
 
     const email =
       (
@@ -4510,18 +4582,8 @@ async function guardarAbono({
           1
       };
 
-      await setDoc(
-        refCentral,
-        documento
-      );
-
-      await guardarEspejo(
-        documento,
-        abonoId,
-        archivos,
-        email,
-        false,
-        1
+      await guardarRegistroAbonoConEspejo(
+        documento, abonoId, archivos, email, false, 1, documento
       );
 
       documentoFinal = {
@@ -4623,21 +4685,9 @@ async function guardarAbono({
           motivoCambio
       };
 
-      await updateDoc(
-        refCentral,
-        documentoActualizado
-      );
-
-      await guardarEspejo(
-        {
-          ...anterior,
-          ...documentoActualizado
-        },
-        abonoId,
-        archivos,
-        email,
-        true,
-        nuevaVersion
+      await guardarRegistroAbonoConEspejo(
+        {...anterior, ...documentoActualizado}, abonoId, archivos, email,
+        true, nuevaVersion, documentoActualizado
       );
 
       documentoFinal = {
