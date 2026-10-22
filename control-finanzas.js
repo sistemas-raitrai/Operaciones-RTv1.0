@@ -117,14 +117,21 @@ function construirAnos() {
 }
 
 async function cargarResumenes() {
-  setEstado('Cargando saldos…');
-  const q = query(collection(db, COLECCIONES.RESUMENES), where('anoViaje', '==', Number(state.ano)));
-  const snap = await getDocs(q);
-  state.resumenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const destinosDisponibles = ordenarDestinos([...new Set(resumenesFiltrados().map(r => norm(r.destinoFinanciero)).filter(Boolean))]);
-  if (!state.destino || !destinosDisponibles.includes(state.destino)) state.destino = destinosDisponibles[0] || DESTINOS_ORDEN[0];
-  renderDestinos(); renderProveedores();
-  setEstado(state.resumenes.length ? `Información actualizada: ${state.resumenes.length} resúmenes.` : 'Aún no existen resúmenes financieros para este año.');
+  const turno=++state.cargaVisual, ano=Number(state.ano);
+  setEstado('Actualizando costos, pagos y saldos…');
+  try {
+    const [resumenes,costos] = await Promise.all([
+      getDocs(query(collection(db,COLECCIONES.RESUMENES),where('anoViaje','==',ano))),
+      getDocs(query(collection(db,COLECCIONES.OBLIGACIONES),where('anoViaje','==',ano)))
+    ]);
+    if(turno!==state.cargaVisual || ano!==Number(state.ano)) return;
+    state.resumenes=resumenes.docs.map(d=>({...d.data(),id:d.id}));
+    state.costosAno=costos.docs.map(d=>({...d.data(),id:d.id}));
+    const ocultos=preferenciasFinanzas().ocultos || [];
+    if(ocultos.includes(state.destino)) state.destino=null;
+    renderDestinos(); renderProveedores();
+    setEstado(`Información consultada a las ${new Date().toLocaleTimeString('es-CL')}. El backend recalcula automáticamente; usa Actualizar información para consultar el resultado.`);
+  } catch(error) { setEstado(`No se pudo actualizar: ${error.message}`,true); }
 }
 
 function ordenarDestinos(destinos) {
@@ -136,31 +143,26 @@ function ordenarDestinos(destinos) {
 }
 
 function renderDestinos() {
-  const lista = resumenesFiltrados();
-  const encontrados = [...new Set(lista.map(r => norm(r.destinoFinanciero)).filter(Boolean))];
-  const destinos = ordenarDestinos([...new Set([...DESTINOS_ORDEN, ...encontrados])]);
-  $('#destinos').innerHTML = destinos.map(dest => {
-    const items = lista.filter(r => norm(r.destinoFinanciero) === dest);
-    const saldos = totalesPorMoneda(items, 'saldoPendiente');
-    const sinTarifa = items.reduce((suma, item) => suma + num(item.obligacionesSinTarifa), 0);
-    const lineas = MONEDAS_ORDEN.filter(m => Object.prototype.hasOwnProperty.call(saldos, m))
-      .map(m => `<span class="cf-destination-balance">Por pagar: ${fmtMoney(saldos[m], m)}</span>`).join('');
-    const alertaHotel = sinTarifa ? `<span class="cf-destination-balance">⚠ ${sinTarifa} alojamiento(s) sin tarifa</span>` : '';
-    return `<button class="cf-destination ${dest === state.destino ? 'active' : ''}" data-destino="${esc(dest)}" type="button"><span class="cf-destination-name">${esc(dest)}</span>${lineas || (sinTarifa ? '' : '<span class="cf-muted">Sin obligaciones</span>')}${alertaHotel}</button>`;
-  }).join('');
-  $$('.cf-destination').forEach(btn => btn.addEventListener('click', () => {
-    state.destino = btn.dataset.destino; renderDestinos(); renderProveedores();
+  const encontrados=resumenesFiltrados().map(r=>norm(r.destinoFinanciero)).filter(Boolean);
+  const todos=ordenarDestinos([...new Set([...DESTINOS_ORDEN,...encontrados])]);
+  const ocultos=preferenciasFinanzas().ocultos || [];
+  $('#destinos').innerHTML=todos.filter(d=>!ocultos.includes(d)).map(dest=>`
+    <button class="cf-destination ${dest===state.destino?'active':''}" type="button" data-destino="${esc(dest)}" aria-pressed="${dest===state.destino}">
+      <span class="cf-destination-name">${esc(dest)}</span>
+    </button>`).join('');
+  $$('.cf-destination').forEach(btn=>btn.addEventListener('click',()=>{
+    state.destino=btn.dataset.destino;renderDestinos();renderProveedores();
   }));
 }
 
 function proveedoresDestino() {
-  return resumenesFiltrados().filter(r => norm(r.destinoFinanciero) === state.destino)
-    .sort((a,b) => num(b.saldoPendiente) - num(a.saldoPendiente) || String(a.proveedorNombre).localeCompare(String(b.proveedorNombre), 'es'));
+  return resumenesFiltrados().filter(r=>norm(r.destinoFinanciero)===state.destino)
+    .sort((a,b)=>compararNombre(a.proveedorNombre,b.proveedorNombre)||compararNombre(a.tipo,b.tipo));
 }
 
 function estadoFinancieroResumen(resumen) {
   if (num(resumen.obligacionesSinTarifa) > 0 || resumen.requiereConfiguracion) {
-    return { texto: 'Sin tarifa', clase: 'warning' };
+    return { texto: resumen.sinCostoVinculado ? 'Pendiente de vinculación' : 'Costo incompleto', clase: 'warning' };
   }
   if (num(resumen.abonosPendientesRevision) > 0) {
     return { texto: 'Requiere revisión', clase: 'warning' };
@@ -193,69 +195,50 @@ function agruparPorTipoYMoneda(items) {
 }
 
 function filaProveedor(resumen) {
-  const saldo = num(resumen.saldoPendiente);
-  const pendiente = !!resumen.requiereConfiguracion;
-  const estado = estadoFinancieroResumen(resumen);
-  const avisos = [];
-  if (num(resumen.obligacionesSinTarifa)) avisos.push(`${num(resumen.obligacionesSinTarifa)} sin tarifa`);
-  if (num(resumen.abonosPendientesRevision)) avisos.push(`${num(resumen.abonosPendientesRevision)} abono(s) por revisar`);
-  return `<tr data-key="${esc(claveProveedor(resumen))}">
-    <td class="cf-provider-name">
-      <strong>${esc(resumen.proveedorNombre || resumen.proveedorId || 'Sin proveedor')}</strong>
-      ${avisos.length ? `<small>${esc(avisos.join(' · '))}</small>` : ''}
-    </td>
-    <td class="num">${pendiente ? 'PENDIENTE' : fmtMoney(resumen.totalObligacion, resumen.monedaObligacion)}</td>
+  const pendiente=!!resumen.requiereConfiguracion, estado=estadoFinancieroResumen(resumen);
+  const costos=costosResumen(resumen), servicios=new Map();
+  for(const o of costos){const key=o.servicioId||o.servicioNombre||o.hotelNombre||'Servicio';
+    if(!servicios.has(key))servicios.set(key,{nombre:o.servicioNombre||o.hotelNombre||key,costo:0,pendientes:0,cantidad:0});
+    const s=servicios.get(key);s.costo+=num(o.totalObligacion);s.pendientes+=o.requiereConfiguracion?1:0;s.cantidad++;
+  }
+  const avisos=[num(resumen.obligacionesSinTarifa)?`${num(resumen.obligacionesSinTarifa)} costo(s) pendientes`:'',num(resumen.abonosPendientesRevision)?`${num(resumen.abonosPendientesRevision)} pago(s) por revisar`:''].filter(Boolean);
+  const hijos=[...servicios.values()].sort((a,b)=>compararNombre(a.nombre,b.nombre));
+  return `<tr class="cf-provider-total" data-key="${esc(claveProveedor(resumen))}">
+    <td class="cf-provider-name"><strong>${esc(resumen.proveedorNombre||resumen.proveedorId)}</strong><small>${norm(resumen.tipo)==='HOTEL'?'HOTEL':'ACTIVIDADES'}${avisos.length?' · '+esc(avisos.join(' · ')):''}</small></td>
+    <td class="cf-total-label">TOTAL PROVEEDOR</td>
+    <td class="num">${fmtMoney(resumen.totalObligacion,resumen.monedaObligacion)}${pendiente?'<small class="cf-partial">PARCIAL</small>':''}</td>
     <td class="num multi-money">${dineroEnviadoTexto(resumen)}</td>
-    <td class="num">${pendiente ? '—' : fmtMoney(resumen.totalAplicado, resumen.monedaObligacion)}</td>
-    <td class="num ${saldo > 0 || pendiente ? 'saldo' : 'ok'}">${pendiente ? 'PENDIENTE' : fmtMoney(saldo, resumen.monedaObligacion)}</td>
-    <td><span class="cf-state ${estado.clase}">${estado.texto}</span></td>
-    <td><button class="cf-btn btn-detalle" type="button">Ver detalle</button></td>
-  </tr>`;
+    <td class="num">${fmtMoney(resumen.totalAplicado,resumen.monedaObligacion)}</td>
+    <td class="num saldo">${pendiente && num(resumen.saldoPendiente)<0?'PENDIENTE':fmtMoney(resumen.saldoPendiente,resumen.monedaObligacion)}</td>
+    <td><span class="cf-state ${estado.clase}">${esc(estado.texto)}</span></td>
+    <td><button type="button" class="cf-btn btn-detalle">Ver detalle</button></td></tr>
+    ${hijos.length?hijos.map(s=>`<tr class="cf-service-child"><td></td><td><span class="cf-child-marker">↳</span> ${esc(s.nombre)}<small>${s.cantidad} registro(s)</small></td><td class="num">${fmtMoney(s.costo,resumen.monedaObligacion)}${s.pendientes?'<small class="cf-partial">PARCIAL</small>':''}</td><td colspan="3" class="cf-child-payment">Los pagos y el saldo se muestran en el total del proveedor.</td><td>${s.pendientes?'<span class="cf-state warning">Faltan tarifas</span>':''}</td><td></td></tr>`).join(''):'<tr class="cf-service-child"><td></td><td colspan="7">Sin costos vinculados. El pago permanece visible y pendiente de configuración.</td></tr>'}`;
 }
 
-function bloqueMoneda(grupo, codigo) {
-  const items = codigo.items;
-  const costo = items.reduce((suma, item) => suma + num(item.totalObligacion), 0);
-  const aplicado = items.reduce((suma, item) => suma + num(item.totalAplicado), 0);
-  const saldo = items.reduce((suma, item) => suma + num(item.saldoPendiente), 0);
-  const etiqueta = codigo.codigo === 'SIN_DEFINIR' ? 'SIN MONEDA' : codigo.codigo;
-  return `<section class="cf-currency-group">
-    <header class="cf-currency-head">
-      <div class="cf-currency-name"><span class="cf-currency-pill">${esc(etiqueta)}</span> Proveedores pagados en ${esc(etiqueta)}</div>
-      <div class="cf-currency-totals">Costo: <strong>${fmtMoney(costo, codigo.codigo)}</strong> · Abonos: <strong>${fmtMoney(aplicado, codigo.codigo)}</strong> · Por pagar: <strong>${fmtMoney(saldo, codigo.codigo)}</strong></div>
-    </header>
-    <div class="cf-table-wrap">
-      <table class="cf-table cf-provider-table">
-        <thead><tr><th>Proveedor</th><th class="num">Costo total</th><th class="num">Monto enviado</th><th class="num">Abonos aplicados</th><th class="num">Saldo por pagar</th><th>Estado</th><th></th></tr></thead>
-        <tbody>${items.map(filaProveedor).join('')}</tbody>
-        <tfoot><tr><th>Subtotal ${esc(etiqueta)}</th><th class="num">${fmtMoney(costo, codigo.codigo)}</th><th></th><th class="num">${fmtMoney(aplicado, codigo.codigo)}</th><th class="num saldo">${fmtMoney(saldo, codigo.codigo)}</th><th colspan="2"></th></tr></tfoot>
-      </table>
-    </div>
-  </section>`;
+function bloqueMoneda(grupo,codigo) {
+  const items=[...codigo.items].sort((a,b)=>compararNombre(a.proveedorNombre,b.proveedorNombre)||compararNombre(a.tipo,b.tipo));
+  const m=codigo.codigo,t=totalesNecesidades(items)[m],etiqueta=m==='SIN_DEFINIR'?'MONEDA SIN DEFINIR':m;
+  return `<section class="cf-currency-group moneda-${m}"><header class="cf-currency-head"><div class="cf-currency-name"><span class="cf-currency-pill">${esc(etiqueta)}</span> Proveedores que cobran en ${esc(etiqueta)}</div><span>${items.length} registro(s) de proveedor · orden alfabético</span></header>
+    <div class="cf-table-wrap"><table class="cf-table cf-provider-table"><thead><tr><th>Proveedor</th><th>Servicio / actividad</th><th class="num">Costo conocido</th><th class="num">Monto enviado</th><th class="num">Abonos aplicados</th><th class="num">Saldo del proveedor</th><th>Estado</th><th></th></tr></thead>
+    <tbody>${items.map(filaProveedor).join('')}</tbody>
+    <tfoot><tr class="cf-destination-total"><th colspan="2">TOTAL ${esc(state.destino)} · ${esc(etiqueta)}${t.parcial?' · PARCIAL':''}</th><th class="num">${fmtMoney(t.costo,m)}</th><th>Sin sumar monedas distintas</th><th class="num">${fmtMoney(t.aplicado,m)}</th><th class="num">POR PAGAR ${fmtMoney(t.pagar,m)}</th><th colspan="2">${t.favor?`A favor: ${fmtMoney(t.favor,m)}`:''}</th></tr></tfoot></table></div></section>`;
 }
 
 function renderProveedores() {
-  const items = proveedoresDestino();
-  $('#tituloDestino').textContent = state.destino || 'Seleccione un destino';
-  $('#btnExportarDestino').disabled = !items.length;
-  $('#sinProveedores').hidden = !!items.length;
-  const contenedor = $('#gruposFinancieros');
-  const grupos = agruparPorTipoYMoneda(items);
-  contenedor.innerHTML = grupos.map(grupo => {
-    const esHotel = grupo.tipo === 'HOTEL';
-    return `<article class="cf-service-block ${esHotel ? 'hotel' : 'activity'}">
-      <header class="cf-service-title">
-        <div><h3>${esHotel ? 'HOTELES' : 'ACTIVIDADES'}</h3><p>${esHotel ? 'Alojamientos agrupados por moneda de cobro.' : 'Servicios y actividades agrupados por moneda de cobro.'}</p></div>
-        <span class="cf-badge">${grupo.items.length} proveedor(es)</span>
-      </header>
-      ${grupo.monedas.map(codigo => bloqueMoneda(grupo, codigo)).join('')}
-    </article>`;
-  }).join('');
-  $$('.btn-detalle', contenedor).forEach(btn => btn.addEventListener('click', () => {
-    const key = btn.closest('tr').dataset.key;
-    const resumen = items.find(r => claveProveedor(r) === key);
-    if (resumen) abrirDetalle(resumen);
-  }));
+  const items=state.destino?proveedoresDestino():[];
+  $('#tituloDestino').textContent=state.destino||'Selecciona un destino';
+  $('#subtituloDestino').textContent='Moneda local primero · USD después · CLP al final. Los tipos de cambio son de planificación.';
+  $('#btnExportarDestino').disabled=!items.length;
+  $('#sinProveedores').hidden=!!items.length;
+  $('#sinProveedores').textContent=state.destino?'No hay proveedores para esta selección.':'Selecciona un destino para ver sus totales, proveedores y servicios.';
+  renderPlanificacion(items);
+  const monedas=monedasDestino(state.destino,items.map(r=>r.monedaObligacion));
+  const contenedor=$('#gruposFinancieros');
+  contenedor.innerHTML=monedas.filter(m=>items.some(r=>moneda(r.monedaObligacion)===m))
+    .map(m=>bloqueMoneda(null,{codigo:m,items:items.filter(r=>moneda(r.monedaObligacion)===m)})).join('');
+  $$('.btn-detalle',contenedor).forEach(btn=>btn.onclick=()=>{
+    const r=items.find(r=>claveProveedor(r)===btn.closest('tr').dataset.key);if(r)abrirDetalle(r);
+  });
 }
 
 async function consultarColeccionDetalle(nombre, proveedorId, monedaObligacion, tipo) {
@@ -263,7 +246,7 @@ async function consultarColeccionDetalle(nombre, proveedorId, monedaObligacion, 
   if (monedaObligacion) condiciones.push(where('monedaObligacion', '==', monedaObligacion));
   if (tipo && nombre === COLECCIONES.OBLIGACIONES) condiciones.push(where('tipo', '==', tipo));
   const snap = await getDocs(query(collection(db, nombre), ...condiciones));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.destinoFinanciero || norm(r.destinoFinanciero) === norm(state.proveedor?.destinoFinanciero));
 }
 
 async function abrirDetalle(resumen) {
@@ -314,28 +297,19 @@ function valorPaxReal(obligacion) {
 }
 
 function estadoCosto(obligacion) {
-  if (obligacion.requiereConfiguracion) return '<span class="cf-state warning">Sin tarifa</span>';
+  if (obligacion.requiereConfiguracion) return '<span class="cf-state warning">Faltan datos de costo</span>';
   if (obligacion.paxReales === null || obligacion.paxReales === undefined || obligacion.paxReales === '') {
     return '<span class="cf-state warning">Pax por revisar</span>';
   }
   return `<span class="cf-state payable">${esc(norm(obligacion.estadoFinanciero || obligacion.estadoRealizacion || 'PROGRAMADO'))}</span>`;
 }
 
-function renderCostosActividades(rows) {
-  return `<div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Fecha</th><th>Grupo</th><th>Servicio</th><th class="num">Pax acordados</th><th class="num">Pax reales</th><th class="num">Pax cobrados</th><th>Forma de cobro</th><th class="num">Valor unitario</th><th class="num">Costo total</th><th>Estado</th></tr></thead><tbody>${rows.map(o => `<tr><td>${fechaTexto(o.fechaServicio)}</td><td>${esc(o.numeroNegocio || '')} · ${esc(o.nombreGrupo || '')}</td><td>${esc(o.servicioNombre || '')}</td><td class="num">${fmtNum(o.paxAcordados ?? o.paxReservados)}</td><td class="num">${valorPaxReal(o)}</td><td class="num">${o.paxCobrados === null || o.paxCobrados === undefined ? '—' : fmtNum(o.paxCobrados)}</td><td>${esc(norm(o.tipoCobro || 'POR_GRUPO').replaceAll('_', ' '))}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.tarifaBase, o.monedaObligacion)}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.totalObligacion, o.monedaObligacion)}</td><td>${estadoCosto(o)}</td></tr>`).join('')}</tbody></table></div>`;
-}
+function renderCostosActividades(rows) { return tablaCostosAgrupados(rows,false); }
 
-function renderCostosHoteles(rows) {
-  return `<div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Estadía</th><th>Grupo</th><th>Hotel</th><th class="num">Noches</th><th class="num">Pax acordados</th><th class="num">Pax reales</th><th class="num">Pax cobrados</th><th>Modalidad de cobro</th><th class="num">Tarifa</th><th class="num">Costo total</th><th>Estado</th></tr></thead><tbody>${rows.map(o => `<tr><td>${fechaTexto(o.checkIn)} – ${fechaTexto(o.checkOut)}</td><td>${esc(o.numeroNegocio || '')} · ${esc(o.nombreGrupo || '')}</td><td>${esc(o.servicioNombre || o.hotelNombre || '')}</td><td class="num">${fmtNum(o.noches)}</td><td class="num">${fmtNum(o.paxAcordados ?? o.paxReservados)}</td><td class="num">${valorPaxReal(o)}</td><td class="num">${o.paxCobrados === null || o.paxCobrados === undefined ? '—' : fmtNum(o.paxCobrados)}</td><td>${esc(norm(o.tipoCobro || '').replaceAll('_', ' '))}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.tarifaBase, o.monedaObligacion)}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.totalObligacion, o.monedaObligacion)}</td><td>${estadoCosto(o)}</td></tr>`).join('')}</tbody></table></div>`;
-}
+function renderCostosHoteles(rows) { return tablaCostosAgrupados(rows,true); }
 
 function renderObligaciones() {
-  const rows = [...state.obligaciones].sort(
-    (a, b) =>
-      String(a.fechaServicio || '').localeCompare(
-        String(b.fechaServicio || '')
-      )
-  );
+  const rows = [...state.obligaciones].sort(ordenarCostosGrupo);
 
   const esHotel =
     norm(state.proveedor?.tipo) === 'HOTEL';
@@ -2172,7 +2146,18 @@ async function guardarRevisionAbono(event) {
   }
 }
 function filasResumenes(lista) {
-  return lista.map(r => ({ Año: r.anoViaje, Destino: r.destinoFinanciero, Proveedor: r.proveedorNombre, Tipo: r.tipo, 'Moneda de cobro': r.monedaObligacion, 'Costo total': num(r.totalObligacion), 'Abonos aplicados': num(r.totalAplicado), 'Saldo por pagar': num(r.saldoPendiente), 'Enviado CLP': num(r.totalEnviadoPorMoneda?.CLP), 'Enviado USD': num(r.totalEnviadoPorMoneda?.USD), 'Enviado BRL': num(r.totalEnviadoPorMoneda?.BRL), 'Enviado ARS': num(r.totalEnviadoPorMoneda?.ARS), 'Pendientes de revisión': num(r.abonosPendientesRevision), 'Servicios sin tarifa': num(r.obligacionesSinTarifa) }));
+  return [...lista].sort((a,b)=>compararNombre(a.destinoFinanciero,b.destinoFinanciero)||compararNombre(a.proveedorNombre,b.proveedorNombre)).map(r=>({
+    'Año':r.anoViaje, Destino:r.destinoFinanciero, Tipo:r.tipo, Proveedor:r.proveedorNombre,
+    Moneda:moneda(r.monedaObligacion), 'Costo conocido':num(r.totalObligacion),
+    'Abonos aplicados':num(r.totalAplicado), 'Saldo conocido':num(r.saldoPendiente),
+    'Por pagar conocido':Math.max(0,num(r.saldoPendiente)),
+    'Saldo a favor confirmado':r.requiereConfiguracion?0:Math.max(0,-num(r.saldoPendiente)),
+    'Costos pendientes':num(r.obligacionesSinTarifa), 'Abonos por revisar':num(r.abonosPendientesRevision),
+    Estado:r.requiereConfiguracion||num(r.abonosPendientesRevision)?'PARCIAL / PENDIENTE':'COMPLETO',
+    'Enviado CLP':num(r.totalEnviadoPorMoneda?.CLP),'Enviado USD':num(r.totalEnviadoPorMoneda?.USD),
+    'Enviado BRL':num(r.totalEnviadoPorMoneda?.BRL),'Enviado ARS':num(r.totalEnviadoPorMoneda?.ARS),
+    'Resumen ID':r.id
+  }));
 }
 
 function descargarExcel(nombre, hojas) {
@@ -2191,22 +2176,290 @@ function hojasResumen(lista) {
   };
 }
 
-function exportarTodo() { descargarExcel(`control_finanzas_${state.ano}.xlsx`, hojasResumen(resumenesFiltrados())); }
-function exportarDestino() { descargarExcel(`control_finanzas_${state.ano}_${norm(state.destino).replace(/\s+/g,'_')}.xlsx`, hojasResumen(proveedoresDestino())); }
-function exportarProveedor() {
-  const r = state.proveedor;
-  descargarExcel(`control_finanzas_${state.ano}_${String(r.proveedorNombre || r.proveedorId).replace(/[^a-z0-9]+/gi,'_')}.xlsx`, {
-    Resumen: filasResumenes([r]),
-    Costos: state.obligaciones.map(o => ({ Fecha:o.fechaServicio, CheckIn:o.checkIn, CheckOut:o.checkOut, Noches:o.noches, Negocio:o.numeroNegocio, Grupo:o.nombreGrupo, Servicio:o.servicioNombre || o.hotelNombre, 'Pax acordados':o.paxAcordados ?? o.paxReservados, 'Pax reales':o.paxReales, 'Pax cobrados':o.paxCobrados, 'Forma de cobro':o.tipoCobro, 'Valor unitario':o.tarifaBase, Moneda:o.monedaObligacion, 'Costo total':o.totalObligacion, Estado:o.estadoFinanciero || o.estadoRealizacion })),
-    Abonos: state.abonos.map(a => ({ Fecha:a.fecha, 'Moneda enviada':a.monedaEnviada, 'Monto enviado':a.montoEnviado, 'Tipo de cambio':a.tipoCambioAplicado, 'Moneda aplicada':a.monedaAplicada, 'Monto aplicado':a.montoAplicado, 'Unidades cubiertas':a.unidadesCubiertas, Estado:a.estadoRevision, Observación:a.nota, Comprobante:a.comprobanteURL })),
-    Reglas: state.reglas.map(rg => ({ Alcance:rg.servicioId ? 'Servicio' : 'Proveedor', Servicio:rg.servicioNombre, Año:rg.anoViaje, Tipo:rg.tipoRegla, Descripción:rg.descripcion, Activa:rg.activa !== false })),
-    Historial: state.historial.map(h => ({ Fecha:fechaTexto(h.creadoAt), Acción:h.accion, Usuario:h.usuarioEmail, Motivo:h.motivo, Antes:resumenCambio(h.antes), Después:resumenCambio(h.despues) }))
-  });
+function exportarTodo(){return exportarSeleccionFinanzas(state.resumenes,`control_finanzas_${state.ano}_completo.xlsx`);}
+
+function exportarDestino(){return exportarSeleccionFinanzas(proveedoresDestino(),`control_finanzas_${state.ano}_${state.destino.replace(/\s+/g,'_')}.xlsx`);}
+
+function exportarProveedor(){if(state.proveedor)return exportarSeleccionFinanzas([state.proveedor],`control_finanzas_${state.ano}_${String(state.proveedor.proveedorNombre).replace(/[^a-z0-9]+/gi,'_')}.xlsx`);}
+
+function clavePreferenciasFinanzas() { return `cf-vista-v2:${state.usuario?.uid || state.usuario?.email || 'usuario'}:${state.ano}`; }
+
+function preferenciasFinanzas() {
+  try { return JSON.parse(localStorage.getItem(clavePreferenciasFinanzas()) || '{}') || {}; }
+  catch { return {}; }
 }
+
+function guardarPreferenciasFinanzas(p) {
+  try { localStorage.setItem(clavePreferenciasFinanzas(), JSON.stringify(p)); }
+  catch { setEstado('El navegador no pudo recordar tus preferencias. Los datos financieros no se modificaron.', true); }
+}
+
+function planDestino(destino = state.destino) { return preferenciasFinanzas().planes?.[destino] || {}; }
+
+function monedaLocalDestino(destino) {
+  if (norm(destino).includes('BRASIL')) return 'BRL';
+  if (norm(destino).includes('BARILOCHE')) return 'ARS';
+  if (norm(destino).includes('CHILE')) return 'CLP';
+  return null;
+}
+
+function monedasDestino(destino, lista = []) {
+  return [...new Set([monedaLocalDestino(destino), 'USD', 'CLP', ...lista.map(moneda)])]
+    .filter(Boolean).sort((a,b) => {
+      const orden = [...new Set([monedaLocalDestino(destino), 'USD', 'CLP', 'BRL', 'ARS'].filter(Boolean))];
+      return (orden.includes(a)?orden.indexOf(a):99)-(orden.includes(b)?orden.indexOf(b):99);
+    });
+}
+
+function compararNombre(a,b) { return String(a || '').localeCompare(String(b || ''), 'es', {sensitivity:'base',numeric:true}); }
+
+function fechaOrdenCosto(o) { return String(o.fechaServicio || o.checkIn || '').slice(0,10); }
+
+function ordenarCostosGrupo(a,b) { return compararNombre(fechaOrdenCosto(a),fechaOrdenCosto(b)) || compararNombre(a.nombreGrupo,b.nombreGrupo) || compararNombre(a.numeroNegocio,b.numeroNegocio); }
+
+function costosResumen(r) { return (state.costosAno || []).filter(o => o.resumenId === r.id); }
+
+function totalesNecesidades(items) {
+  const salida = {};
+  for (const r of items) {
+    const m = moneda(r.monedaObligacion);
+    const t = salida[m] ||= {costo:0, aplicado:0, pagar:0, favor:0, sinTarifa:0, revision:0, parcial:false};
+    t.costo += num(r.totalObligacion); t.aplicado += num(r.totalAplicado);
+    t.pagar += Math.max(0,num(r.saldoPendiente));
+    if (!r.requiereConfiguracion) t.favor += Math.max(0,-num(r.saldoPendiente));
+    t.sinTarifa += num(r.obligacionesSinTarifa); t.revision += num(r.abonosPendientesRevision);
+    t.parcial ||= !!r.requiereConfiguracion || num(r.abonosPendientesRevision)>0 || m === 'SIN_DEFINIR';
+  }
+  return salida;
+}
+
+function estimarFondos(items, plan) {
+  const totales = totalesNecesidades(items);
+  let usd = totales.USD?.pagar || 0;
+  let faltaTC = false;
+  for (const m of ['BRL','ARS']) {
+    const pagar=totales[m]?.pagar || 0, tc=Number(plan[m]);
+    if (pagar>0) { if (Number.isFinite(tc)&&tc>0) usd+=pagar/tc; else faltaTC=true; }
+  }
+  const usdFinal = faltaTC ? null : usd;
+  const tcCLP = Number(plan.CLP);
+  const clpDirectos=totales.CLP?.pagar || 0;
+  const clp = usdFinal === null || usdFinal>0 && !(Number.isFinite(tcCLP)&&tcCLP>0)
+    ? null : clpDirectos + usdFinal*(tcCLP>0?tcCLP:0);
+  return {totales, usd:usdFinal, clp, parcial:Object.values(totales).some(t=>t.parcial)};
+}
+
+function gestionarDestinos() {
+  let dialogo=$('#dialogDestinos');
+  if(!dialogo){dialogo=document.createElement('dialog');dialogo.id='dialogDestinos';document.body.appendChild(dialogo);}
+  const p=preferenciasFinanzas();
+  const destinos=ordenarDestinos([...new Set([...DESTINOS_ORDEN,...state.resumenes.map(r=>norm(r.destinoFinanciero)).filter(Boolean)])]);
+  dialogo.innerHTML=`<form class="cf-dialog-body"><h3>Destinos visibles</h3><p>Esta selección se recuerda en este navegador. Exportar todo incluye también los destinos ocultos.</p>
+    ${destinos.map(d=>`<label class="cf-dest-choice"><input type="checkbox" name="visible" value="${esc(d)}" ${!(p.ocultos||[]).includes(d)?'checked':''}> ${esc(d)}</label>`).join('')}
+    <div class="cf-form-actions"><button type="button" class="cf-btn" data-cancelar>Cancelar</button><button class="cf-btn blue" type="submit">Guardar vista</button></div></form>`;
+  $('[data-cancelar]',dialogo).onclick=()=>dialogo.close();
+  $('form',dialogo).onsubmit=e=>{e.preventDefault();
+    const visibles=$$('input[name="visible"]:checked',dialogo).map(el=>el.value);
+    p.ocultos=destinos.filter(d=>!visibles.includes(d));guardarPreferenciasFinanzas(p);
+    if(p.ocultos.includes(state.destino))state.destino=null;
+    dialogo.close();renderDestinos();renderProveedores();};
+  dialogo.showModal();
+}
+
+function renderPlanificacion(items) {
+  const panel=$('#planificacionDestino');
+  if(!state.destino){panel.innerHTML='';return;}
+  const plan=planDestino(), e=estimarFondos(items,plan);
+  const monedas=monedasDestino(state.destino,Object.keys(e.totales)).filter(m=>e.totales[m]);
+  panel.innerHTML=`<section class="cf-planning" aria-label="Necesidad de fondos">
+    <div class="cf-plan-title"><div><h3>¿Cuánto falta pagar en ${esc(state.destino)}?</h3><p>Importes originales y estimación para preparar fondos.</p></div><span class="cf-state ${e.parcial?'warning':'paid'}">${e.parcial?'TOTAL PARCIAL · HAY PENDIENTES':'DATOS COMPLETOS'}</span></div>
+    <div class="cf-kpi-grid">${monedas.map(m=>{const t=e.totales[m];return `<article class="cf-kpi moneda-${m}"><span>POR PAGAR EN ${m==='SIN_DEFINIR'?'MONEDA PENDIENTE':m}</span><strong>${fmtMoney(t.pagar,m)}</strong><small>${t.parcial?'Importe conocido · faltan datos':'Saldo por pagar'}${t.favor?` · Saldo a favor: ${fmtMoney(t.favor,m)}`:''}</small></article>`;}).join('')}</div>
+    <div class="cf-rates">${['BRL','ARS'].filter(m=>(e.totales[m]?.pagar||0)>0).map(m=>`<label class="cf-field"><span>Tipo de cambio para planificar</span><span class="cf-rate-line">1 USD = <input type="number" min="0.000001" step="any" inputmode="decimal" data-tc="${m}" value="${esc(plan[m]??'')}" placeholder="Ingresar TC" aria-label="${m} por dólar"> ${m}</span></label>`).join('')}
+      <label class="cf-check-line"><input id="mostrarCLP" type="checkbox" ${plan.mostrarCLP?'checked':''}> Mostrar presupuesto en pesos chilenos</label>
+      ${plan.mostrarCLP?`<label class="cf-field"><span>Compra de dólares</span><span class="cf-rate-line">1 USD = <input type="number" min="0.000001" step="any" inputmode="decimal" data-tc="CLP" value="${esc(plan.CLP??'')}" placeholder="Ingresar TC" aria-label="Pesos chilenos por dólar"> CLP</span></label>`:''}
+    </div>
+    <div class="cf-budget-grid"><article class="cf-budget"><span>USD NECESARIOS PARA PAGAR USD + BRL + ARS</span><strong>${e.usd===null?'FALTA TIPO DE CAMBIO':fmtMoney(e.usd,'USD')}</strong><small>Los pagos directos en CLP se suman al presupuesto en pesos, sin convertirlos a dólares.</small></article>
+      ${plan.mostrarCLP?`<article class="cf-budget clp"><span>PRESUPUESTO TOTAL EN CLP</span><strong>${e.clp===null?'FALTA TIPO DE CAMBIO':fmtMoney(e.clp,'CLP')}</strong><small>Dólares estimados × CLP por USD + cuentas cobradas directamente en CLP.</small></article>`:''}</div>
+    <p class="cf-plan-note">TC de planificación: no modifica pagos ni conversiones históricas. Los saldos a favor no compensan deudas con otros proveedores.${e.parcial?' Hay tarifas, monedas o abonos por completar; la estimación es parcial.':''}</p>
+  </section>`;
+  $$('[data-tc]',panel).forEach(input=>input.addEventListener('change',()=>{
+    const p=preferenciasFinanzas();p.planes ||= {};p.planes[state.destino] ||= {};
+    const n=Number(input.value);p.planes[state.destino][input.dataset.tc]=Number.isFinite(n)&&n>0?n:null;
+    guardarPreferenciasFinanzas(p);renderPlanificacion(items);
+  }));
+  $('#mostrarCLP',panel).onchange=event=>{const p=preferenciasFinanzas();p.planes ||= {};p.planes[state.destino] ||= {};p.planes[state.destino].mostrarCLP=event.target.checked;guardarPreferenciasFinanzas(p);renderPlanificacion(items);};
+}
+
+function tablaCostosAgrupados(rows,esHotel) {
+  const grupos=new Map();
+  for(const o of rows){const k=o.servicioId||o.servicioNombre||o.hotelNombre||'Servicio';if(!grupos.has(k))grupos.set(k,[]);grupos.get(k).push(o);}
+  return [...grupos.values()].sort((a,b)=>compararNombre(a[0].servicioNombre||a[0].hotelNombre,b[0].servicioNombre||b[0].hotelNombre)).map(items=>{
+    items.sort(ordenarCostosGrupo);const nombre=items[0].servicioNombre||items[0].hotelNombre||'Servicio';
+    const costo=items.reduce((s,o)=>s+num(o.totalObligacion),0),pendientes=items.filter(o=>o.requiereConfiguracion).length,m=items[0].monedaObligacion;
+    return `<section class="cf-detail-service"><header><h3>${esc(nombre)}</h3><span>${items.length} registro(s) · ${pendientes?'TOTAL PARCIAL':'TOTAL'} ${fmtMoney(costo,m)}</span></header><div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>${esHotel?'Entrada / salida':'Fecha'}</th><th>N.º negocio</th><th>Grupo</th>${esHotel?'<th class="num">Noches</th>':''}<th class="num">Pax acordados</th><th class="num">Pax reales</th><th class="num">Pax cobrados</th><th>Forma de cobro</th><th class="num">Tarifa</th><th class="num">Costo</th><th>Estado</th></tr></thead><tbody>${items.map(o=>`<tr><td class="cf-date">${fechaTexto(o.fechaServicio||o.checkIn)}${esHotel?' → '+fechaTexto(o.checkOut):''}</td><td>${esc(o.numeroNegocio||'')}</td><td>${esc(o.nombreGrupo||'')}</td>${esHotel?`<td class="num">${fmtNum(o.noches)}</td>`:''}<td class="num">${fmtNum(o.paxAcordados??o.paxReservados)}</td><td class="num">${valorPaxReal(o)}</td><td class="num">${o.paxCobrados==null?'—':fmtNum(o.paxCobrados)}</td><td>${esc(norm(o.tipoCobro).replaceAll('_',' '))}</td><td class="num">${o.requiereConfiguracion?'PENDIENTE':fmtMoney(o.tarifaBase,m)}</td><td class="num">${o.requiereConfiguracion?'PENDIENTE':fmtMoney(o.totalObligacion,m)}</td><td>${estadoCosto(o)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="${esHotel?9:8}">TOTAL DEL SERVICIO${pendientes?' · PARCIAL':''}</th><th class="num">${fmtMoney(costo,m)}</th><th>${pendientes?pendientes+' pendiente(s)':''}</th></tr></tfoot></table></div></section>`;
+  }).join('');
+}
+
+function filasCostosExcel(lista) {
+  return [...lista].sort((a,b)=>compararNombre(a.destinoFinanciero,b.destinoFinanciero)||compararNombre(a.proveedorNombre,b.proveedorNombre)||compararNombre(a.servicioNombre,b.servicioNombre)||ordenarCostosGrupo(a,b)).map(o=>({
+    'Año':o.anoViaje, Destino:o.destinoFinanciero, Tipo:o.tipo, Proveedor:o.proveedorNombre,
+    Servicio:o.servicioNombre||o.hotelNombre||'', 'N.º negocio':String(o.numeroNegocio||''),
+    Grupo:o.nombreGrupo||'', Fecha:fechaOrdenCosto(o), Salida:o.checkOut||'', Noches:o.noches??null,
+    Moneda:moneda(o.monedaObligacion), 'Pax acordados':o.paxAcordados??o.paxReservados??null,
+    'Pax reales':o.paxReales??null,'Pax cobrados':o.paxCobrados??o.personasCobradas??null,
+    'Forma de cobro':o.tipoCobro||'', 'Valor unitario':o.tarifaBase??null,
+    'Unidades cobrables':o.unidadesCobrables??null,Adicionales:o.adicionales??null,Descuentos:o.descuentos??null,
+    'Costo conocido':o.totalObligacion??null, Estado:o.requiereConfiguracion?'PENDIENTE':o.estadoFinanciero||o.estadoRealizacion||'',
+    'Datos pendientes':(o.pendientesConfiguracion||[]).join(', '),'Resumen ID':o.resumenId,'Registro ID':o.id
+  }));
+}
+
+function filasAbonosExcel(lista) {
+  return [...lista].sort((a,b)=>compararNombre(a.destinoFinanciero,b.destinoFinanciero)||compararNombre(a.proveedorNombre,b.proveedorNombre)||compararNombre(a.fecha,b.fecha)).map(a=>({
+    'Año':a.anoViaje, Destino:a.destinoFinanciero, Tipo:a.tipo, Proveedor:a.proveedorNombre,
+    Fecha:a.fecha||'',Servicio:a.servicioNombre||'', 'Moneda enviada':a.monedaEnviada,
+    'Monto enviado':num(a.montoEnviado), 'Tipo de cambio histórico':a.tipoCambioAplicado??null,
+    'Moneda aplicada':a.monedaAplicada||a.monedaObligacion, 'Monto aplicado':num(a.montoAplicado),
+    'Unidades cubiertas':a.unidadesCubiertas??null, Estado:a.estadoRevision,
+    'Pendiente de vinculación':a.requiereVinculacion?'SÍ':'NO',Motivo:a.motivoPendiente||'',
+    Observación:a.nota||'',Comprobante:a.comprobanteURL||'',
+    'Resumen ID':a.resumenId,'Abono original ID':a.abonoOperacionId||'', 'Origen':a.origenPath||'','Registro ID':a.id
+  }));
+}
+
+function hojaExcelFinanzas(libro,nombre,filas,camposVacios=['Información']) {
+  const hoja=libro.addWorksheet(nombre,{views:[{state:'frozen',ySplit:1,showGridLines:false}]});
+  const campos=filas.length?Object.keys(filas[0]):camposVacios;
+  hoja.addRow(campos);
+  for(const fila of filas)hoja.addRow(campos.map(c=>fila[c]??null));
+  const header=hoja.getRow(1);header.height=32;
+  header.eachCell(cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF17365D'}};cell.font={bold:true,color:{argb:'FFFFFFFF'}};cell.alignment={vertical:'middle',wrapText:true};});
+  hoja.autoFilter={from:{row:1,column:1},to:{row:Math.max(1,hoja.rowCount),column:campos.length}};
+  hoja.columns.forEach((col,i)=>{
+    col.width=Math.min(52,Math.max(15,campos[i].length+3,...filas.slice(0,200).map(r=>String(r[campos[i]]??'').length+2)));
+    if(/costo|monto|saldo|pagar|enviado|aplicado|valor|adicional|descuento|cambio|TC|USD necesarios|presupuesto/i.test(campos[i]))col.numFmt='#,##0.00;[Red](#,##0.00)';
+  });
+  for(let row=2;row<=hoja.rowCount;row++)hoja.getRow(row).eachCell({includeEmpty:true},cell=>{
+    cell.font={name:'Calibri',size:11};cell.alignment={vertical:'top',wrapText:true};
+    if(row%2===0)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF0F5FB'}};
+  });
+  return {hoja,campos,col:nombreCampo=>hoja.getColumn(campos.indexOf(nombreCampo)+1).letter};
+}
+
+function crearLibroFinanzas(lista,costos,abonos) {
+  if(!window.ExcelJS)throw new Error('No se cargó ExcelJS. Recarga la página y vuelve a exportar.');
+  const libro=new window.ExcelJS.Workbook();libro.creator='Rai Trai · Control Finanzas';libro.created=new Date();libro.calcProperties.fullCalcOnLoad=true;
+  const resumen=hojaExcelFinanzas(libro,'Resumen proveedores',filasResumenes(lista));
+  const detalle=hojaExcelFinanzas(libro,'Costos',filasCostosExcel(costos),Object.keys(filasCostosExcel([{id:'',resumenId:''}])[0]));
+  const pagos=hojaExcelFinanzas(libro,'Abonos',filasAbonosExcel(abonos),Object.keys(filasAbonosExcel([{id:'',resumenId:''}])[0]));
+  const finCostos=Math.max(2,detalle.hoja.rowCount),finPagos=Math.max(2,pagos.hoja.rowCount);
+  for(let row=2;row<=resumen.hoja.rowCount;row++){
+    const idRef=`${resumen.col('Resumen ID')}${row}`;
+    const formulas=[
+      ['Costo conocido',`SUMIF(Costos!$${detalle.col('Resumen ID')}$2:$${detalle.col('Resumen ID')}$${finCostos},${idRef},Costos!$${detalle.col('Costo conocido')}$2:$${detalle.col('Costo conocido')}$${finCostos})`],
+      ['Abonos aplicados',`SUMIF(Abonos!$${pagos.col('Resumen ID')}$2:$${pagos.col('Resumen ID')}$${finPagos},${idRef},Abonos!$${pagos.col('Monto aplicado')}$2:$${pagos.col('Monto aplicado')}$${finPagos})`],
+      ['Saldo conocido',`${resumen.col('Costo conocido')}${row}-${resumen.col('Abonos aplicados')}${row}`],
+      ['Por pagar conocido',`MAX(0,${resumen.col('Saldo conocido')}${row})`],
+      ['Saldo a favor confirmado',`IF(${resumen.col('Costos pendientes')}${row}>0,0,MAX(0,-${resumen.col('Saldo conocido')}${row}))`]
+    ];
+    for(const [campo,formula]of formulas){const cell=resumen.hoja.getCell(`${resumen.col(campo)}${row}`);cell.value={formula,result:cell.value??0};}
+  }
+  const destinos=ordenarDestinos([...new Set(lista.map(r=>norm(r.destinoFinanciero)))]);
+  const planes=destinos.map(dest=>{
+    const plan=planDestino(dest),items=lista.filter(r=>norm(r.destinoFinanciero)===dest),e=estimarFondos(items,plan);
+    return {Destino:dest,'Por pagar BRL':e.totales.BRL?.pagar||0,'Por pagar ARS':e.totales.ARS?.pagar||0,
+      'Por pagar USD':e.totales.USD?.pagar||0,'Por pagar CLP':e.totales.CLP?.pagar||0,
+      'TC BRL por USD':plan.BRL??null,'TC ARS por USD':plan.ARS??null,
+      'USD necesarios':e.usd??'PENDIENTE','Mostrar CLP':plan.mostrarCLP?'SÍ':'NO',
+      'TC CLP por USD':plan.CLP??null,'Presupuesto CLP':plan.mostrarCLP?(e.clp??'PENDIENTE'):'NO SOLICITADO',
+      Estado:e.parcial?'PARCIAL / HAY DATOS PENDIENTES':'COMPLETO'};
+  });
+  const planHoja=hojaExcelFinanzas(libro,'Planificacion',planes);
+  const finResumen=Math.max(2,resumen.hoja.rowCount);
+  for(let row=2;row<=planHoja.hoja.rowCount;row++){
+    for(const codigo of ['BRL','ARS','USD','CLP']){
+      const celda=planHoja.hoja.getCell(`${planHoja.col('Por pagar '+codigo)}${row}`);
+      const formula=`SUMIFS('Resumen proveedores'!$${resumen.col('Por pagar conocido')}$2:$${resumen.col('Por pagar conocido')}$${finResumen},'Resumen proveedores'!$${resumen.col('Destino')}$2:$${resumen.col('Destino')}$${finResumen},A${row},'Resumen proveedores'!$${resumen.col('Moneda')}$2:$${resumen.col('Moneda')}$${finResumen},"${codigo}")`;
+      celda.value={formula,result:celda.value};
+    }
+    const usd=planHoja.hoja.getCell(`H${row}`),clp=planHoja.hoja.getCell(`K${row}`);
+    usd.value={formula:`IF(OR(AND(B${row}>0,OR(NOT(ISNUMBER(F${row})),F${row}<=0)),AND(C${row}>0,OR(NOT(ISNUMBER(G${row})),G${row}<=0))),"PENDIENTE",D${row}+IF(B${row}=0,0,B${row}/F${row})+IF(C${row}=0,0,C${row}/G${row}))`,result:usd.value};
+    clp.value={formula:`IF(I${row}<>"SÍ","NO SOLICITADO",IF(NOT(ISNUMBER(H${row})),"PENDIENTE",IF(AND(H${row}>0,OR(NOT(ISNUMBER(J${row})),J${row}<=0)),"PENDIENTE",E${row}+IF(H${row}=0,0,H${row}*J${row}))))`,result:clp.value};
+    for(const letra of ['F','G','I','J'])planHoja.hoja.getCell(`${letra}${row}`).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}};
+    for(const letra of ['F','G','J'])planHoja.hoja.getCell(`${letra}${row}`).dataValidation={type:'decimal',operator:'greaterThan',formulae:[0],allowBlank:true,showErrorMessage:true,error:'Ingrese un tipo de cambio mayor que cero.'};
+    planHoja.hoja.getCell(`I${row}`).dataValidation={type:'list',formulae:['"SÍ,NO"'],allowBlank:false};
+  }
+  const notas=[
+    {Tema:'Alcance',Detalle:`Año ${state.ano}. Tipos incluidos: ${[...new Set(lista.map(r=>r.tipo))].join(', ')}. Los destinos ocultos se incluyen al exportar todo.`},
+    {Tema:'Celdas amarillas',Detalle:'Tipos de cambio de planificación editables. No modifican los pagos originales ni los TC históricos.'},
+    {Tema:'Planificación',Detalle:'USD necesarios = deuda USD + BRL / TC BRL por USD + ARS / TC ARS por USD. CLP = USD necesarios × TC CLP por USD + deuda directa CLP.'},
+    {Tema:'Totales parciales',Detalle:'Los costos sin tarifa quedan vacíos. Los pagos sin conversión o vinculación no se aplican. Los totales conocidos no constituyen un total definitivo.'},
+    {Tema:'Saldos a favor',Detalle:'Se mantienen por proveedor; no se restan de deudas con otros proveedores. Sin tarifa completa no se confirma un saldo a favor.'},
+    {Tema:'Filtrar detalle',Detalle:'Los filtros de las hojas Costos y Abonos no cambian los SUMIF/SUMIFS del resumen. La hoja Consulta filtrada permite sumar las filas visibles sin mezclar monedas.'},
+    {Tema:'Edición de datos',Detalle:'Las hojas resumen y planificación usan fórmulas. Los estados y cantidades pendientes son una foto del sistema al exportar; editar Excel no actualiza el sistema.'}
+  ];
+  hojaExcelFinanzas(libro,'Notas',notas);
+  if(lista.length===1 && state.proveedor?.id===lista[0].id) {
+    hojaExcelFinanzas(libro,'Reglas',(state.reglas || []).map(r=>({Servicio:r.servicioNombre || '',Tipo:r.tipoRegla || '',Descripción:r.descripcion || '',Activa:r.activa!==false?'SÍ':'NO'})));
+    hojaExcelFinanzas(libro,'Historial',(state.historial || []).map(h=>({Fecha:fechaTexto(h.creadoAt),Acción:h.accion || '',Usuario:h.usuarioEmail || '',Motivo:h.motivo || '',Antes:resumenCambio(h.antes),Después:resumenCambio(h.despues)})));
+  }
+  const consulta=hojaExcelFinanzas(libro,'Consulta filtrada',[
+    {Origen:'Costos',Moneda:'BRL',Instrucción:'Filtre la hoja Costos por destino, proveedor, servicio y moneda. Aquí solo se suman filas visibles en la moneda indicada.',Total:0},
+    {Origen:'Costos',Moneda:'ARS',Instrucción:'',Total:0},{Origen:'Costos',Moneda:'USD',Instrucción:'',Total:0},{Origen:'Costos',Moneda:'CLP',Instrucción:'',Total:0},
+    {Origen:'Abonos aplicados',Moneda:'BRL',Instrucción:'Filtre Abonos por Moneda aplicada; el total usa filas visibles.',Total:0},
+    {Origen:'Abonos aplicados',Moneda:'ARS',Instrucción:'',Total:0},{Origen:'Abonos aplicados',Moneda:'USD',Instrucción:'',Total:0},{Origen:'Abonos aplicados',Moneda:'CLP',Instrucción:'',Total:0}
+  ]);
+  for(let row=2;row<=9;row++){
+    const esCosto=row<=5,src=esCosto?detalle:pagos,fin=esCosto?finCostos:finPagos,
+      campo=esCosto?'Costo conocido':'Monto aplicado',mon=esCosto?'Moneda':'Moneda aplicada',
+      valores=`${src.col(campo)}2:${src.col(campo)}${fin}`,
+      rangoMon=`${src.col(mon)}2:${src.col(mon)}${fin}`,
+      nombre=esCosto?'Costos':'Abonos',
+      formula=`SUMPRODUCT(SUBTOTAL(109,OFFSET('${nombre}'!${src.col(campo)}2,ROW('${nombre}'!${valores})-ROW('${nombre}'!${src.col(campo)}2),0,1)),--('${nombre}'!${rangoMon}=B${row}))`;
+    const monedaFila=consulta.hoja.getCell(`B${row}`).value;
+    const cache=(esCosto?costos:abonos).filter(x=>moneda(esCosto?x.monedaObligacion:x.monedaAplicada||x.monedaObligacion)===monedaFila).reduce((v,x)=>v+num(esCosto?x.totalObligacion:x.montoAplicado),0);
+    consulta.hoja.getCell(`D${row}`).value={formula,result:cache};
+  }
+  return libro;
+}
+
+async function exportarSeleccionFinanzas(lista,nombre) {
+  const botones=$$('#btnExportarTodo, #btnExportarDestino, #btnExportarProveedor');botones.forEach(b=>b.disabled=true);
+  try {
+    setEstado('Preparando Excel con costos, pagos, filtros y fórmulas…');
+    const ano=Number(state.ano),ids=new Set(lista.map(r=>r.id));
+    const [costos,pagos]=await Promise.all([
+      getDocs(query(collection(db,COLECCIONES.OBLIGACIONES),where('anoViaje','==',ano))),
+      getDocs(query(collection(db,COLECCIONES.ABONOS),where('anoViaje','==',ano)))
+    ]);
+    if(ano!==Number(state.ano))throw new Error('Cambió el año durante la exportación. Vuelve a exportar.');
+    const cs=costos.docs.map(d=>({...d.data(),id:d.id})).filter(o=>ids.has(o.resumenId));
+    const as=pagos.docs.map(d=>({...d.data(),id:d.id})).filter(a=>ids.has(a.resumenId));
+    // Los resúmenes se refrescan para exportar importes recientes junto con sus detalles.
+    const recientes=await getDocs(query(collection(db,COLECCIONES.RESUMENES),where('anoViaje','==',ano)));
+    const rs=recientes.docs.map(d=>({...d.data(),id:d.id})).filter(r=>ids.has(r.id));
+    for (const r of rs) {
+      const costo=cs.filter(o=>o.resumenId===r.id).reduce((v,o)=>v+num(o.totalObligacion),0);
+      const aplicado=as.filter(a=>a.resumenId===r.id).reduce((v,a)=>v+num(a.montoAplicado),0);
+      if(Math.abs(costo-num(r.totalObligacion))>0.02 || Math.abs(aplicado-num(r.totalAplicado))>0.02) {
+        throw new Error('Los datos se están recalculando. Actualiza la información y vuelve a exportar cuando termine.');
+      }
+    }
+    const libro=crearLibroFinanzas(rs,cs,as),buffer=await libro.xlsx.writeBuffer();
+    const url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    const enlace=document.createElement('a');enlace.href=url;enlace.download=nombre;enlace.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
+    setEstado('Excel generado. Incluye tablas filtrables y tipos de cambio editables.');
+  }catch(error){console.error(error);setEstado(`No se pudo exportar: ${error.message}`,true);}
+  finally{botones.forEach(b=>b.disabled=false);$('#btnExportarDestino').disabled=!state.destino||!proveedoresDestino().length;}
+}
+
+state.costosAno = [];
+state.cargaVisual = 0;
 
 function bindUI() {
   $('#filtroAno').addEventListener('change', async e => { state.ano = Number(e.target.value); state.destino = null; await cargarResumenes(); });
   $('#filtroTipo').addEventListener('change', e => { state.tipo = e.target.value; renderDestinos(); renderProveedores(); });
+  $('#btnGestionarDestinos').addEventListener('click', gestionarDestinos);
   $('#btnRecargar').addEventListener('click', cargarResumenes); $('#btnExportarTodo').addEventListener('click', exportarTodo);
   $('#btnExportarDestino').addEventListener('click', exportarDestino); $('#btnExportarProveedor').addEventListener('click', exportarProveedor);
   $('#btnCerrarDetalle').addEventListener('click', cerrarDetalle); $('#detalleBackdrop').addEventListener('click', e => { if (e.target === $('#detalleBackdrop')) cerrarDetalle(); });
