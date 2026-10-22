@@ -53,6 +53,24 @@ function numeroOpcionalHotel(id) {
   return numero;
 }
 
+function leerReglaPersonasHotel() {
+  const regla = {};
+  for (const clave of ['estudiantes', 'adultos', 'coordinadores', 'conductores']) {
+    regla[clave] = document.getElementById(`m-fin-${clave}`).checked;
+  }
+  regla.liberadosPorAsignacion = numeroOpcionalHotel('m-fin-liberados') ?? 0;
+  if (!Number.isInteger(regla.liberadosPorAsignacion)) throw new Error('Los liberados deben ser enteros.');
+  return regla;
+}
+function tieneExcepcionHotel(f = {}) {
+  if (f.usarReglaHotel === true) return false;
+  return !!(f.pension || f.moneda || f.modalidad === 'total' ||
+    f.personasCobradas !== null && f.personasCobradas !== undefined && f.personasCobradas !== '' ||
+    f.tarifaParticular !== null && f.tarifaParticular !== undefined && f.tarifaParticular !== '' ||
+    f.totalAcordado !== null && f.totalAcordado !== undefined && f.totalAcordado !== '' ||
+    Number(f.adicionales) || Number(f.descuentos) || f.detalle);
+}
+
 function leerTarifaGeneralHotel() {
   const moneda =
     document.getElementById('m-fin-moneda').value;
@@ -83,6 +101,7 @@ function leerTarifaGeneralHotel() {
     moneda: moneda || 'SIN_DEFINIR',
     tipoTarifa: 'pax_noche',
     tarifasPorPension,
+    reglaPersonas: leerReglaPersonasHotel(),
 
     observaciones:
       document.getElementById('m-fin-nota')
@@ -101,8 +120,11 @@ function cargarFormularioTarifaHotel(hotelId) {
   const tarifa =
     tarifasFinancierasHotel.get(id);
 
-  const moneda =
-    tarifa?.moneda || '';
+  for (const [clave, inicial] of Object.entries({estudiantes:true, adultos:true, coordinadores:false, conductores:false})) {
+    document.getElementById(`m-fin-${clave}`).checked = tarifa?.reglaPersonas?.[clave] ?? inicial;
+  }
+  document.getElementById('m-fin-liberados').value = tarifa?.reglaPersonas?.liberadosPorAsignacion ?? 0;
+  const moneda = tarifa?.moneda || '';
 
   document.getElementById('m-fin-moneda').value =
     ['CLP', 'USD', 'BRL', 'ARS'].includes(moneda)
@@ -125,6 +147,11 @@ function cargarFormularioTarifaHotel(hotelId) {
 
 function cargarFormularioAcuerdoHotel(asignacion) {
   const f = asignacion?.finanzas || {};
+  const activar = document.getElementById('a-fin-excepcion');
+  const campos = document.getElementById('a-fin-campos');
+  activar.checked = tieneExcepcionHotel(f);
+  activar.onchange = () => { campos.hidden = !activar.checked; campos.disabled = !activar.checked; };
+  activar.onchange();
 
   document.getElementById('a-fin-pension').value =
     f.pension || '';
@@ -155,6 +182,10 @@ function cargarFormularioAcuerdoHotel(asignacion) {
 }
 
 function leerAcuerdoEconomicoHotel() {
+  if (!document.getElementById('a-fin-excepcion').checked) {
+    return { versionEsquema: 2, usarReglaHotel: true,
+      actualizadoPor: currentUserEmail || '', actualizadoAt: serverTimestamp() };
+  }
   const pension =
     document.getElementById('a-fin-pension').value;
 
