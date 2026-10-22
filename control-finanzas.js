@@ -2278,7 +2278,19 @@ function renderPlanificacion(items) {
       <label class="cf-check-line"><input id="mostrarCLP" type="checkbox" ${plan.mostrarCLP?'checked':''}> Mostrar presupuesto en pesos chilenos</label>
       ${plan.mostrarCLP?`<label class="cf-field"><span>Compra de dólares</span><span class="cf-rate-line">1 USD = <input type="number" min="0.000001" step="any" inputmode="decimal" data-tc="CLP" value="${esc(plan.CLP??'')}" placeholder="Ingresar TC" aria-label="Pesos chilenos por dólar"> CLP</span></label>`:''}
     </div>
-    <div class="cf-budget-grid"><article class="cf-budget"><span>USD NECESARIOS PARA PAGAR USD + BRL + ARS</span><strong>${e.usd===null?'FALTA TIPO DE CAMBIO':fmtMoney(e.usd,'USD')}</strong><small>Los pagos directos en CLP se suman al presupuesto en pesos, sin convertirlos a dólares.</small></article>
+    <div class="cf-budget-grid"><article class="cf-budget">
+    <span>
+      USD NECESARIOS PARA ${esc(state.destino)}
+      · DEUDAS EN ${
+        monedasDestino(state.destino, Object.keys(e.totales))
+          .filter(m =>
+            ['BRL', 'ARS', 'USD'].includes(m) &&
+            num(e.totales[m]?.pagar) > 0
+          )
+          .join(' + ') || 'SIN SALDOS POR PAGAR'
+      }
+    </span>
+    ><strong>${e.usd===null?'FALTA TIPO DE CAMBIO':fmtMoney(e.usd,'USD')}</strong><small>Los pagos directos en CLP se suman al presupuesto en pesos, sin convertirlos a dólares.</small></article>
       ${plan.mostrarCLP?`<article class="cf-budget clp"><span>PRESUPUESTO TOTAL EN CLP</span><strong>${e.clp===null?'FALTA TIPO DE CAMBIO':fmtMoney(e.clp,'CLP')}</strong><small>Dólares estimados × CLP por USD + cuentas cobradas directamente en CLP.</small></article>`:''}</div>
     <p class="cf-plan-note">TC de planificación: no modifica pagos ni conversiones históricas. Los saldos a favor no compensan deudas con otros proveedores.${e.parcial?' Hay tarifas, monedas o abonos por completar; la estimación es parcial.':''}</p>
   </section>`;
