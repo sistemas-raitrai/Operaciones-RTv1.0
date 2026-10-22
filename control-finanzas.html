@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png">
   <link rel="stylesheet" href="estilos.css">
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <style>
     :root {
       --cf-bg: #f4f6f9;
@@ -45,21 +46,7 @@
     .cf-destinations { display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .cf-destination { text-align: left; padding: 15px; border: 1px solid var(--cf-border); border-radius: 12px; background: var(--cf-card); cursor: pointer; min-height: 115px; }
     .cf-destination.active { border-color: var(--cf-dark); box-shadow: inset 0 0 0 1px var(--cf-dark); }
-    .cf-destination-name {
-      display: block;
-      margin-bottom: 9px;
-      font-size: 1.04rem;
-      font-weight: 800;
-      color: var(--cf-text);
-    }
-    
-    .cf-destination {
-      color: var(--cf-text);
-    }
-    
-    .cf-destination.active .cf-destination-name {
-      color: var(--cf-blue);
-    }
+    .cf-destination-name { display: block; font-size: 1.04rem; font-weight: 800; margin-bottom: 9px; }
     .cf-destination-balance { display: block; margin-top: 4px; font-weight: 700; color: var(--cf-red); }
     .cf-card { background: var(--cf-card); border: 1px solid var(--cf-border); border-radius: 12px; padding: 16px; }
     .cf-financial-groups { display: grid; gap: 20px; }
@@ -121,6 +108,81 @@
     .cf-dialog-body { padding: 17px; }
     @media (max-width: 950px) { .cf-destinations { grid-template-columns: repeat(2, 1fr); } .cf-metrics { grid-template-columns: repeat(2,1fr); } }
     @media (max-width: 560px) { .cf-shell { width: 94vw; } .cf-destinations, .cf-metrics, .cf-form-grid { grid-template-columns: 1fr; } .cf-form-grid .wide { grid-column: auto; } .cf-btn { min-height: 42px; } }
+/* Control Finanzas: jerarquía visual y separación de monedas */
+.cf-shell {max-width:1800px;width:96vw;font-size:14px;line-height:1.4;color:#172b4d}
+.cf-shell .cf-header h1 {font-size:27px;color:#12345a}
+.cf-destinations {display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
+.cf-destination {min-height:48px;min-width:145px;border:2px solid #b9c9df;padding:12px 18px;background:#fff;color:#17365d;border-radius:9px}
+.cf-destination-name {color:inherit!important;margin:0;font-size:14px;letter-spacing:.03em}
+.cf-destination.active {background:#17365d;color:#fff;border-color:#17365d;box-shadow:0 3px 9px #17365d30}
+.cf-destination:hover {border-color:#2563eb;background:#edf4ff;color:#17365d}
+.cf-destination:focus-visible,.cf-btn:focus-visible {outline:3px solid #f5b700;outline-offset:3px}
+.cf-planning {border:1px solid #b9cde7;border-top:5px solid #17365d;border-radius:12px;background:#f5f8ff;margin:10px 0 26px;padding:20px}
+.cf-plan-title {display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px}
+.cf-plan-title h3 {font-size:21px;margin:0 0 4px;color:#17365d}
+.cf-plan-title p {margin:0;color:#445570}
+.cf-kpi-grid,.cf-budget-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.cf-kpi {background:#fff;border:1px solid #ccd5e2;border-top:5px solid var(--moneda,#64748b);border-radius:9px;padding:16px}
+.cf-kpi>span,.cf-budget>span {display:block;font-size:12px;font-weight:bold;letter-spacing:.04em}
+.cf-kpi strong,.cf-budget strong {display:block;font-size:26px;line-height:1.3;margin:8px 0;color:#132c4c}
+.cf-kpi small,.cf-budget small {display:block;color:#475569;line-height:1.5}
+.moneda-BRL {--moneda:#087f5b;--fondo:#e3f6ed}
+.moneda-ARS {--moneda:#176e9f;--fondo:#e4f2fc}
+.moneda-USD {--moneda:#344cc1;--fondo:#e9edff}
+.moneda-CLP {--moneda:#986400;--fondo:#fff3cf}
+.moneda-SIN_DEFINIR {--moneda:#626b7b;--fondo:#eef0f4}
+.cf-rates {display:flex;gap:20px;flex-wrap:wrap;align-items:end;margin:18px 0;padding:17px;background:#fff;border:1px solid #cbd7e8;border-radius:9px}
+.cf-rates .cf-field {font-weight:bold;color:#263a57;font-size:13px;min-width:240px}
+.cf-rate-line {display:flex;align-items:center;gap:8px;white-space:nowrap}
+.cf-rates input[type=number] {width:145px;min-height:40px;border:2px solid #acbdd4;background:#fffdf0;border-radius:6px;padding:8px;font:inherit}
+.cf-check-line {display:flex;gap:9px;align-items:center;min-height:40px;font-weight:bold}
+.cf-shell input[type=checkbox],dialog input[type=checkbox] {width:17px!important;height:17px!important;min-width:17px!important;min-height:17px!important;display:inline-block!important;margin:0 6px 0 0;vertical-align:middle}
+.cf-budget {background:#17365d;border-radius:10px;padding:18px;color:white}
+.cf-budget strong,.cf-budget small {color:white}
+.cf-budget.clp {background:#07594b}
+.cf-plan-note {margin:15px 0 0;font-size:13px;color:#35465f}
+.cf-financial-groups {gap:28px}
+.cf-currency-group {border:1px solid #bdcce0;border-top:6px solid var(--moneda,#64748b);border-radius:10px;overflow:hidden;background:white;margin-bottom:4px}
+.cf-currency-head {padding:16px;background:var(--fondo,#eef2f6);color:#172b4d;border-bottom:1px solid #bdcce0;flex-wrap:wrap;font-size:13px}
+.cf-currency-name {font-size:16px}
+.cf-currency-pill {background:var(--moneda,#64748b);color:white;font-size:13px;padding:5px 10px}
+.cf-table {font-size:13px;width:100%;line-height:1.4}
+.cf-table th {background:#f1f5fa;color:#314764;padding:12px 10px}
+.cf-provider-table {min-width:1120px}
+.cf-provider-table th:first-child {width:22%}
+.cf-provider-table th:nth-child(2) {width:25%}
+.cf-table td {padding:12px 10px;border-bottom:1px solid #dce4ef}
+.cf-provider-total td {background:#eaf0fa;border-top:2px solid #bfcee3;font-weight:bold}
+.cf-provider-name strong {font-size:14px;color:#102f56}
+.cf-provider-name small,.cf-service-child small {display:block;color:#485b75;font-size:12px;margin-top:4px;font-weight:normal}
+.cf-total-label {font-size:11px;color:#435776;letter-spacing:.03em}
+.cf-service-child td {background:#fff;padding-top:9px;padding-bottom:9px}
+.cf-service-child:nth-child(even) td {background:#f9fbfe}
+.cf-child-marker {font-weight:bold;color:#375681;margin-right:4px}
+.cf-child-payment {color:#6b778a;font-size:11px;font-style:italic}
+.cf-partial {display:block;color:#936100;font-size:10px;font-weight:bold}
+.cf-table tfoot .cf-destination-total th {background:var(--moneda,#17365d);color:#fff!important;border:0;padding:16px 10px;font-size:13px}
+.cf-detail-service {border:1px solid #c4d2e6;border-radius:10px;overflow:hidden;margin-bottom:24px}
+.cf-detail-service>header {background:#17365d;color:#fff;padding:16px 18px;display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}
+.cf-detail-service>header h3 {margin:0;color:white;font-size:17px}
+.cf-detail-service .cf-table tbody tr:nth-child(even) {background:#f1f6fc}
+.cf-detail-service .cf-table tfoot th {background:#dbe9fa;color:#153b69;font-size:14px}
+.cf-date {white-space:nowrap}
+.cf-dest-choice {display:flex;gap:8px;padding:12px;border-bottom:1px solid #e1e6ee;align-items:center}
+.cf-shell .cf-btn,.cf-backdrop .cf-btn,dialog .cf-btn {min-height:38px;border-radius:7px;font-size:13px}
+.cf-modal {width:min(1660px,98vw)}
+.cf-modal-head {background:#edf3fc;border-bottom:3px solid #17365d}
+.cf-tabs {gap:8px}
+.cf-tab {background:#edf2f8;border-radius:7px 7px 0 0}
+.cf-tab.active {background:#17365d;color:white;border-bottom-color:#17365d}
+.cf-backdrop .cf-metrics .cf-metric {border:1px solid #c4d2e6;border-left:5px solid #375c95;background:#f3f7fe}
+.cf-shell select,.cf-backdrop select,dialog select {height:40px!important;min-height:40px!important;max-height:40px!important;padding:8px!important;font-size:14px!important}
+dialog .cf-field input:not([type=checkbox]),dialog .cf-field textarea,dialog .cf-field select {width:100%;border:1px solid #bac8db;border-radius:6px;padding:9px;font:inherit;background:white}
+dialog .cf-form-grid fieldset {min-width:0;border:1px solid #c4d2e6;padding:12px;border-radius:6px;grid-column:1/-1}
+dialog .cf-form-grid fieldset label {display:flex;gap:6px;align-items:center;margin:8px 0}
+dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
+@media(max-width:700px){.cf-shell{width:96vw}.cf-planning{padding:13px}.cf-kpi strong,.cf-budget strong{font-size:22px}.cf-destination{min-width:120px;flex:1}.cf-rates{padding:12px;gap:12px}.cf-kpi-grid,.cf-budget-grid{grid-template-columns:1fr}.cf-currency-name{font-size:14px}.cf-header .cf-row{flex-wrap:wrap}.cf-plan-title h3{font-size:18px}}
+
   </style>
 </head>
 <body>
@@ -151,6 +213,7 @@
         </select>
       </div>
       <div class="cf-spacer"></div>
+      <button id="btnGestionarDestinos" class="cf-btn" type="button">Mostrar / ocultar destinos</button>
       <button id="btnRecargar" class="cf-btn" type="button">Actualizar información</button>
     </section>
 
@@ -165,6 +228,7 @@
         </div>
         <button id="btnExportarDestino" class="cf-btn" type="button" disabled>Exportar destino</button>
       </div>
+      <div id="planificacionDestino"></div>
       <div id="gruposFinancieros" class="cf-financial-groups"></div>
       <div id="sinProveedores" class="cf-empty" hidden>No hay proveedores para esta selección.</div>
     </section>
