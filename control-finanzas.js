@@ -1315,8 +1315,9 @@ function renderAbonos() {
               revisado ? 'reviewed' : 'pending'
             }"
           >
-            ${esc(estado)}
+            ${a.requiereVinculacion ? 'PENDIENTE DE VINCULACIÓN' : esc(estado)}
           </span>
+          ${a.motivoPendiente ? `<small style="display:block">${esc(a.motivoPendiente.replaceAll('_', ' '))}</small>` : ''}
         </td>
 
         <td>
@@ -1340,6 +1341,7 @@ function renderAbonos() {
             class="cf-btn btn-editar-abono"
             data-id="${esc(a.id)}"
             type="button"
+            ${a.requiereVinculacion ? 'disabled title="Primero debe vincularse el pago"' : ''}
           >
             Editar
           </button>
@@ -1476,6 +1478,10 @@ function cerrarDetalle() {
 
 function abrirEditorAbono(id) {
   const a = state.abonos.find(x => x.id === id); if (!a) return;
+  if (a.requiereVinculacion) {
+    setEstado('Este pago está registrado, pero falta vincularlo a un servicio o costo hotelero. Corrige la vinculación antes de aplicar dinero al saldo.', true, '#detalleEstado');
+    return;
+  }
   $('#abonoId').value = a.id; $('#abMonedaEnviada').value = moneda(a.monedaEnviada); $('#abMontoEnviado').value = num(a.montoEnviado);
   $('#abMonedaAplicada').value = moneda(a.monedaAplicada || a.monedaObligacion); $('#abTipoCambio').value = a.tipoCambioAplicado ?? '';
   $('#abMontoAplicado').value = num(a.montoAplicado); $('#abUnidadesCubiertas').value = num(a.unidadesCubiertas) || '';
@@ -1499,6 +1505,8 @@ async function guardarRevisionAbono(event) {
   );
 
   if (!actual) return;
+  if (actual.requiereVinculacion) { $('#errorEditarAbono').textContent = 'Primero debe corregirse la vinculación del pago.'; return; }
+
 
   const errorNodo = $('#errorEditarAbono');
   errorNodo.textContent = '';
