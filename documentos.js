@@ -3429,6 +3429,19 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       : '—';
 
 
+
+  const fechaFinViajeISO =
+    toISO(
+      grupo.fechaFin ||
+      grupo.fechaRegreso ||
+      ''
+    );
+
+  const fechaFinViajeTxt =
+    fechaFinViajeISO
+      ? formatShortDate(fechaFinViajeISO)
+      : '—';
+  
   const nombreOperacional =
     getNombreGrupoOperacional(
       grupo
@@ -4016,12 +4029,6 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
             }
 
             ${
-              fechaInicioViajeTxt !== '—'
-                ? `<span>INICIO: ${fechaInicioViajeTxt}</span>`
-                : ''
-            }
-
-            ${
               ano
                 ? `<span>AÑO VIAJE: ${ano}</span>`
                 : ''
@@ -4063,11 +4070,13 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         }
 
         <p>
-          <strong>
-            Fecha de inicio del viaje:
-          </strong>
-
+          <strong>Fecha de inicio del viaje:</strong>
           ${fechaInicioViajeTxt}
+        </p>
+
+        <p>
+          <strong>Fecha de término del viaje:</strong>
+          ${fechaFinViajeTxt}
         </p>
 
       </div>
@@ -4891,225 +4900,130 @@ function renderTransportesConfirmacion(vuelosNorm){
   const {
     idaLegsPlan,
     vueltaLegsPlan
-  } = particionarVuelos(
-    vuelosNorm
+  } = particionarVuelos(vuelosNorm);
+
+  const filasIda = [];
+  const filasVuelta = [];
+
+  const texto = valor =>
+    escapeHtml(String(valor || '—'));
+
+  const crearFila = ({
+    tipo,
+    proveedor,
+    fecha,
+    origen,
+    presentacion,
+    salida,
+    destino,
+    arribo
+  }) => `
+    <tr>
+      <td><strong>${texto(tipo)}</strong></td>
+      <td>${texto(proveedor)}</td>
+      <td>${texto(formatShortDate(fecha))}</td>
+      <td>${texto(origen)}</td>
+      <td>${texto(hrs(presentacion))}</td>
+      <td>${texto(hrs(salida))}</td>
+      <td>${texto(destino)}</td>
+      <td>${texto(hrs(arribo))}</td>
+    </tr>
+  `;
+
+  // Vuelos de ida: conserva el orden de las conexiones.
+  idaLegsPlan.forEach(v => {
+    filasIda.push(crearFila({
+      tipo: 'AÉREO',
+      proveedor: [
+        v.aerolinea,
+        v.numero
+      ].filter(Boolean).join(' '),
+      fecha: v.fechaIda || v.fecha,
+      origen: v.origen,
+      presentacion: v.presentacionIda,
+      salida: v.salidaIda,
+      destino: v.destino,
+      arribo: v.arriboIda
+    }));
+  });
+
+  // Vuelos de vuelta: conserva el orden de las conexiones.
+  vueltaLegsPlan.forEach(v => {
+    filasVuelta.push(crearFila({
+      tipo: 'AÉREO',
+      proveedor: [
+        v.aerolinea,
+        v.numero
+      ].filter(Boolean).join(' '),
+      fecha: v.fechaVuelta || v.fecha,
+      origen: v.origen,
+      presentacion: v.presentacionVuelta,
+      salida: v.salidaVuelta,
+      destino: v.destino,
+      arribo: v.arriboVuelta
+    }));
+  });
+
+  // Mantiene los transportes terrestres principales.
+  // Los traslados locales se muestran en su bloque independiente.
+  const terrestres = (vuelosNorm || []).filter(v =>
+    norm(v.tipoTransporte || '') === 'terrestre' &&
+    !esTransferReal(v)
   );
 
-  /*
-    Transportes terrestres principales.
-
-    Los traslados locales quedan fuera de esta tabla
-    y se muestran después en un bloque independiente.
-  */
-  const terrestres =
-    (vuelosNorm || []).filter(v =>
-      norm(
-        v.tipoTransporte ||
-        ''
-      ) === 'terrestre' &&
-      !esTransferReal(v)
-    );
-
-  const rows = [];
-
-  /*
-    VUELOS DE IDA
-  */
-  idaLegsPlan.forEach(v => {
-    rows.push(`
-      <tr>
-        <td>
-          <strong>AÉREO</strong>
-        </td>
-
-        <td>IDA</td>
-
-        <td>
-          ${
-            [
-              v.aerolinea,
-              v.numero
-            ]
-              .filter(Boolean)
-              .join(' ') ||
-            '—'
-          }
-        </td>
-
-        <td>
-          ${
-            formatShortDate(
-              v.fechaIda ||
-              v.fecha
-            )
-          }
-        </td>
-
-        <td>
-          ${v.origen || '—'}
-        </td>
-
-        <td>
-          ${hrs(v.presentacionIda)}
-        </td>
-
-        <td>
-          ${hrs(v.salidaIda)}
-        </td>
-
-        <td>
-          ${v.destino || '—'}
-        </td>
-
-        <td>
-          ${hrs(v.arriboIda)}
-        </td>
-      </tr>
-    `);
-  });
-
-  /*
-    VUELOS DE VUELTA
-  */
-  vueltaLegsPlan.forEach(v => {
-    rows.push(`
-      <tr>
-        <td>
-          <strong>AÉREO</strong>
-        </td>
-
-        <td>VUELTA</td>
-
-        <td>
-          ${
-            [
-              v.aerolinea,
-              v.numero
-            ]
-              .filter(Boolean)
-              .join(' ') ||
-            '—'
-          }
-        </td>
-
-        <td>
-          ${
-            formatShortDate(
-              v.fechaVuelta ||
-              v.fecha
-            )
-          }
-        </td>
-
-        <td>
-          ${v.origen || '—'}
-        </td>
-
-        <td>
-          ${hrs(v.presentacionVuelta)}
-        </td>
-
-        <td>
-          ${hrs(v.salidaVuelta)}
-        </td>
-
-        <td>
-          ${v.destino || '—'}
-        </td>
-
-        <td>
-          ${hrs(v.arriboVuelta)}
-        </td>
-      </tr>
-    `);
-  });
-
-  /*
-    TRANSPORTES TERRESTRES PRINCIPALES
-  */
   terrestres.forEach(v => {
     if (v.fechaIda) {
-      rows.push(`
-        <tr>
-          <td>
-            <strong>TERRESTRE</strong>
-          </td>
-
-          <td>IDA</td>
-
-          <td>
-            ${v.proveedor || '—'}
-          </td>
-
-          <td>
-            ${formatShortDate(v.fechaIda)}
-          </td>
-
-          <td>
-            ${v.origen || '—'}
-          </td>
-
-          <td>—</td>
-
-          <td>
-            ${hrs(v.idaHora)}
-          </td>
-
-          <td>
-            ${v.destino || '—'}
-          </td>
-
-          <td>—</td>
-        </tr>
-      `);
+      filasIda.push(crearFila({
+        tipo: 'TERRESTRE',
+        proveedor: v.proveedor,
+        fecha: v.fechaIda,
+        origen: v.origen,
+        presentacion: '',
+        salida: v.idaHora,
+        destino: v.destino,
+        arribo: ''
+      }));
     }
 
     if (v.fechaVuelta) {
-      rows.push(`
-        <tr>
-          <td>
-            <strong>TERRESTRE</strong>
-          </td>
-
-          <td>VUELTA</td>
-
-          <td>
-            ${v.proveedor || '—'}
-          </td>
-
-          <td>
-            ${formatShortDate(v.fechaVuelta)}
-          </td>
-
-          <td>
-            ${v.destino || '—'}
-          </td>
-
-          <td>—</td>
-
-          <td>
-            ${hrs(v.vueltaHora)}
-          </td>
-
-          <td>
-            ${v.origen || '—'}
-          </td>
-
-          <td>—</td>
-        </tr>
-      `);
+      filasVuelta.push(crearFila({
+        tipo: 'TERRESTRE',
+        proveedor: v.proveedor,
+        fecha: v.fechaVuelta,
+        origen: v.destino,
+        presentacion: '',
+        salida: v.vueltaHora,
+        destino: v.origen,
+        arribo: ''
+      }));
     }
   });
 
-  const tablaPrincipal =
-    rows.length
-      ? `
-        <table class="confirm-flight-table">
+  const crearTabla = (titulo, filas) => {
+    if (!filas.length) return '';
+
+    return `
+      <div class="confirm-tramo-block">
+        <div class="confirm-tramo-title">
+          ${titulo}
+        </div>
+
+        <table class="confirm-flight-table confirm-tramos-table">
+          <colgroup>
+            <col style="width:9%">
+            <col style="width:16%">
+            <col style="width:14%">
+            <col style="width:15%">
+            <col style="width:12%">
+            <col style="width:10%">
+            <col style="width:14%">
+            <col style="width:10%">
+          </colgroup>
+
           <thead>
             <tr>
               <th>Tipo</th>
-              <th>Tramo</th>
-              <th>Proveedor</th>
+              <th>Proveedor / vuelo</th>
               <th>Fecha</th>
               <th>Origen</th>
               <th>Presentación</th>
@@ -5120,21 +5034,22 @@ function renderTransportesConfirmacion(vuelosNorm){
           </thead>
 
           <tbody>
-            ${rows.join('')}
+            ${filas.join('')}
           </tbody>
         </table>
-      `
-      : '';
+      </div>
+    `;
+  };
+
+  const tablasHTML = [
+    crearTabla('TRAMO IDA', filasIda),
+    crearTabla('TRAMO VUELTA', filasVuelta)
+  ].join('');
 
   const trasladosHTML =
-    renderTransfersConfirmacion(
-      vuelosNorm
-    );
+    renderTransfersConfirmacion(vuelosNorm);
 
-  if (
-    !tablaPrincipal &&
-    !trasladosHTML
-  ) {
+  if (!tablasHTML && !trasladosHTML) {
     return `
       <div class="note">
         — Sin transportes registrados —
@@ -5143,7 +5058,61 @@ function renderTransportesConfirmacion(vuelosNorm){
   }
 
   return `
-    ${tablaPrincipal}
+    <style>
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-tramo-block {
+        margin-top: 2.5mm;
+      }
+
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-tramo-title {
+        margin-bottom: 1.5mm;
+        font-size: 8.5pt;
+        font-weight: 700;
+        break-after: avoid;
+        page-break-after: avoid;
+      }
+
+      /*
+        Anula los anchos antiguos de nueve columnas.
+        Los nuevos anchos se definen en el colgroup.
+      */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table.confirm-tramos-table th,
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table.confirm-tramos-table td {
+        width: auto !important;
+        padding: 1.2mm 0.8mm !important;
+        border: 1px solid #d4d8dd !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+      }
+
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table.confirm-tramos-table th {
+        background: #f0f2f4 !important;
+        font-weight: 700;
+      }
+
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table.confirm-tramos-table tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-horarios-aviso {
+        margin: 1.5mm 0 2.5mm;
+        font-size: 8pt;
+      }
+    </style>
+
+    <p class="confirm-horarios-aviso">
+      Los horarios que se indican a continuación
+      pueden sufrir modificaciones sin previo aviso.
+    </p>
+
+    ${tablasHTML}
     ${trasladosHTML}
   `;
 }
