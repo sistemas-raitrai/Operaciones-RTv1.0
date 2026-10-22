@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  <title>Dietas especiales | Operaciones RT</title>
+
+  <link rel="stylesheet" href="estilos.css">
+
+  <style>
+    .de-page {
+      padding-bottom: 32px;
+    }
+
+    .de-page [hidden] {
+      display: none !important;
+    }
+
+    .de-titulo {
+      margin: 20px 0;
+    }
+
+    .de-titulo h1 {
+      margin: 0 0 6px;
+    }
+
+    .de-titulo p {
+      margin: 0;
+      color: #645f68;
+    }
+
+    .de-panel {
+      background: #fff;
+      border: 1px solid #e0d9e5;
+      border-radius: 12px;
+      padding: 18px;
+      margin: 16px 0;
+    }
+
+    .de-filtros {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+
+    .de-filtros label {
+      display: grid;
+      gap: 5px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .de-filtros select,
+    .de-filtros input,
+    .de-filtros button {
+      min-height: 38px;
+      padding: 8px 10px;
+      max-width: 260px;
+      font: inherit;
+      border: 1px solid #cec7d4;
+      border-radius: 6px;
+    }
+
+    .de-filtros select,
+    .de-filtros input {
+      background: #fff;
+      color: #263247;
+    }
+
+    .de-filtros button {
+      cursor: pointer;
+      background: #633c85;
+      color: #fff;
+      border-color: #633c85;
+    }
+
+    .de-filtros button:disabled {
+      opacity: .5;
+      cursor: default;
+    }
+
+    .de-tabla {
+      overflow: auto;
+    }
+
+    .de-tabla table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 13px;
+    }
+
+    .de-tabla th,
+    .de-tabla td {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .de-tabla th {
+      background: #f2f0f5;
+      white-space: nowrap;
+    }
+
+    .de-tabla td:nth-child(5) {
+      min-width: 200px;
+    }
+
+    .de-danger {
+      color: #a22222;
+    }
+
+    .de-muted {
+      color: #645f68;
+    }
+
+    .de-page summary {
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .de-overlay {
+      position: fixed;
+      inset: 0;
+      padding: 16px;
+      background: #0009;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+
+    .de-detalle {
+      background: #fff;
+      color: #263247;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 20px;
+      max-height: 85vh;
+      overflow: auto;
+      max-width: 900px;
+      width: 100%;
+    }
+
+    .de-detalle li {
+      margin: 9px 0;
+    }
+
+    @media (max-width: 650px) {
+      .de-filtros label {
+        width: 100%;
+      }
+
+      .de-filtros select,
+      .de-filtros input,
+      .de-filtros button {
+        width: 100%;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="encabezado"></div>
+
+  <main class="main de-page">
+    <div class="de-titulo">
+      <h1>Dietas especiales</h1>
+      <p>Requerimientos alimentarios por grupo, hotel y proveedor.</p>
+    </div>
+
+    <section class="de-panel de-filtros">
+      <label>
+        Año
+        <select id="deAno"></select>
+      </label>
+
+      <label>
+        Desde
+        <input id="deDesde" type="date">
+      </label>
+
+      <label>
+        Hasta
+        <input id="deHasta" type="date">
+      </label>
+
+      <label>
+        Vista
+        <select id="deVista">
+          <option value="grupo">General / por grupo</option>
+          <option value="proveedor">Por hotel / proveedor</option>
+        </select>
+      </label>
+
+      <label>
+        Grupo
+        <select id="deGrupo">
+          <option value="">Todos</option>
+        </select>
+      </label>
+
+      <label>
+        Hotel
+        <select id="deHotel">
+          <option value="">Todos</option>
+        </select>
+      </label>
+
+      <label>
+        Proveedor
+        <select id="deProveedor">
+          <option value="">Todos</option>
+        </select>
+      </label>
+
+      <button id="deCargar" type="button">
+        Consultar
+      </button>
+
+      <button id="deImprimir" type="button" disabled>
+        Imprimir / guardar PDF
+      </button>
+    </section>
+
+    <p id="deEstado" role="status" aria-live="polite"></p>
+
+    <details id="deRevision" class="de-panel" hidden>
+      <summary>Vínculos que requieren revisión</summary>
+      <ul id="deRevisionLista"></ul>
+    </details>
+
+    <section id="deResultados" class="de-panel" hidden>
+      <p id="deTotales"></p>
+
+      <div class="de-tabla">
+        <table>
+          <thead id="deCabecera"></thead>
+          <tbody id="deFilas"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    async function iniciarPagina() {
+      try {
+        const respuesta = await fetch('encabezado.html');
+
+        if (!respuesta.ok) {
+          throw new Error('No se pudo cargar el encabezado común.');
+        }
+
+        document.getElementById('encabezado').innerHTML =
+          await respuesta.text();
+
+        await import('./firebase-init.js');
+        await import('./script.js');
+        await import('./dietas-especiales.js');
+      } catch (error) {
+        console.error('[dietas]', error);
+
+        const estado = document.getElementById('deEstado');
+        estado.className = 'de-danger';
+        estado.textContent =
+          `No se pudo iniciar la página: ${error.message}`;
+      }
+    }
+
+    iniciarPagina();
+  </script>
+</body>
+</html>
