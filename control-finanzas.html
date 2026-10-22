@@ -183,7 +183,69 @@ dialog .cf-form-grid fieldset label {display:flex;gap:6px;align-items:center;mar
 dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
 @media(max-width:700px){.cf-shell{width:96vw}.cf-planning{padding:13px}.cf-kpi strong,.cf-budget strong{font-size:22px}.cf-destination{min-width:120px;flex:1}.cf-rates{padding:12px;gap:12px}.cf-kpi-grid,.cf-budget-grid{grid-template-columns:1fr}.cf-currency-name{font-size:14px}.cf-header .cf-row{flex-wrap:wrap}.cf-plan-title h3{font-size:18px}}
 
-  </style>
+  /* Paleta suave: la estructura es neutra y el color señala el estado. */
+.cf-shell {color:#334155}
+.cf-destination {border:1px solid #cbd5e1;color:#40516a;background:#fff;box-shadow:none}
+.cf-destination.active {background:#e9f0fa;color:#24456d;border-color:#a8bbd4;box-shadow:none}
+.cf-destination:hover {background:#f2f5fa;border-color:#a5b5ca}
+.cf-planning {background:#fafbfd;border:1px solid #d6dee9;border-top:3px solid #bccadb}
+.cf-plan-title h3,.cf-shell .cf-header h1 {color:#304966}
+.cf-kpi {background:#fff;border:1px solid #d8dfe8;border-top:3px solid #c3cfdf}
+.cf-kpi strong {color:#334155}
+.cf-kpi.moneda-BRL,.cf-kpi.moneda-ARS,.cf-kpi.moneda-USD,.cf-kpi.moneda-CLP {--moneda:#bdcbdc;--fondo:#f4f6f9}
+.cf-budget,.cf-budget.clp {background:#edf3fa;color:#334e70;border:1px solid #cdd9e8}
+.cf-budget strong,.cf-budget small {color:#334e70}
+.cf-rates {background:#fff;border-color:#d9e0e9}
+.cf-rates input[type=number] {background:#fff;border:1px solid #bdcada}
+.cf-type-section {border:1px solid #ccd6e2;background:#fff;border-radius:10px;margin:0 0 28px;overflow:hidden}
+.cf-type-heading {background:#edf1f6;border-bottom:2px solid #c7d1df;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.cf-type-heading h3 {font-size:19px;color:#334b67;letter-spacing:.05em;margin:0}
+.cf-type-heading span {font-size:13px;color:#52657e}
+.cf-destination-heading {padding:14px;background:#e8edf5;border-left:4px solid #acbbcd;color:#334b67;border-radius:7px}
+.cf-currency-group {--moneda:#c0ccda;--fondo:#f6f8fb;border:0;border-top:1px solid #d1dbe7;border-radius:0;margin:0}
+.cf-currency-head {background:#f6f8fb;border-bottom:1px solid #d4ddea;color:#3a4e68;padding:13px 16px}
+.cf-currency-pill {background:#e8edf5;color:#36506e;border:1px solid #c9d4e2}
+.cf-table {border-collapse:separate;border-spacing:0}
+.cf-table th,.cf-table td {border-right:1px solid #dce3ec;border-bottom:1px solid #dce3ec}
+.cf-table th:last-child,.cf-table td:last-child {border-right:0}
+.cf-table thead th {position:sticky;top:0;z-index:4;background:#eaf0f7;color:#344c69;border-bottom:2px solid #b9c8db}
+.cf-table-wrap {max-height:66vh;overflow:auto;overscroll-behavior:contain;isolation:isolate;border-top:1px solid #d7e0eb}
+.cf-provider-table {table-layout:fixed;min-width:1400px}
+.cf-provider-table th:first-child,.cf-provider-table td:first-child {width:235px;min-width:235px;position:sticky;left:0;z-index:2}
+.cf-provider-table th:nth-child(2),.cf-provider-table td:nth-child(2) {width:300px;min-width:300px;position:sticky;left:235px;z-index:2}
+.cf-provider-table thead th:first-child,.cf-provider-table thead th:nth-child(2) {z-index:6}
+.cf-provider-total td {background:#f0f3f8;border-top:2px solid #cad5e3;font-weight:600}
+.cf-provider-name strong {color:#304b6d}
+.cf-service-child td {background:#fff}
+.cf-service-child:nth-child(even) td {background:#fafbfd}
+.cf-provider-table tfoot .cf-destination-total th {background:#e6edf6!important;color:#334b69!important;border-top:2px solid #b9c9dd;font-weight:bold}
+.cf-table .saldo {color:#394d68}
+.cf-table .ok {color:#46647e}
+.cf-state.payable {background:#edf0f4;color:#4c5d73}
+.cf-state.partial {background:#e9f1fb;color:#42638b}
+.cf-state.paid,.cf-badge.reviewed {background:#e8f3ed;color:#427154}
+.cf-state.warning,.cf-badge.pending {background:#fff5d9;color:#846722}
+.cf-state.attention,.cf-state.credit {background:#fff0e3;color:#9b5c28}
+.cf-status.error {background:#fceeee;color:#a83f45;padding:10px;border-radius:6px}
+.cf-partial {color:#8b6b25}
+.cf-detail-service>header {background:#eaf0f8;color:#334b69;border-bottom:1px solid #c9d5e4}
+.cf-detail-service>header h3 {color:#334b69}
+.cf-detail-service .cf-table tfoot th {background:#e8eef7;color:#354f71}
+.cf-service-coverage {display:flex;gap:16px;flex-wrap:wrap;background:#f7f9fc;padding:11px 15px;border-bottom:1px solid #d7e0eb;color:#4a5e78;font-size:13px}
+.cf-pax-line {display:block;color:#50657f;font-size:12px;line-height:1.5;margin-top:8px;font-weight:normal}
+.cf-modal-head {background:#f1f5fa;border-bottom:2px solid #c4d1e2}
+.cf-modal-body .cf-metrics .cf-metric {background:#f7f9fc;border:1px solid #d3dce8;border-left:3px solid #b6c7dd}
+.cf-tab.active {background:#e5edf8;color:#345477;border-bottom-color:#a9bdd8}
+.cf-selection-note {background:#f4f7fb;border:1px solid #d4ddea;padding:15px;border-radius:8px;margin:12px 0 20px;color:#52657e}
+.cf-type-section+.cf-type-section {margin-top:30px}
+.cf-btn.primary,.cf-btn.blue {background:#e6edf7;color:#345477;border:1px solid #b7c8df}
+@media(max-width:700px){.cf-provider-table th:first-child,.cf-provider-table td:first-child{width:180px;min-width:180px}.cf-provider-table th:nth-child(2),.cf-provider-table td:nth-child(2){left:180px;width:240px;min-width:240px}.cf-table-wrap{max-height:62vh}}
+
+.cf-provider-table tfoot th:first-child,.cf-provider-table tfoot th:nth-child(2){position:static;left:auto;z-index:auto}
+.cf-provider-table thead th:first-child,.cf-provider-table thead th:nth-child(2){z-index:6}
+.cf-provider-table tbody td:first-child{background:#f7f9fc}
+.cf-metric-value{color:#334e70}
+</style>
 </head>
 <body>
   <main class="cf-shell">
@@ -267,7 +329,7 @@ dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
         <div class="cf-field"><label for="abMonedaAplicada">Moneda aplicada</label><select id="abMonedaAplicada"><option>CLP</option><option>USD</option><option>BRL</option><option>ARS</option></select></div>
         <div class="cf-field"><label for="abTipoCambio">Tipo de cambio aplicado</label><input id="abTipoCambio" type="number" min="0" step="0.0001"></div>
         <div class="cf-field"><label for="abMontoAplicado">Monto reconocido/aplicado</label><input id="abMontoAplicado" type="number" min="0" step="0.01" required></div>
-        <div class="cf-field"><label for="abUnidadesCubiertas">Ingresos o cupos cubiertos</label><input id="abUnidadesCubiertas" type="number" min="0" step="1"></div>
+        <div class="cf-field"><label for="abCoberturaUnidad">Unidad de cobertura</label><select id="abCoberturaUnidad" disabled><option value="PAX">Pax / cupos de esta actividad</option><option value="PAX_NOCHE">Personas-noches del hotel</option></select></div><div class="cf-field"><label for="abUnidadesCubiertas">Pax / cupos cubiertos por este abono</label><input id="abUnidadesCubiertas" type="number" min="0" step="1" placeholder="Vacío = por confirmar"><small>Informar la cobertura real del pago. No se calcula desde el dinero.</small></div>
         <div class="cf-field wide"><label for="abMotivo">Motivo u observación de la revisión</label><textarea id="abMotivo" rows="3" required></textarea></div>
       </div>
       <div id="errorEditarAbono" class="cf-status error"></div>
