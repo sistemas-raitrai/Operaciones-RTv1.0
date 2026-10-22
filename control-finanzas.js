@@ -1,3 +1,13 @@
+function tieneExcepcionHotel(f = {}) {
+  if (f.usarReglaHotel === true) return false;
+  return !!(f.pension || f.moneda || f.modalidad === 'total' ||
+    f.personasCobradas !== null && f.personasCobradas !== undefined && f.personasCobradas !== '' ||
+    f.tarifaParticular !== null && f.tarifaParticular !== undefined && f.tarifaParticular !== '' ||
+    f.totalAcordado !== null && f.totalAcordado !== undefined && f.totalAcordado !== '' ||
+    Number(f.adicionales) || Number(f.descuentos) || f.detalle);
+}
+
+
 import { app, db } from './firebase-init.js';
 import {
   collection, doc, getDoc, getDocs, query, where, orderBy, limit,
@@ -525,6 +535,7 @@ async function abrirCondicionesHotelFinanzas({
       const tarifa = datosLeidos || {};
 
       valores = {
+        reglaPersonas: tarifa.reglaPersonas || {},
         moneda:
           tarifa.moneda === 'SIN_DEFINIR'
             ? ''
@@ -734,10 +745,11 @@ function mostrarEditorHotelFinanzas(contexto) {
         ${
           general
             ? 'Tarifas por persona por noche. Vacío significa pendiente; cero significa sin costo.'
-            : 'Los valores vacíos utilizan las condiciones generales cuando corresponda. Las personas cobradas deben confirmarse expresamente.'
+            : 'Esta edición es opcional. Los valores vacíos heredan la regla del hotel y las personas se calculan desde la asignación.'
         }
       </p>
 
+      ${general ? '' : '<label><input type="checkbox" name="acuerdoExcepcional"> Este grupo tiene un acuerdo excepcional</label>'}
       <div class="cf-form-grid">
         <div class="cf-field">
           <label for="hf-moneda">Moneda</label>
@@ -750,6 +762,7 @@ function mostrarEditorHotelFinanzas(contexto) {
         ${
           general
             ? `
+              <fieldset><legend>Personas que cobra el hotel · regla para todas sus estadías</legend><label><input type="checkbox" id="hf-estudiantes" name="regla-estudiantes" ${(v.reglaPersonas?.estudiantes ?? true) ? 'checked' : ''}> Estudiantes</label><label><input type="checkbox" id="hf-adultos" name="regla-adultos" ${(v.reglaPersonas?.adultos ?? true) ? 'checked' : ''}> Adultos</label><label><input type="checkbox" id="hf-coordinadores" name="regla-coordinadores" ${(v.reglaPersonas?.coordinadores ?? false) ? 'checked' : ''}> Coordinadores</label><label><input type="checkbox" id="hf-conductores" name="regla-conductores" ${(v.reglaPersonas?.conductores ?? false) ? 'checked' : ''}> Conductores</label><label>Liberados por estadía (se descuentan de las personas seleccionadas)<input type="number" min="0" step="1" id="hf-liberados" name="regla-liberados" value="${esc(v.reglaPersonas?.liberadosPorAsignacion ?? 0)}"></label><p>Esta regla se aplica sin guardar cada grupo. Las habitaciones y sus suplementos requieren un acuerdo adicional cuando corresponda.</p></fieldset>
               ${campoNumero(
                 'ad',
                 'Alojamiento con desayuno',
@@ -904,6 +917,16 @@ function mostrarEditorHotelFinanzas(contexto) {
     </form>
   `;
 
+  if (!general) {
+    const activar = dialogo.querySelector('[name="acuerdoExcepcional"]');
+    activar.checked = tieneExcepcionHotel(v);
+    activar.onchange = () => {
+      dialogo.querySelectorAll('.cf-form-grid input, .cf-form-grid select, .cf-form-grid textarea').forEach(el => {
+        if (el.name !== 'motivo') el.disabled = !activar.checked;
+      });
+    };
+    activar.onchange();
+  }
   $('[data-cancelar]', dialogo).addEventListener(
     'click',
     () => dialogo.close()
@@ -1021,8 +1044,14 @@ async function guardarCondicionesHotelFinanzas(
         moneda: codigoMoneda || 'SIN_DEFINIR',
         tipoTarifa: 'pax_noche',
         tarifasPorPension,
+        reglaPersonas: Object.fromEntries([
+          ...['estudiantes','adultos','coordinadores','conductores'].map(k => [k, dialogo.querySelector(`[name="regla-${k}"]`).checked]),
+          ['liberadosPorAsignacion', opcional('regla-liberados') ?? 0]
+        ]),
         observaciones: valor('detalle')
       };
+    } else if (!formulario.elements.namedItem('acuerdoExcepcional').checked) {
+      condiciones = {versionEsquema: 2, usarReglaHotel: true};
     } else {
       const modalidad = valor('modalidad');
       const personas = opcional('personasCobradas');
@@ -1079,6 +1108,7 @@ async function guardarCondicionesHotelFinanzas(
 
       condiciones = {
         versionEsquema: 2,
+        usarReglaHotel: false,
         pension: valor('pension'),
         modalidad,
         moneda: codigoMoneda,
@@ -1096,6 +1126,9 @@ async function guardarCondicionesHotelFinanzas(
       };
     }
 
+    if (condiciones.reglaPersonas && !Number.isInteger(condiciones.reglaPersonas.liberadosPorAsignacion)) {
+      throw new Error('Los liberados deben ser un número entero.');
+    }
     boton.disabled = true;
 
     const historialRef = doc(
