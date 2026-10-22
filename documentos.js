@@ -9479,7 +9479,7 @@ function getNotasDocumentoHTML(grupo, tipoDoc){
           const html = n.html
             ? sanitizeNotaHtml(n.html)
             : escapeHtml(n.texto || '');
-          return `<li>${html}</li>`;
+          return `<li style="margin-bottom: 3mm !important;">${html}</li>`;
         }).join('')}
       </ul>
     </div>
