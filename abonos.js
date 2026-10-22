@@ -1490,6 +1490,67 @@ function obtenerEstadoFacturaFormulario() {
   return 'COMPLETA';
 }
 
+function prepararFormularioCoberturaPax() {
+  if(el('abCoberturaEstado'))return;
+  const base=el('abFinResumen');if(!base)return;
+  const seccion=document.createElement('fieldset');seccion.id='abCoberturaPax';
+  seccion.style.cssText='margin:16px 0;padding:14px;border:1px solid #d4dce5;border-radius:8px;background:#f8fafc';
+  seccion.innerHTML=`<legend style="font-weight:bold">Pasajeros o cupos que cubre este pago</legend>
+    <label for="abCoberturaEstado">Cobertura</label>
+    <select id="abCoberturaEstado" style="width:100%;height:40px">
+      <option value="PENDIENTE">Todavía no sé cuántos cubre</option>
+      <option value="INFORMADA">Indicar la cantidad que cubre</option>
+      <option value="NO_APLICA">Este pago no se registra como cobertura de pax</option>
+    </select>
+    <div id="abCoberturaCampos" hidden>
+      <label for="abCoberturaCantidad">Cantidad cubierta por este abono</label>
+      <input id="abCoberturaCantidad" type="number" min="0" step="1" style="width:100%;height:40px">
+      <label for="abCoberturaUnidad">Unidad</label>
+      <select id="abCoberturaUnidad" style="width:100%;height:40px"><option value="PAX">Pax / cupos de esta actividad</option><option value="PAX_NOCHE">Personas-noches del hotel</option></select>
+      <p id="abCoberturaAyuda" style="font-size:13px;color:#475569"></p>
+      <label for="abCoberturaNota">Detalle de la cobertura (opcional)</label>
+      <textarea id="abCoberturaNota" rows="2" style="width:100%"></textarea>
+    </div>
+    <p style="font-size:13px;color:#475569">No modifica el dinero enviado ni los PAX operativos. La cobertura corresponde al servicio seleccionado; no se calcula dividiendo dinero por una tarifa.</p>`;
+  const contenedor=base.closest('fieldset')||base.parentElement;contenedor.insertAdjacentElement('afterend',seccion);
+  el('abCoberturaEstado').addEventListener('change',actualizarFormularioCoberturaPax);
+  el('abCoberturaUnidad').addEventListener('change',actualizarFormularioCoberturaPax);
+}
+function actualizarFormularioCoberturaPax() {
+  if(!el('abCoberturaEstado'))return;
+  const hotel=getTipoSeleccionado()==='hotel';
+  el('abCoberturaCampos').hidden=el('abCoberturaEstado').value!=='INFORMADA';
+  const unidad=el('abCoberturaUnidad');
+  if(hotel)unidad.value='PAX_NOCHE';else unidad.value='PAX';
+  unidad.disabled=true;
+  el('abCoberturaAyuda').textContent=hotel
+    ?'En hoteles se informa personas × noches. Ejemplo: 10 personas durante 3 noches = 30 personas-noches. No implica que se haya pagado la estadía completa de un grupo concreto.'
+    :'Se informa la cantidad de pax/cupos cubierta en esta actividad. No suma pasajeros únicos de todo el viaje.';
+}
+function cargarFormularioCoberturaPax(abono) {
+  prepararFormularioCoberturaPax();if(!el('abCoberturaEstado'))return;
+  const c=abono?.coberturaPax||{};
+  el('abCoberturaEstado').value=['INFORMADA','NO_APLICA'].includes(c.estado)?c.estado:'PENDIENTE';
+  el('abCoberturaCantidad').value=c.cantidad??'';
+  el('abCoberturaUnidad').value=c.unidad||(abono?.tipo==='hotel'?'PAX_NOCHE':'PAX');
+  el('abCoberturaNota').value=c.detalle||'';actualizarFormularioCoberturaPax();
+}
+function leerCoberturaPaxAbono() {
+  prepararFormularioCoberturaPax();
+  const estado=el('abCoberturaEstado')?.value||'PENDIENTE';
+  const tipo=getTipoSeleccionado();
+  const unidad=tipo==='hotel'?'PAX_NOCHE':'PAX';
+  const raw=el('abCoberturaCantidad')?.value.trim()||'';
+  const cantidad=raw===''?null:Number(raw);
+  if(estado==='INFORMADA'&&(cantidad===null||!Number.isInteger(cantidad)||cantidad<0))throw new Error('Indica una cantidad entera de pax/cupos cubierta por este pago, o déjala como pendiente.');
+  if(estado==='INFORMADA'&&!['hotel','actividad'].includes(tipo))throw new Error('La cobertura requiere un hotel o actividad seleccionado.');
+  return {versionEsquema:1,estado,unidad,cantidad:estado==='INFORMADA'?cantidad:null,
+    servicioId:tipo==='actividad'?ENTIDAD_SELECCIONADA?.servicioId||'':'',
+    detalle:el('abCoberturaNota')?.value.trim()||'',
+    montoEnviadoBase:Number(el('abMonto').value||0),monedaEnviadaBase:normalizarMoneda(el('abMoneda').value),
+    actualizadoPor:auth.currentUser?.email||'',actualizadoAt:serverTimestamp()};
+}
+
 function monedaAplicacionAbono(valor) {
   const codigo = norm(valor);
 
@@ -1549,6 +1610,7 @@ function redondearAplicacionAbono(valor) {
 }
 
 function actualizarAplicacionAbono() {
+  actualizarFormularioCoberturaPax();
   const enviada = monedaAplicacionAbono(
     el('abMoneda').value
   );
@@ -1662,6 +1724,7 @@ function prepararEventosAplicacionAbono() {
 }
 
 function cargarAplicacionAbono(abono = null) {
+  cargarFormularioCoberturaPax(abono);
   prepararEventosAplicacionAbono();
 
   /*
@@ -1837,6 +1900,7 @@ function obtenerDatosFormulario() {
     tipo,
     ano,
     destino,
+    coberturaPax:leerCoberturaPaxAbono(),
   
     aplicacionFinanciera:
       obtenerAplicacionFinancieraAbono(),
@@ -2052,6 +2116,7 @@ function datosParaEspejo(
 
   const datosBase = {
     abonoOperacionId: abonoId,
+    coberturaPax:datos.coberturaPax || null,
   
     idRegistro:
       datos.idRegistro || '',
