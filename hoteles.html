@@ -329,6 +329,7 @@
           />
         </label>
       
+        <fieldset><legend>Personas que cobra el hotel · regla para todas sus estadías</legend><label><input type="checkbox" id="m-fin-estudiantes" name="regla-estudiantes" checked> Estudiantes</label><label><input type="checkbox" id="m-fin-adultos" name="regla-adultos" checked> Adultos</label><label><input type="checkbox" id="m-fin-coordinadores" name="regla-coordinadores" > Coordinadores</label><label><input type="checkbox" id="m-fin-conductores" name="regla-conductores" > Conductores</label><label>Liberados por estadía (se descuentan de las personas seleccionadas)<input type="number" min="0" step="1" id="m-fin-liberados" name="regla-liberados" value="0"></label><p>Esta regla se aplica sin guardar cada grupo. Las habitaciones y sus suplementos requieren un acuerdo adicional cuando corresponda.</p></fieldset>
         <label>
           Observaciones del acuerdo
           <textarea id="m-fin-nota" rows="3"></textarea>
@@ -364,7 +365,10 @@
       <div id="grupo-fechas" style="font-size:.9em;color:#555;margin:.5em 0;"></div>
 
       <fieldset>
-        <legend>Acuerdo económico de esta estadía</legend>
+        <legend>Condiciones de esta estadía</legend>
+        <p>Se calculan automáticamente con la regla del hotel, los pasajeros asignados y las noches. No es necesario guardar este grupo para aplicar la tarifa.</p>
+        <label><input type="checkbox" id="a-fin-excepcion"> Este grupo tiene un acuerdo excepcional</label>
+        <fieldset id="a-fin-campos"><legend>Excepción a la regla del hotel</legend>
       
         <label>
           Pensión
@@ -385,7 +389,7 @@
             type="number"
             min="0"
             step="1"
-            placeholder="Pendiente de confirmar"
+            placeholder="Vacío: calcular con la regla del hotel"
           />
         </label>
       
@@ -475,6 +479,7 @@
         </small>
       </fieldset>
 
+      </fieldset>
       <!-- COMPARATIVO SISTEMA DE PAGOS -->
       <div id="pagos-comparativo-box" style="border:1px solid #d7dbe3; border-radius:8px; padding:10px; margin:10px 0; background:#f8fafc;">
         <strong>Comparativo sistema de pagos</strong>
