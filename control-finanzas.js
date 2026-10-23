@@ -181,24 +181,315 @@ function agruparPorTipoYMoneda(items) {
 }
 
 function filaProveedor(resumen) {
-  const pendiente=!!resumen.requiereConfiguracion, estado=estadoFinancieroResumen(resumen);
-  const costos=costosResumen(resumen), servicios=new Map();
-  for(const o of costos){const key=o.servicioId||o.servicioNombre||o.hotelNombre||'Servicio';
-    if(!servicios.has(key))servicios.set(key,{nombre:o.servicioNombre||o.hotelNombre||key,costo:0,pendientes:0,cantidad:0});
-    const s=servicios.get(key);s.costo+=num(o.totalObligacion);s.pendientes+=o.requiereConfiguracion?1:0;s.cantidad++;
+  state.proveedoresDesplegados ||= new Set();
+
+  const clave = String(claveProveedor(resumen));
+  const abierto = state.proveedoresDesplegados.has(clave);
+  const pendiente = !!resumen.requiereConfiguracion;
+  const estado = estadoFinancieroResumen(resumen);
+
+  const costos = costosResumen(resumen);
+  const servicios = new Map();
+
+  for (const o of costos) {
+    const key =
+      o.servicioId ||
+      o.servicioNombre ||
+      o.hotelNombre ||
+      'Servicio';
+
+    if (!servicios.has(key)) {
+      servicios.set(key, {
+        nombre:
+          o.servicioNombre ||
+          o.hotelNombre ||
+          key,
+        costo: 0,
+        pendientes: 0,
+        cantidad: 0
+      });
+    }
+
+    const servicio = servicios.get(key);
+
+    servicio.costo += num(o.totalObligacion);
+    servicio.pendientes += o.requiereConfiguracion ? 1 : 0;
+    servicio.cantidad++;
   }
-  const avisos=[num(resumen.obligacionesSinTarifa)?`${num(resumen.obligacionesSinTarifa)} costo(s) pendientes`:'',num(resumen.abonosPendientesRevision)?`${num(resumen.abonosPendientesRevision)} pago(s) por revisar`:''].filter(Boolean);
-  const hijos=[...servicios.values()].sort((a,b)=>compararNombre(a.nombre,b.nombre));
-  return `<tr class="cf-provider-total" data-key="${esc(claveProveedor(resumen))}">
-    <td class="cf-provider-name"><strong>${esc(resumen.proveedorNombre||resumen.proveedorId)}</strong><small>${norm(resumen.tipo)==='HOTEL'?'HOTEL':'ACTIVIDADES'}${avisos.length?' · '+esc(avisos.join(' · ')):''}</small></td>
-    <td class="cf-total-label">TOTAL PROVEEDOR</td>
-    <td class="num">${fmtMoney(resumen.totalObligacion,resumen.monedaObligacion)}${pendiente?'<small class="cf-partial">PARCIAL</small>':''}</td>
-    <td class="num multi-money">${dineroEnviadoTexto(resumen)}</td>
-    <td class="num">${fmtMoney(resumen.totalAplicado,resumen.monedaObligacion)}</td>
-    <td class="num saldo">${pendiente && num(resumen.saldoPendiente)<0?'PENDIENTE':fmtMoney(resumen.saldoPendiente,resumen.monedaObligacion)}</td>
-    <td><span class="cf-state ${estado.clase}">${esc(estado.texto)}</span></td>
-    <td><button type="button" class="cf-btn btn-detalle">Ver detalle</button></td></tr>
-    ${hijos.length?hijos.map(s=>`<tr class="cf-service-child"><td></td><td><span class="cf-child-marker">↳</span> ${esc(s.nombre)}<small>${s.cantidad} registro(s)</small></td><td class="num">${fmtMoney(s.costo,resumen.monedaObligacion)}${s.pendientes?'<small class="cf-partial">PARCIAL</small>':''}</td><td colspan="3" class="cf-child-payment">Los pagos y el saldo se muestran en el total del proveedor.</td><td>${s.pendientes?'<span class="cf-state warning">Faltan tarifas</span>':''}</td><td></td></tr>`).join(''):'<tr class="cf-service-child"><td></td><td colspan="7">Sin costos vinculados. El pago permanece visible y pendiente de configuración.</td></tr>'}`;
+
+  const avisos = [
+    num(resumen.obligacionesSinTarifa)
+      ? `${num(resumen.obligacionesSinTarifa)} costo(s) pendientes`
+      : '',
+
+    num(resumen.abonosPendientesRevision)
+      ? `${num(resumen.abonosPendientesRevision)} pago(s) por revisar`
+      : ''
+  ].filter(Boolean);
+
+  const hijos = [...servicios.values()].sort(
+    (a, b) => compararNombre(a.nombre, b.nombre)
+  );
+
+  const nombreProveedor =
+    resumen.proveedorNombre ||
+    resumen.proveedorId ||
+    'Proveedor';
+
+  const atributosHijo = `
+    data-proveedor-padre="${esc(clave)}"
+    ${abierto ? '' : 'hidden style="display:none"'}
+  `;
+
+  const filasServicios = hijos.length
+    ? hijos.map(servicio => `
+        <tr class="cf-service-child" ${atributosHijo}>
+          <td></td>
+
+          <td>
+            <span class="cf-child-marker">↳</span>
+            ${esc(servicio.nombre)}
+            <small>${servicio.cantidad} registro(s)</small>
+          </td>
+
+          <td class="num">
+            ${fmtMoney(
+              servicio.costo,
+              resumen.monedaObligacion
+            )}
+
+            ${
+              servicio.pendientes
+                ? '<small class="cf-partial">PARCIAL</small>'
+                : ''
+            }
+          </td>
+
+          <td colspan="3" class="cf-child-payment">
+            Los pagos y el saldo se muestran
+            en el total del proveedor.
+          </td>
+
+          <td>
+            ${
+              servicio.pendientes
+                ? `
+                  <span class="cf-state warning">
+                    Faltan datos de costo
+                  </span>
+                `
+                : ''
+            }
+          </td>
+
+          <td></td>
+        </tr>
+      `).join('')
+    : `
+      <tr class="cf-service-child" ${atributosHijo}>
+        <td></td>
+
+        <td colspan="7">
+          Sin costos vinculados.
+          El pago permanece visible y pendiente de configuración.
+        </td>
+      </tr>
+    `;
+
+  return `
+    <tr
+      class="cf-provider-total"
+      data-key="${esc(clave)}"
+    >
+      <td class="cf-provider-name">
+        <div style="
+          display:flex;
+          align-items:flex-start;
+          gap:8px;
+        ">
+          <button
+            type="button"
+            class="btn-desplegar-proveedor"
+            aria-expanded="${abierto}"
+            aria-label="${esc(
+              `${abierto ? 'Ocultar' : 'Mostrar'} servicios de ${nombreProveedor}`
+            )}"
+            title="${abierto ? 'Ocultar servicios' : 'Mostrar servicios'}"
+            style="
+              flex:0 0 28px;
+              width:28px;
+              height:28px;
+              padding:0;
+              border:1px solid #c5d1df;
+              border-radius:6px;
+              background:#eef3f9;
+              color:#405a78;
+              font-size:19px;
+              font-weight:bold;
+              line-height:1;
+              cursor:pointer;
+            "
+          >${abierto ? '−' : '+'}</button>
+
+          <div style="min-width:0">
+            <strong>${esc(nombreProveedor)}</strong>
+
+            <small>
+              ${
+                norm(resumen.tipo) === 'HOTEL'
+                  ? 'HOTEL'
+                  : 'ACTIVIDADES'
+              }
+              ${
+                avisos.length
+                  ? ' · ' + esc(avisos.join(' · '))
+                  : ''
+              }
+            </small>
+          </div>
+        </div>
+      </td>
+
+      <td class="cf-total-label">
+        TOTAL PROVEEDOR
+
+        ${
+          hijos.length
+            ? `
+              <small style="
+                display:block;
+                margin-top:5px;
+                font-weight:normal;
+                color:#62748a;
+              ">
+                ${hijos.length}
+                ${hijos.length === 1 ? 'servicio' : 'servicios'}
+              </small>
+            `
+            : ''
+        }
+      </td>
+
+      <td class="num">
+        ${fmtMoney(
+          resumen.totalObligacion,
+          resumen.monedaObligacion
+        )}
+
+        ${
+          pendiente
+            ? '<small class="cf-partial">PARCIAL</small>'
+            : ''
+        }
+      </td>
+
+      <td class="num multi-money">
+        ${dineroEnviadoTexto(resumen)}
+      </td>
+
+      <td class="num">
+        ${fmtMoney(
+          resumen.totalAplicado,
+          resumen.monedaObligacion
+        )}
+      </td>
+
+      <td class="num saldo">
+        ${
+          pendiente && num(resumen.saldoPendiente) < 0
+            ? 'PENDIENTE'
+            : fmtMoney(
+                resumen.saldoPendiente,
+                resumen.monedaObligacion
+              )
+        }
+      </td>
+
+      <td>
+        <span class="cf-state ${estado.clase}">
+          ${esc(estado.texto)}
+        </span>
+      </td>
+
+      <td>
+        <button
+          type="button"
+          class="cf-btn btn-detalle"
+        >
+          Ver detalle
+        </button>
+      </td>
+    </tr>
+
+    ${filasServicios}
+  `;
+}
+
+function prepararDesplegablesProveedores() {
+  const contenedor = $('#gruposFinancieros');
+
+  if (!contenedor) return;
+
+  // Instalar el evento una sola vez.
+  if (contenedor.dataset.desplegablesPreparados === '1') {
+    return;
+  }
+
+  contenedor.dataset.desplegablesPreparados = '1';
+
+  contenedor.addEventListener('click', event => {
+    const boton = event.target.closest(
+      '.btn-desplegar-proveedor'
+    );
+
+    if (!boton || !contenedor.contains(boton)) return;
+
+    const fila = boton.closest('.cf-provider-total');
+    if (!fila) return;
+
+    const clave = fila.dataset.key;
+
+    state.proveedoresDesplegados ||= new Set();
+
+    const abrir =
+      boton.getAttribute('aria-expanded') !== 'true';
+
+    if (abrir) {
+      state.proveedoresDesplegados.add(clave);
+    } else {
+      state.proveedoresDesplegados.delete(clave);
+    }
+
+    boton.textContent = abrir ? '−' : '+';
+    boton.setAttribute('aria-expanded', String(abrir));
+
+    const nombreProveedor =
+      fila.querySelector('.cf-provider-name strong')
+        ?.textContent || 'proveedor';
+
+    boton.setAttribute(
+      'aria-label',
+      `${abrir ? 'Ocultar' : 'Mostrar'} servicios de ${nombreProveedor}`
+    );
+
+    boton.title = abrir
+      ? 'Ocultar servicios'
+      : 'Mostrar servicios';
+
+    // Mostrar u ocultar únicamente las filas de este proveedor.
+    let siguiente = fila.nextElementSibling;
+
+    while (
+      siguiente &&
+      siguiente.classList.contains('cf-service-child') &&
+      siguiente.dataset.proveedorPadre === clave
+    ) {
+      siguiente.hidden = !abrir;
+      siguiente.style.display = abrir ? '' : 'none';
+
+      siguiente = siguiente.nextElementSibling;
+    }
+  });
 }
 
 function bloqueMoneda(grupo,codigo) {
@@ -211,6 +502,7 @@ function bloqueMoneda(grupo,codigo) {
 }
 
 function renderProveedores() {
+  prepararDesplegablesProveedores();
   const items=state.destino?proveedoresDestino():[],todos=state.destino==='TODOS_DESTINOS';
   $('#tituloDestino').textContent=todos?'TODOS LOS DESTINOS':state.destino||'Selecciona un destino';
   $('#subtituloDestino').textContent='Actividades y hoteles separados · proveedores A–Z · monedas originales primero.';
