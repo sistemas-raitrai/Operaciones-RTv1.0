@@ -2826,8 +2826,53 @@ function bindUI() {
 }
 
 onAuthStateChanged(auth, async user => {
-  if (!user) { window.location.href = 'login.html'; return; }
-  state.usuario = user; $('#usuarioConectado').textContent = user.email || '';
-  construirAnos(); bindUI();
-  try { await cargarResumenes(); } catch (e) { console.error(e); setEstado(`Error cargando Control Finanzas: ${e.message}`, true); }
+  document.body.style.visibility = 'hidden';
+
+  if (!user) {
+    window.location.replace('login.html');
+    return;
+  }
+
+  const correosPermitidos = new Set([
+    'anamaria@raitrai.cl',
+    'yenny@raitrai.cl',
+    'sistemas@raitrai.cl'
+  ]);
+
+  const email = String(user.email || '')
+    .trim()
+    .toLowerCase();
+
+  if (!correosPermitidos.has(email)) {
+    state.usuario = null;
+
+    window.location.replace('index.html');
+    return;
+  }
+
+  state.usuario = user;
+
+  $('#usuarioConectado').textContent =
+    user.email || '';
+
+  construirAnos();
+
+  // Evitar registrar los eventos más de una vez.
+  if (!state.eventosFinanzasPreparados) {
+    bindUI();
+    state.eventosFinanzasPreparados = true;
+  }
+
+  document.body.style.visibility = 'visible';
+
+  try {
+    await cargarResumenes();
+  } catch (error) {
+    console.error(error);
+
+    setEstado(
+      `Error cargando Control Finanzas: ${error.message}`,
+      true
+    );
+  }
 });
