@@ -2309,7 +2309,7 @@ function getDERTextos(programa, overrides = {}) {
     const recs = overrides.recomendaciones || [
       'Llevar ropa y calzado cómodo, adecuado al clima del destino. Llevar protector solar.',
       'Llevar una botella reutilizable para el consumo de agua.',
-      'La documentación debe quedar bajo supervisión de los adultos.',
+      'Se sugiere que la documentación quede bajo la supervisión de los adultos.',
       'Las pertenencias personales son de responsabilidad de cada persona.',
       'Se recomienda que los adultos tengan fotocopia de las Cédulas de Identidad de todos los pasajeros.'
     ];
@@ -2323,7 +2323,7 @@ function getDERTextos(programa, overrides = {}) {
       'Botella reutilizable de agua.',
       'Saco de dormir.',
       'Toalla, shampoo y jabón (Huilo Huilo NO INCLUYE TOALLAS NI AMENIDADES).',
-      'La documentación bajo supervisión de los adultos.',
+      'Se sugiere que la documentación quede bajo la supervisión de los adultos.',
       'Evitar llevar objetos de valor.'
     ];
     return { docsText, equipajeText1, equipajeText2, recs };
@@ -2333,7 +2333,7 @@ function getDERTextos(programa, overrides = {}) {
   const recs = overrides.recomendaciones || [
     'Llevar ropa y calzado cómodo, adecuado al clima. Protector solar.',
     'Botella reutilizable.',
-    'La documentación bajo supervisión de los adultos.',
+    'Se sugiere que la documentación quede bajo la supervisión de los adultos.',
     'Evitar llevar objetos de valor.',
     'Copias de cédulas de identidad de todos los pasajeros.'
   ];
