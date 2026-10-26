@@ -942,7 +942,6 @@ async function onSubmitHotel(e) {
   if (boton?.disabled) return;
 
   try {
-    const condiciones = leerTarifaGeneralHotel();
 
     const p = {
       anoViaje: Number(anoHotelActivo),
@@ -1018,26 +1017,9 @@ async function onSubmitHotel(e) {
       ? doc(db, 'hoteles', editHotelId)
       : doc(collection(db, 'hoteles'));
 
-    const tarifaRef = doc(
-      db,
-      'FinanzasHotelesTarifas',
-      idTarifaHotelFinanzas(
-        hotelRef.id,
-        anoHotelActivo
-      )
-    );
-
-    const [hotelSnap, tarifaSnap] = await Promise.all([
-      getDoc(hotelRef),
-      getDoc(tarifaRef)
-    ]);
-
+    const hotelSnap = await getDoc(hotelRef);
     const hotelAntes = hotelSnap.exists()
       ? hotelSnap.data()
-      : null;
-
-    const tarifaAntes = tarifaSnap.exists()
-      ? tarifaSnap.data()
       : null;
 
     const hotelDespues = {
@@ -1047,18 +1029,6 @@ async function onSubmitHotel(e) {
           ? {}
           : { createdAt: serverTimestamp() }
       )
-    };
-
-    const tarifaDespues = {
-      ...condiciones,
-      anoViaje: Number(anoHotelActivo),
-      hotelId: hotelRef.id,
-      hotelNombre: p.nombre,
-      destino: p.destino,
-      ciudad: p.ciudad,
-
-      actualizadoPor: currentUserEmail || '',
-      actualizadoAt: serverTimestamp()
     };
 
     const batch = writeBatch(db);
@@ -1073,21 +1043,6 @@ async function onSubmitHotel(e) {
       tarifaRef,
       tarifaDespues,
       { merge: true }
-    );
-
-    batch.set(
-      doc(collection(db, 'historial')),
-      {
-        tipo: hotelSnap.exists()
-          ? 'hotel-edit'
-          : 'hotel-new',
-
-        hotelId: hotelRef.id,
-        antes: hotelAntes,
-        despues: hotelDespues,
-        usuario: currentUserEmail || '',
-        ts: serverTimestamp()
-      }
     );
 
     batch.set(
@@ -1839,7 +1794,6 @@ async function onSavePax() {
   );
 
   const assignUpdate = {
-    finanzas: acuerdoFinanciero,
     anoViaje: Number(anoHotelActivo),
     hotelId: hotelIdFinal,
     grupoId: gId,
@@ -2039,7 +1993,6 @@ async function onSubmitAssign(e) {
   }
 
   const payload = {
-    finanzas: acuerdoFinanciero,
     anoViaje:  Number(anoHotelActivo),
     hotelId:   hotelIdFinal,
     grupoId:   gId,
