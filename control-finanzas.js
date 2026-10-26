@@ -13,6 +13,7 @@ import {
   collection, doc, getDoc, getDocs, query, where, orderBy, limit,
   runTransaction, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-functions.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 const COLECCIONES = Object.freeze({
@@ -26,6 +27,7 @@ const COLECCIONES = Object.freeze({
 const DESTINOS_ORDEN = ['BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'NORTE DE CHILE'];
 const MONEDAS_ORDEN = ['CLP', 'USD', 'BRL', 'ARS'];
 const auth = getAuth(app);
+const llamarCuentasHoteles=httpsCallable(getFunctions(app,'southamerica-west1'),'gestionarCuentasProveedoresHoteles',{timeout:120000});
 const state = {
   usuario: null, ano: new Date().getFullYear(), tipo: 'TODOS', destino: null,
   resumenes: [], proveedor: null, obligaciones: [], abonos: [], reglas: [], historial: []
@@ -117,21 +119,23 @@ function construirAnos() {
 }
 
 async function cargarResumenes() {
-  const turno=++state.cargaVisual, ano=Number(state.ano);
-  setEstado('Actualizando costos, pagos y saldos…');
+  const turno=++state.cargaVisual,ano=Number(state.ano);
+  setEstado('Actualizando costos, pagos, cuentas y saldos…');
   try {
-    const [resumenes,costos] = await Promise.all([
+    const [resumenes,costos,cuentas]=await Promise.all([
       getDocs(query(collection(db,COLECCIONES.RESUMENES),where('anoViaje','==',ano))),
-      getDocs(query(collection(db,COLECCIONES.OBLIGACIONES),where('anoViaje','==',ano)))
+      getDocs(query(collection(db,COLECCIONES.OBLIGACIONES),where('anoViaje','==',ano))),
+      llamarCuentasHoteles({accion:'CONSULTAR',anoViaje:ano})
     ]);
-    if(turno!==state.cargaVisual || ano!==Number(state.ano)) return;
-    state.resumenes=resumenes.docs.map(d=>({...d.data(),id:d.id}));
+    if(turno!==state.cargaVisual||ano!==Number(state.ano))return false;
+    state.configCuentasHoteles=cuentas.data.documentos||[];
+    state.resumenes=adjuntarCuentasHoteles(resumenes.docs.map(d=>({...d.data(),id:d.id})),state.configCuentasHoteles);
     state.costosAno=costos.docs.map(d=>({...d.data(),id:d.id}));
-    const ocultos=preferenciasFinanzas().ocultos || [];
-    if(ocultos.includes(state.destino)) state.destino=null;
-    renderDestinos(); renderProveedores();
-    setEstado(`Información consultada a las ${new Date().toLocaleTimeString('es-CL')}. El backend recalcula automáticamente; usa Actualizar información para consultar el resultado.`);
-  } catch(error) { setEstado(`No se pudo actualizar: ${error.message}`,true); }
+    if((preferenciasFinanzas().ocultos||[]).includes(state.destino))state.destino=null;
+    renderDestinos();renderProveedores();
+    setEstado(`Información consultada a las ${new Date().toLocaleTimeString('es-CL')}. Las cuentas compartidas conservan el origen de cada costo y pago.`);
+    return true;
+  } catch(error) {setEstado(`No se pudo actualizar: ${error.message}. Compruebe que esté desplegada gestionarCuentasProveedoresHoteles.`,true);return false;}
 }
 
 function ordenarDestinos(destinos) {
@@ -182,314 +186,29 @@ function agruparPorTipoYMoneda(items) {
 
 function filaProveedor(resumen) {
   state.proveedoresDesplegados ||= new Set();
-
-  const clave = String(claveProveedor(resumen));
-  const abierto = state.proveedoresDesplegados.has(clave);
-  const pendiente = !!resumen.requiereConfiguracion;
-  const estado = estadoFinancieroResumen(resumen);
-
-  const costos = costosResumen(resumen);
-  const servicios = new Map();
-
-  for (const o of costos) {
-    const key =
-      o.servicioId ||
-      o.servicioNombre ||
-      o.hotelNombre ||
-      'Servicio';
-
-    if (!servicios.has(key)) {
-      servicios.set(key, {
-        nombre:
-          o.servicioNombre ||
-          o.hotelNombre ||
-          key,
-        costo: 0,
-        pendientes: 0,
-        cantidad: 0
-      });
-    }
-
-    const servicio = servicios.get(key);
-
-    servicio.costo += num(o.totalObligacion);
-    servicio.pendientes += o.requiereConfiguracion ? 1 : 0;
-    servicio.cantidad++;
+  const clave=String(claveProveedor(resumen)),abierto=state.proveedoresDesplegados.has(clave),pendiente=!!resumen.requiereConfiguracion;
+  const cuenta=resumen.cuentaCompartida,raiz=esRaizCompartida(resumen),saldo=raiz?cuenta.saldosPorMoneda[moneda(resumen.monedaObligacion)]:resumen;
+  const estado=estadoFinancieroResumen(raiz?saldo:resumen),servicios=new Map();
+  for(const o of resumen.sinteticoCuenta?[]:costosResumen(resumen)) {
+    const key=o.servicioId||o.servicioNombre||o.hotelNombre||'Servicio';
+    if(!servicios.has(key))servicios.set(key,{nombre:o.servicioNombre||o.hotelNombre||key,costo:0,pendientes:0,cantidad:0});
+    const s=servicios.get(key);s.costo+=num(o.totalObligacion);s.pendientes+=o.requiereConfiguracion?1:0;s.cantidad++;
   }
-
-  const avisos = [
-    num(resumen.obligacionesSinTarifa)
-      ? `${num(resumen.obligacionesSinTarifa)} costo(s) pendientes`
-      : '',
-
-    num(resumen.abonosPendientesRevision)
-      ? `${num(resumen.abonosPendientesRevision)} pago(s) por revisar`
-      : ''
-  ].filter(Boolean);
-
-  const hijos = [...servicios.values()].sort(
-    (a, b) => compararNombre(a.nombre, b.nombre)
-  );
-
-  const nombreProveedor =
-    resumen.proveedorNombre ||
-    resumen.proveedorId ||
-    'Proveedor';
-
-  const atributosHijo = `
-    data-proveedor-padre="${esc(clave)}"
-    ${abierto ? '' : 'hidden style="display:none"'}
-  `;
-
-  const filasServicios = hijos.length
-    ? hijos.map(servicio => `
-        <tr class="cf-service-child" ${atributosHijo}>
-          <td></td>
-
-          <td>
-            <span class="cf-child-marker">↳</span>
-            ${esc(servicio.nombre)}
-            <small>${servicio.cantidad} registro(s)</small>
-          </td>
-
-          <td class="num">
-            ${fmtMoney(
-              servicio.costo,
-              resumen.monedaObligacion
-            )}
-
-            ${
-              servicio.pendientes
-                ? '<small class="cf-partial">PARCIAL</small>'
-                : ''
-            }
-          </td>
-
-          <td colspan="3" class="cf-child-payment">
-            Los pagos y el saldo se muestran
-            en el total del proveedor.
-          </td>
-
-          <td>
-            ${
-              servicio.pendientes
-                ? `
-                  <span class="cf-state warning">
-                    Faltan datos de costo
-                  </span>
-                `
-                : ''
-            }
-          </td>
-
-          <td></td>
-        </tr>
-      `).join('')
-    : `
-      <tr class="cf-service-child" ${atributosHijo}>
-        <td></td>
-
-        <td colspan="7">
-          Sin costos vinculados.
-          El pago permanece visible y pendiente de configuración.
-        </td>
-      </tr>
-    `;
-
-  return `
-    <tr
-      class="cf-provider-total"
-      data-key="${esc(clave)}"
-    >
-      <td class="cf-provider-name">
-        <div style="
-          display:flex;
-          align-items:flex-start;
-          gap:8px;
-        ">
-          <button
-            type="button"
-            class="btn-desplegar-proveedor"
-            aria-expanded="${abierto}"
-            aria-label="${esc(
-              `${abierto ? 'Ocultar' : 'Mostrar'} servicios de ${nombreProveedor}`
-            )}"
-            title="${abierto ? 'Ocultar servicios' : 'Mostrar servicios'}"
-            style="
-              flex:0 0 28px;
-              width:28px;
-              height:28px;
-              padding:0;
-              border:1px solid #c5d1df;
-              border-radius:6px;
-              background:#eef3f9;
-              color:#405a78;
-              font-size:19px;
-              font-weight:bold;
-              line-height:1;
-              cursor:pointer;
-            "
-          >${abierto ? '−' : '+'}</button>
-
-          <div style="min-width:0">
-            <strong>${esc(nombreProveedor)}</strong>
-
-            <small>
-              ${
-                norm(resumen.tipo) === 'HOTEL'
-                  ? 'HOTEL'
-                  : 'ACTIVIDADES'
-              }
-              ${
-                avisos.length
-                  ? ' · ' + esc(avisos.join(' · '))
-                  : ''
-              }
-            </small>
-          </div>
-        </div>
-      </td>
-
-      <td class="cf-total-label">
-        TOTAL PROVEEDOR
-
-        ${
-          hijos.length
-            ? `
-              <small style="
-                display:block;
-                margin-top:5px;
-                font-weight:normal;
-                color:#62748a;
-              ">
-                ${hijos.length}
-                ${hijos.length === 1 ? 'servicio' : 'servicios'}
-              </small>
-            `
-            : ''
-        }
-      </td>
-
-      <td class="num">
-        ${fmtMoney(
-          resumen.totalObligacion,
-          resumen.monedaObligacion
-        )}
-
-        ${
-          pendiente
-            ? '<small class="cf-partial">PARCIAL</small>'
-            : ''
-        }
-      </td>
-
-      <td class="num multi-money">
-        ${dineroEnviadoTexto(resumen)}
-      </td>
-
-      <td class="num">
-        ${fmtMoney(
-          resumen.totalAplicado,
-          resumen.monedaObligacion
-        )}
-      </td>
-
-      <td class="num saldo">
-        ${
-          pendiente && num(resumen.saldoPendiente) < 0
-            ? 'PENDIENTE'
-            : fmtMoney(
-                resumen.saldoPendiente,
-                resumen.monedaObligacion
-              )
-        }
-      </td>
-
-      <td>
-        <span class="cf-state ${estado.clase}">
-          ${esc(estado.texto)}
-        </span>
-      </td>
-
-      <td>
-        <button
-          type="button"
-          class="cf-btn btn-detalle"
-        >
-          Ver detalle
-        </button>
-      </td>
-    </tr>
-
-    ${filasServicios}
-  `;
-}
-
-function prepararDesplegablesProveedores() {
-  const contenedor = $('#gruposFinancieros');
-
-  if (!contenedor) return;
-
-  // Instalar el evento una sola vez.
-  if (contenedor.dataset.desplegablesPreparados === '1') {
-    return;
-  }
-
-  contenedor.dataset.desplegablesPreparados = '1';
-
-  contenedor.addEventListener('click', event => {
-    const boton = event.target.closest(
-      '.btn-desplegar-proveedor'
-    );
-
-    if (!boton || !contenedor.contains(boton)) return;
-
-    const fila = boton.closest('.cf-provider-total');
-    if (!fila) return;
-
-    const clave = fila.dataset.key;
-
-    state.proveedoresDesplegados ||= new Set();
-
-    const abrir =
-      boton.getAttribute('aria-expanded') !== 'true';
-
-    if (abrir) {
-      state.proveedoresDesplegados.add(clave);
-    } else {
-      state.proveedoresDesplegados.delete(clave);
-    }
-
-    boton.textContent = abrir ? '−' : '+';
-    boton.setAttribute('aria-expanded', String(abrir));
-
-    const nombreProveedor =
-      fila.querySelector('.cf-provider-name strong')
-        ?.textContent || 'proveedor';
-
-    boton.setAttribute(
-      'aria-label',
-      `${abrir ? 'Ocultar' : 'Mostrar'} servicios de ${nombreProveedor}`
-    );
-
-    boton.title = abrir
-      ? 'Ocultar servicios'
-      : 'Mostrar servicios';
-
-    // Mostrar u ocultar únicamente las filas de este proveedor.
-    let siguiente = fila.nextElementSibling;
-
-    while (
-      siguiente &&
-      siguiente.classList.contains('cf-service-child') &&
-      siguiente.dataset.proveedorPadre === clave
-    ) {
-      siguiente.hidden = !abrir;
-      siguiente.style.display = abrir ? '' : 'none';
-
-      siguiente = siguiente.nextElementSibling;
-    }
-  });
+  const hijos=[...servicios.values()].sort((a,b)=>compararNombre(a.nombre,b.nombre));
+  const atributos=`data-proveedor-padre="${esc(clave)}" ${abierto?'':'hidden style="display:none"'}`;
+  const monedaDeuda=resumen.monedaObligacion;
+  const leyenda=cuenta?(raiz?`CUENTA COMPARTIDA · ${cuenta.miembros.map(x=>x.nombre).join(' + ')}`:`Cuenta principal: ${cuenta.raizNombre}`):'';
+  const avisos=[num(resumen.obligacionesSinTarifa)?`${num(resumen.obligacionesSinTarifa)} costo(s) pendientes`:'',num(resumen.abonosPendientesRevision)?`${num(resumen.abonosPendientesRevision)} pago(s) por revisar`:''].filter(Boolean);
+  return `<tr class="cf-provider-total ${raiz?'cf-account-root':''}" data-key="${esc(clave)}">
+    <td class="cf-provider-name"><div class="cf-provider-fold"><button type="button" class="btn-desplegar-proveedor" aria-expanded="${abierto}" aria-label="${esc((abierto?'Ocultar':'Mostrar')+' servicios de '+resumen.proveedorNombre)}" title="${abierto?'Ocultar':'Mostrar'} servicios">${abierto?'−':'+'}</button><div><strong>${esc(resumen.proveedorNombre||resumen.proveedorId)}</strong><small>${norm(resumen.tipo)==='HOTEL'?'HOTEL':'ACTIVIDADES'}${avisos.length?' · '+esc(avisos.join(' · ')):''}</small>${leyenda?`<small class="cf-account-caption">${esc(leyenda)}</small>`:''}</div></div></td>
+    <td class="cf-total-label">${resumen.sinteticoCuenta?'RAÍZ DE CUENTA · SIN COSTO PROPIO EN ESTA MONEDA':norm(resumen.tipo)==='HOTEL'?'TOTAL DEL HOTEL':'TOTAL PROVEEDOR'}<small>${hijos.length} servicio(s)</small></td>
+    <td class="num">${fmtMoney(resumen.totalObligacion,monedaDeuda)}${pendiente?'<small class="cf-partial">PARCIAL</small>':''}${raiz?`<small class="cf-account-caption">Conjunto: ${fmtMoney(saldo.totalObligacion,monedaDeuda)}${saldo.requiereConfiguracion?' · PARCIAL':''}</small>`:''}</td>
+    <td class="num multi-money">${dineroEnviadoTexto(resumen)}${raiz?`<small class="cf-account-caption">Conjunto: ${dineroEnviadoTexto(saldo)}</small>`:''}</td>
+    <td class="num">${fmtMoney(resumen.totalAplicado,monedaDeuda)}${raiz?`<small class="cf-account-caption">Conjunto: ${fmtMoney(saldo.totalAplicado,monedaDeuda)}</small>`:''}</td>
+    <td class="num saldo ${raiz?'cf-account-balance':''}">${cuenta&&!raiz?`<span class="cf-account-included">Incluido en ${esc(cuenta.raizNombre)}</span>`:saldo.requiereConfiguracion&&num(saldo.saldoPendiente)<0?'PENDIENTE':fmtMoney(saldo.saldoPendiente,monedaDeuda)}${raiz?'<small class="cf-account-caption">SALDO CONJUNTO · no sumar nuevamente los integrantes</small>':''}</td>
+    <td>${cuenta&&!raiz?'<span class="cf-state partial">Cuenta compartida</span>':`<span class="cf-state ${estado.clase}">${esc(estado.texto)}</span>`}</td>
+    <td><button type="button" class="cf-btn btn-detalle">${raiz?'Ver cuenta':'Ver detalle'}</button></td></tr>
+    ${hijos.length?hijos.map(s=>`<tr class="cf-service-child" ${atributos}><td></td><td><span class="cf-child-marker">↳</span> ${esc(s.nombre)}<small>${s.cantidad} registro(s)</small></td><td class="num">${fmtMoney(s.costo,monedaDeuda)}${s.pendientes?'<small class="cf-partial">PARCIAL</small>':''}</td><td colspan="3" class="cf-child-payment">${cuenta?'El saldo se consolida en la cuenta principal.':'Los pagos y el saldo se muestran en el total del proveedor.'}</td><td>${s.pendientes?'<span class="cf-state warning">Faltan datos de costo</span>':''}</td><td></td></tr>`).join(''):`<tr class="cf-service-child" ${atributos}><td></td><td colspan="7">${resumen.sinteticoCuenta?'Los costos de esta cuenta pertenecen a los hoteles integrantes.':'Sin costos vinculados. El pago permanece visible y pendiente de configuración.'}</td></tr>`}`;
 }
 
 function bloqueMoneda(grupo,codigo) {
@@ -503,7 +222,7 @@ function bloqueMoneda(grupo,codigo) {
 
 function renderProveedores() {
   prepararDesplegablesProveedores();
-  const items=state.destino?proveedoresDestino():[],todos=state.destino==='TODOS_DESTINOS';
+  const items=state.destino?filasConRaicesVisibles(proveedoresDestino()):[],todos=state.destino==='TODOS_DESTINOS';
   $('#tituloDestino').textContent=todos?'TODOS LOS DESTINOS':state.destino||'Selecciona un destino';
   $('#subtituloDestino').textContent='Actividades y hoteles separados · proveedores A–Z · monedas originales primero.';
   const etiqueta=todos?'todos los destinos':state.destino||'la selección';
@@ -526,18 +245,24 @@ function renderProveedores() {
   $$('.btn-detalle',contenedor).forEach(btn=>btn.onclick=()=>{const r=items.find(r=>claveProveedor(r)===btn.closest('tr').dataset.key);if(r)abrirDetalle(r);});
 }
 
-async function consultarColeccionDetalle(nombre, proveedorId, monedaObligacion, tipo) {
-  const condiciones = [where('anoViaje', '==', Number(state.ano)), where('proveedorId', '==', proveedorId)];
-  if (monedaObligacion) condiciones.push(where('monedaObligacion', '==', monedaObligacion));
-  if (tipo && [COLECCIONES.OBLIGACIONES,COLECCIONES.ABONOS].includes(nombre)) condiciones.push(where('tipo', '==', tipo));
-  const snap = await getDocs(query(collection(db, nombre), ...condiciones));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.destinoFinanciero || norm(r.destinoFinanciero) === norm(state.proveedor?.destinoFinanciero));
+async function consultarColeccionDetalle(nombre,proveedorId,monedaObligacion,tipo) {
+  const p=state.proveedor;
+  if(p?.esDetalleCuenta) {
+    const snap=await getDocs(query(collection(db,nombre),where('anoViaje','==',Number(state.ano))));
+    const ids=new Set(p.resumenIdsCuenta),proveedores=new Set(p.cuentaCompartida.miembros.map(x=>x.proveedorId));
+    return snap.docs.map(d=>({...d.data(),id:d.id})).filter(r=>norm(r.destinoFinanciero)===norm(p.destinoFinanciero)&&(nombre===COLECCIONES.REGLAS?proveedores.has(r.proveedorId):ids.has(r.resumenId)));
+  }
+  const condiciones=[where('anoViaje','==',Number(state.ano)),where('proveedorId','==',proveedorId)];
+  if(monedaObligacion)condiciones.push(where('monedaObligacion','==',monedaObligacion));
+  if(tipo&&[COLECCIONES.OBLIGACIONES,COLECCIONES.ABONOS].includes(nombre))condiciones.push(where('tipo','==',tipo));
+  const snap=await getDocs(query(collection(db,nombre),...condiciones));
+  return snap.docs.map(d=>({...d.data(),id:d.id})).filter(r=>!r.destinoFinanciero||norm(r.destinoFinanciero)===norm(p?.destinoFinanciero));
 }
 
 async function abrirDetalle(resumen) {
-  state.proveedor = resumen; state.obligaciones = []; state.abonos = []; state.reglas = []; state.historial = [];
-  $('#detalleTitulo').textContent = resumen.proveedorNombre || resumen.proveedorId;
-  $('#detalleSubtitulo').textContent = `${norm(resumen.destinoFinanciero)} · ${norm(resumen.tipo)} · DEUDA EN ${moneda(resumen.monedaObligacion)}`;
+  state.proveedor = resumenParaDetalle(resumen); resumen=state.proveedor; state.obligaciones = []; state.abonos = []; state.reglas = []; state.historial = [];
+  $('#detalleTitulo').textContent = (resumen.proveedorNombre || resumen.proveedorId)+(resumen.esDetalleCuenta?' · CUENTA COMPARTIDA':'');
+  $('#detalleSubtitulo').textContent = `${norm(resumen.destinoFinanciero)} · ${norm(resumen.tipo)} · DEUDA EN ${moneda(resumen.monedaObligacion)}${resumen.esDetalleCuenta?' · '+resumen.cuentaCompartida.miembros.map(x=>x.nombre).join(' + '):''}`;
   $('#detalleBackdrop').classList.add('open'); $('#detalleBackdrop').setAttribute('aria-hidden', 'false'); document.body.classList.add('modal-open');
   activarTab('obligaciones'); renderMetricas(); setEstado('Cargando detalle…', false, '#detalleEstado');
   try {
@@ -555,9 +280,9 @@ async function abrirDetalle(resumen) {
 }
 
 async function consultarHistorial(proveedorId) {
-  const q = query(collection(db, COLECCIONES.HISTORIAL), where('anoViaje', '==', Number(state.ano)), where('proveedorId', '==', proveedorId), limit(300));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => fechaMillis(b.creadoAt) - fechaMillis(a.creadoAt));
+  const p=state.proveedor,ids=new Set(p?.esDetalleCuenta?p.cuentaCompartida.miembros.map(x=>x.proveedorId):[proveedorId]);
+  const snap=await getDocs(query(collection(db,COLECCIONES.HISTORIAL),where('anoViaje','==',Number(state.ano))));
+  return snap.docs.map(d=>({...d.data(),id:d.id})).filter(h=>(!h.destinoFinanciero||norm(h.destinoFinanciero)===norm(p?.destinoFinanciero))&&(ids.has(h.proveedorId)||(h.proveedoresAfectados||[]).some(id=>ids.has(id)))).sort((a,b)=>fechaMillis(b.creadoAt)-fechaMillis(a.creadoAt)).slice(0,300);
 }
 
 function fechaMillis(v) { return typeof v?.toMillis === 'function' ? v.toMillis() : new Date(v || 0).getTime(); }
@@ -572,7 +297,7 @@ function renderMetricas() {
   $('#metricasProveedor').innerHTML=filas.map(([l,v,c])=>`<div class="cf-metric"><span class="cf-metric-label">${l}</span><strong class="cf-metric-value">${v}</strong><small class="cf-pax-line">${esc(c)}</small></div>`).join('');
 }
 
-function renderDetalle() { renderObligaciones(); renderAbonos(); renderReglas(); renderHistorial(); }
+function renderDetalle() { renderObligaciones(); renderAbonos(); renderCuentaProveedor(); renderReglas(); renderHistorial(); }
 
 function valorPaxReal(obligacion) {
   const valor = obligacion.paxReales;
@@ -1463,10 +1188,10 @@ async function guardarCondicionesHotelFinanzas(
         anoViaje: ano,
 
         proveedorId:
-          state.proveedor?.proveedorId || '',
+          state.costosAno.find(o=>o.hotelId===hotelId&&norm(o.destinoFinanciero)===norm(state.proveedor?.destinoFinanciero))?.proveedorId || state.proveedor?.proveedorId || '',
 
         proveedorNombre:
-          state.proveedor?.proveedorNombre || '',
+          state.costosAno.find(o=>o.hotelId===hotelId&&norm(o.destinoFinanciero)===norm(state.proveedor?.destinoFinanciero))?.proveedorNombre || state.proveedor?.proveedorNombre || '',
 
         destinoFinanciero:
           state.proveedor?.destinoFinanciero || '',
@@ -1534,6 +1259,7 @@ function renderAbonos() {
     return `
       <tr>
         <td>${fechaTexto(a.fecha)}</td>
+        <td>${esc(a.servicioNombre||a.proveedorNombre||a.proveedorId||'')}</td>
 
         <td class="num">
           ${fmtMoney(
@@ -1618,7 +1344,7 @@ function renderAbonos() {
       <table class="cf-table">
         <thead>
           <tr>
-            <th>Fecha</th>
+            <th>Fecha</th><th>Hotel / servicio de origen</th>
             <th class="num">Enviado</th>
             <th class="num">Tipo de cambio</th>
             <th class="num">Aplicado</th>
@@ -1656,7 +1382,7 @@ function renderAbonos() {
 
 function renderReglas() {
   const rows = [...state.reglas].sort((a,b) => Number(!!b.servicioId) - Number(!!a.servicioId));
-  $('#panel-reglas').innerHTML = `<div class="cf-section-head"><h3>Reglas del proveedor</h3><span class="cf-muted">La regla del servicio y año tiene prioridad sobre la general.</span></div><div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Alcance</th><th>Servicio</th><th>Año</th><th>Tipo</th><th>Descripción</th><th>Estado</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.servicioId ? 'Servicio' : 'General proveedor'}</td><td>${esc(r.servicioNombre || 'Todos')}</td><td>${esc(r.anoViaje || 'Todos')}</td><td>${esc(norm(r.tipoRegla || 'INFORMATIVA'))}</td><td>${esc(r.descripcion || '')}</td><td>${r.activa === false ? 'Inactiva' : 'Activa'}</td></tr>`).join('')}</tbody></table></div>${rows.length ? '' : '<div class="cf-empty">Este proveedor no tiene reglas especiales registradas.</div>'}`;
+  $('#panel-reglas').innerHTML = `<div class="cf-section-head"><h3>Reglas del proveedor</h3><span class="cf-muted">La regla del servicio y año tiene prioridad sobre la general.</span></div><div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Hotel / proveedor de origen</th><th>Alcance</th><th>Servicio</th><th>Año</th><th>Tipo</th><th>Descripción</th><th>Estado</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.proveedorNombre||r.proveedorId||'')}</td><td>${r.servicioId ? 'Servicio' : 'General proveedor'}</td><td>${esc(r.servicioNombre || 'Todos')}</td><td>${esc(r.anoViaje || 'Todos')}</td><td>${esc(norm(r.tipoRegla || 'INFORMATIVA'))}</td><td>${esc(r.descripcion || '')}</td><td>${r.activa === false ? 'Inactiva' : 'Activa'}</td></tr>`).join('')}</tbody></table></div>${rows.length ? '' : '<div class="cf-empty">Este proveedor no tiene reglas especiales registradas.</div>'}`;
 }
 
 function renderHistorial() {
@@ -1665,6 +1391,10 @@ function renderHistorial() {
 }
 
 function resumenCambio(v) {
+  if(v?.miembrosProveedorIds) {
+    const nombre=id=>v.nombres?.[id]||id;
+    return `Raíz: ${nombre(v.raizProveedorId)} · Integrantes: ${v.miembrosProveedorIds.map(nombre).join(' + ')}`;
+  }
   if (!v || typeof v !== 'object') {
     return '—';
   }
@@ -2390,49 +2120,18 @@ async function guardarRevisionAbono(event) {
   }
 
   $('#dialogEditarAbono').close();
-
-  Object.assign(
-    actual,
-    resultado.despues
-  );
-
-  Object.assign(
-    proveedorActual,
-    resultado.cambiosResumen
-  );
-
-  renderMetricas();
-  renderAbonos();
-
-  try {
-    await cargarResumenes();
-
-    state.historial = await consultarHistorial(
-      proveedorActual.proveedorId
-    );
-
-    renderHistorial();
-
-    setEstado(
-      resultado.idCentral
-        ? 'Revisión guardada y sincronizada con Abonos.'
-        : 'Revisión guardada en el pago de origen. Este pago antiguo no tiene registro central vinculado.',
-      false,
-      '#detalleEstado'
-    );
-  } catch (e) {
-    console.error(e);
-
-    setEstado(
-      'La revisión fue guardada, pero no se pudo actualizar toda la pantalla. ' +
-      'Cierre y vuelva a abrir el detalle.',
-      true,
-      '#detalleEstado'
-    );
+  Object.assign(actual,resultado.despues);
+  const actualizado=await cargarResumenes();
+  if(actualizado) {
+    const siguiente=filasConRaicesVisibles(state.resumenes).find(r=>r.id===proveedorActual.id);
+    if(siguiente){await abrirDetalle(siguiente);activarTab('abonos');}else cerrarDetalle();
   }
+  setEstado(actualizado?'Revisión guardada y sincronizada con el pago de origen y la cuenta del proveedor.':'Revisión guardada. Actualice la información para consultar el saldo.',!actualizado,'#detalleEstado');
 }
+
 function filasResumenes(lista) {
   return [...lista].sort((a,b)=>compararNombre(a.destinoFinanciero,b.destinoFinanciero)||compararNombre(a.proveedorNombre,b.proveedorNombre)).map(r=>({
+    'Cuenta ID':claveCuentaMoneda(r),'Proveedor raíz':r.cuentaCompartida?.raizNombre||r.proveedorNombre,'Tipo de cuenta':r.cuentaCompartida?'COMPARTIDA':'INDIVIDUAL',
     'Año':r.anoViaje, Destino:destinoVista(r.destinoFinanciero),'Destino original':r.destinoFinanciero, Tipo:r.tipo, Proveedor:r.proveedorNombre,
     Moneda:moneda(r.monedaObligacion), 'Costo conocido':num(r.totalObligacion),
     'Abonos aplicados':num(r.totalAplicado), 'Saldo conocido':num(r.saldoPendiente),
@@ -2468,7 +2167,11 @@ function exportarTodo() {
 
 function exportarDestino(){return exportarSeleccionFinanzas(proveedoresDestino(),`control_finanzas_${state.ano}_${state.destino.replace(/\s+/g,'_')}.xlsx`);}
 
-function exportarProveedor(){if(state.proveedor)return exportarSeleccionFinanzas([state.proveedor],`control_finanzas_${state.ano}_${String(state.proveedor.proveedorNombre).replace(/[^a-z0-9]+/gi,'_')}.xlsx`);}
+function exportarProveedor() {
+  const p=state.proveedor;if(!p)return;
+  const ids=p.esDetalleCuenta?new Set(p.resumenIdsCuenta):new Set([p.id]);
+  return exportarSeleccionFinanzas(state.resumenes.filter(r=>ids.has(r.id)),`control_finanzas_${state.ano}_${String(p.proveedorNombre).replace(/[^a-z0-9]+/gi,'_')}.xlsx`);
+}
 
 function clavePreferenciasFinanzas() { return `cf-vista-v2:${state.usuario?.uid || state.usuario?.email || 'usuario'}:${state.ano}`; }
 
@@ -2509,7 +2212,7 @@ function costosResumen(r) { return (state.costosAno || []).filter(o => o.resumen
 
 function totalesNecesidades(items) {
   const salida = {};
-  for (const r of items) {
+  for (const r of totalesCuentaSeleccion(items)) {
     const m = moneda(r.monedaObligacion);
     const t = salida[m] ||= {costo:0, aplicado:0, pagar:0, favor:0, sinTarifa:0, revision:0, parcial:false};
     t.costo += num(r.totalObligacion); t.aplicado += num(r.totalAplicado);
@@ -2559,7 +2262,7 @@ function renderPlanificacion(items) {
     </div>
     <div class="cf-budget-grid"><article class="cf-budget"><span>USD NECESARIOS${convertir.length?' PARA PAGAR '+convertir.join(' + '):''}</span><strong>${e.usd===null?'FALTA TIPO DE CAMBIO':fmtMoney(e.usd,'USD')}</strong><small>${num(e.totales.CLP?.pagar)>0?'Las cuentas cobradas en CLP se pagan por separado.':'Estimación de dólares para las cuentas seleccionadas.'}</small></article>
       ${plan.mostrarCLP?`<article class="cf-budget clp"><span>PRESUPUESTO TOTAL EN CLP</span><strong>${e.clp===null?'FALTA TIPO DE CAMBIO':fmtMoney(e.clp,'CLP')}</strong><small>Dólares estimados × CLP por USD + cuentas cobradas directamente en CLP.</small></article>`:''}</div>
-    <p class="cf-plan-note">TC de planificación: no modifica pagos ni conversiones históricas. Los saldos a favor no compensan deudas con otros proveedores.${e.parcial?' Hay tarifas, monedas o abonos por completar; la estimación es parcial.':''}</p>
+    <p class="cf-plan-note">TC de planificación: no modifica pagos ni conversiones históricas. Los hoteles vinculados comparten saldo por moneda; el saldo a favor de una cuenta no compensa otras cuentas.${e.parcial?' Hay tarifas, monedas o abonos por completar; la estimación es parcial.':''}</p>
   </section>`;
   $$('[data-tc]',panel).forEach(input=>input.addEventListener('change',()=>{
     const p=preferenciasFinanzas();p.planes ||= {};p.planes[state.destino] ||= {};
@@ -2645,6 +2348,20 @@ function crearLibroFinanzas(lista,costos,abonos) {
     ];
     for(const [campo,formula]of formulas){const cell=resumen.hoja.getCell(`${resumen.col(campo)}${row}`);cell.value={formula,result:cell.value??0};}
   }
+  const cuentasHoja=hojaExcelFinanzas(libro,'Cuentas proveedores',cuentasParaExcel(lista));
+  const finResumen=Math.max(2,resumen.hoja.rowCount);
+  for(let row=2;row<=cuentasHoja.hoja.rowCount;row++) {
+    const cuentaRef=`${cuentasHoja.col('Cuenta ID')}${row}`;
+    for(const [campo,origen] of [['Costo conocido','Costo conocido'],['Abonos aplicados','Abonos aplicados'],['Costos pendientes','Costos pendientes']]) {
+      const celda=cuentasHoja.hoja.getCell(`${cuentasHoja.col(campo)}${row}`);
+      celda.value={formula:`SUMIF('Resumen proveedores'!$${resumen.col('Cuenta ID')}$2:$${resumen.col('Cuenta ID')}$${finResumen},${cuentaRef},'Resumen proveedores'!$${resumen.col(origen)}$2:$${resumen.col(origen)}$${finResumen})`,result:celda.value};
+    }
+    for(const [campo,formula] of [
+      ['Saldo conjunto',`${cuentasHoja.col('Costo conocido')}${row}-${cuentasHoja.col('Abonos aplicados')}${row}`],
+      ['Por pagar conocido',`MAX(0,${cuentasHoja.col('Saldo conjunto')}${row})`],
+      ['Saldo a favor confirmado',`IF(${cuentasHoja.col('Costos pendientes')}${row}>0,0,MAX(0,-${cuentasHoja.col('Saldo conjunto')}${row}))`]
+    ]) {const celda=cuentasHoja.hoja.getCell(`${cuentasHoja.col(campo)}${row}`);celda.value={formula,result:celda.value};}
+  }
   const destinos=ordenarDestinos([...new Set(lista.map(r=>destinoVista(r.destinoFinanciero)))]);
   const planes=destinos.map(dest=>{
     const plan=planDestino(dest),items=lista.filter(r=>destinoVista(r.destinoFinanciero)===dest),e=estimarFondos(items,plan);
@@ -2656,11 +2373,11 @@ function crearLibroFinanzas(lista,costos,abonos) {
       Estado:e.parcial?'PARCIAL / HAY DATOS PENDIENTES':'COMPLETO'};
   });
   const planHoja=hojaExcelFinanzas(libro,'Planificacion',planes);
-  const finResumen=Math.max(2,resumen.hoja.rowCount);
+  const finCuentas=Math.max(2,cuentasHoja.hoja.rowCount);
   for(let row=2;row<=planHoja.hoja.rowCount;row++){
     for(const codigo of ['BRL','ARS','USD','CLP']){
       const celda=planHoja.hoja.getCell(`${planHoja.col('Por pagar '+codigo)}${row}`);
-      const formula=`SUMIFS('Resumen proveedores'!$${resumen.col('Por pagar conocido')}$2:$${resumen.col('Por pagar conocido')}$${finResumen},'Resumen proveedores'!$${resumen.col('Destino')}$2:$${resumen.col('Destino')}$${finResumen},A${row},'Resumen proveedores'!$${resumen.col('Moneda')}$2:$${resumen.col('Moneda')}$${finResumen},"${codigo}")`;
+      const formula=`SUMIFS('Cuentas proveedores'!$${cuentasHoja.col('Por pagar conocido')}$2:$${cuentasHoja.col('Por pagar conocido')}$${finCuentas},'Cuentas proveedores'!$${cuentasHoja.col('Destino')}$2:$${cuentasHoja.col('Destino')}$${finCuentas},A${row},'Cuentas proveedores'!$${cuentasHoja.col('Moneda')}$2:$${cuentasHoja.col('Moneda')}$${finCuentas},"${codigo}")`;
       celda.value={formula,result:celda.value};
     }
     const usd=planHoja.hoja.getCell(`H${row}`),clp=planHoja.hoja.getCell(`K${row}`);
@@ -2671,17 +2388,19 @@ function crearLibroFinanzas(lista,costos,abonos) {
     planHoja.hoja.getCell(`I${row}`).dataValidation={type:'list',formulae:['"SÍ,NO"'],allowBlank:false};
   }
   const notas=[
+    {Tema:'Cuentas compartidas',Detalle:'Cuentas proveedores es la base de saldos y planificación: cada cuenta/moneda figura una vez. Resumen proveedores conserva las cifras individuales para rastrear el hotel de origen; no sume sus deudas positivas para estimar fondos si hay cuentas compartidas. La cobertura de pax se mantiene por servicio.'},
     {Tema:'Alcance',Detalle:`Año ${state.ano}. Tipos incluidos: ${[...new Set(lista.map(r=>r.tipo))].join(', ')}. El archivo respeta el destino y el tipo seleccionados. Todos los destinos incluye los ocultos.`},
     {Tema:'Celdas amarillas',Detalle:'Tipos de cambio de planificación editables. No modifican los pagos originales ni los TC históricos.'},
     {Tema:'Planificación',Detalle:'USD necesarios = deuda USD + BRL / TC BRL por USD + ARS / TC ARS por USD. CLP = USD necesarios × TC CLP por USD + deuda directa CLP.'},
     {Tema:'Totales parciales',Detalle:'Los costos sin tarifa quedan vacíos. Los pagos sin conversión o vinculación no se aplican. Los totales conocidos no constituyen un total definitivo.'},
-    {Tema:'Saldos a favor',Detalle:'Se mantienen por proveedor; no se restan de deudas con otros proveedores. Sin tarifa completa no se confirma un saldo a favor.'},
+    {Tema:'Saldos a favor',Detalle:'Los hoteles explícitamente vinculados comparten saldo por moneda. No se compensan saldos entre cuentas diferentes. Sin tarifa completa no se confirma un saldo a favor.'},
     {Tema:'Filtrar detalle',Detalle:'Los filtros de las hojas Costos y Abonos no cambian los SUMIF/SUMIFS del resumen. La hoja Consulta filtrada permite sumar las filas visibles sin mezclar monedas.'},
     {Tema:'Edición de datos',Detalle:'Las hojas resumen y planificación usan fórmulas. Los estados y cantidades pendientes son una foto del sistema al exportar; editar Excel no actualiza el sistema.'}
   ];
   hojaExcelFinanzas(libro,'Notas',notas);
-  if(lista.length===1 && state.proveedor?.id===lista[0].id) {
-    hojaExcelFinanzas(libro,'Reglas',(state.reglas || []).map(r=>({Servicio:r.servicioNombre || '',Tipo:r.tipoRegla || '',Descripción:r.descripcion || '',Activa:r.activa!==false?'SÍ':'NO'})));
+  const idsDetalle=new Set(state.proveedor?.esDetalleCuenta?state.proveedor.resumenIdsCuenta:state.proveedor?[state.proveedor.id]:[]);
+  if(lista.length>0 && lista.length===idsDetalle.size && lista.every(r=>idsDetalle.has(r.id))) {
+    hojaExcelFinanzas(libro,'Reglas',(state.reglas || []).map(r=>({Proveedor:r.proveedorNombre||r.proveedorId||'',Servicio:r.servicioNombre || '',Tipo:r.tipoRegla || '',Descripción:r.descripcion || '',Activa:r.activa!==false?'SÍ':'NO'})));
     hojaExcelFinanzas(libro,'Historial',(state.historial || []).map(h=>({Fecha:fechaTexto(h.creadoAt),Acción:h.accion || '',Usuario:h.usuarioEmail || '',Motivo:h.motivo || '',Antes:resumenCambio(h.antes),Después:resumenCambio(h.despues)})));
   }
   const consulta=hojaExcelFinanzas(libro,'Consulta filtrada',[
@@ -2718,7 +2437,10 @@ async function exportarSeleccionFinanzas(lista,nombre) {
     const as=pagos.docs.map(d=>({...d.data(),id:d.id})).filter(a=>ids.has(a.resumenId));
     // Los resúmenes se refrescan para exportar importes recientes junto con sus detalles.
     const recientes=await getDocs(query(collection(db,COLECCIONES.RESUMENES),where('anoViaje','==',ano)));
-    const rs=recientes.docs.map(d=>({...d.data(),id:d.id})).filter(r=>ids.has(r.id));
+    const configNueva=(await llamarCuentasHoteles({accion:'CONSULTAR',anoViaje:ano})).data.documentos||[];
+    const versiones=ds=>JSON.stringify(ds.map(d=>[d.id,d.version]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))));
+    if(versiones(configNueva)!==versiones(state.configCuentasHoteles||[]))throw new Error('Cambió una cuenta compartida. Actualice la información antes de exportar.');
+    const rs=adjuntarCuentasHoteles(recientes.docs.map(d=>({...d.data(),id:d.id})),configNueva).filter(r=>ids.has(r.id));
     for (const r of rs) {
       const costo=cs.filter(o=>o.resumenId===r.id).reduce((v,o)=>v+num(o.totalObligacion),0);
       const aplicado=as.filter(a=>a.resumenId===r.id).reduce((v,a)=>v+num(a.montoAplicado),0);
@@ -2736,6 +2458,7 @@ async function exportarSeleccionFinanzas(lista,nombre) {
 
 state.costosAno = [];
 state.cargaVisual = 0;
+state.configCuentasHoteles = [];
 
 function destinoVista(valor) {
   const d=norm(valor);
@@ -2813,6 +2536,150 @@ function resumirCoberturaServicios(costos, pagos) {
   }));
 }
 
+function claveCuentaMoneda(r) {
+  const c=r.cuentaCompartida;
+  return c?`${c.documentoId}|${c.id}|${moneda(r.monedaObligacion)}`:`INDIVIDUAL|${r.id}`;
+}
+
+function totalesCuentaSeleccion(items) {
+  const grupos=new Map();
+  for(const r of items.filter(r=>!r.sinteticoCuenta)) {
+    const key=claveCuentaMoneda(r);
+    if(!grupos.has(key))grupos.set(key,{...r,totalObligacion:0,totalAplicado:0,saldoPendiente:0,totalEnviadoPorMoneda:{},obligacionesSinTarifa:0,abonosPendientesRevision:0,requiereConfiguracion:false});
+    const g=grupos.get(key);
+    g.totalObligacion+=num(r.totalObligacion);g.totalAplicado+=num(r.totalAplicado);g.saldoPendiente=g.totalObligacion-g.totalAplicado;
+    g.obligacionesSinTarifa+=num(r.obligacionesSinTarifa);g.abonosPendientesRevision+=num(r.abonosPendientesRevision);g.requiereConfiguracion ||= !!r.requiereConfiguracion;
+    for(const [m,n] of Object.entries(r.totalEnviadoPorMoneda||{}))g.totalEnviadoPorMoneda[m]=num(g.totalEnviadoPorMoneda[m])+num(n);
+  }
+  return [...grupos.values()];
+}
+
+function filasConRaicesVisibles(items) {
+  const salida=[...items], vistos=new Set();
+  for(const r of items) {
+    const c=r.cuentaCompartida;if(!c)continue;
+    const k=claveCuentaMoneda(r);if(vistos.has(k))continue;vistos.add(k);
+    if(!items.some(x=>claveCuentaMoneda(x)===k&&x.proveedorId===c.raizProveedorId)) {
+      salida.push({...r,id:`CUENTA|${k}`,sinteticoCuenta:true,proveedorId:c.raizProveedorId,proveedorNombre:c.raizNombre,totalObligacion:0,totalAplicado:0,saldoPendiente:0,totalEnviadoPorMoneda:{},obligacionesSinTarifa:0,abonosPendientesRevision:0,requiereConfiguracion:false});
+    }
+  }
+  return salida;
+}
+
+function esRaizCompartida(r) {return !!r.cuentaCompartida&&r.proveedorId===r.cuentaCompartida.raizProveedorId;}
+
+function resumenParaDetalle(r) {
+  if(!esRaizCompartida(r))return {...r,esDetalleCuenta:false};
+  const c=r.cuentaCompartida,t=c.saldosPorMoneda[moneda(r.monedaObligacion)];
+  const ids=state.resumenes.filter(x=>x.cuentaCompartida?.id===c.id&&x.cuentaCompartida?.documentoId===c.documentoId&&moneda(x.monedaObligacion)===moneda(r.monedaObligacion)).map(x=>x.id);
+  return {...r,...t,esDetalleCuenta:true,resumenIdsCuenta:ids,proveedorNombre:c.raizNombre};
+}
+
+function prepararDesplegablesProveedores() {
+  const contenedor=$('#gruposFinancieros');
+  if(!contenedor||contenedor.dataset.desplegablesPreparados==='1')return;
+  contenedor.dataset.desplegablesPreparados='1';
+  contenedor.addEventListener('click',event=>{
+    const boton=event.target.closest('.btn-desplegar-proveedor');if(!boton||!contenedor.contains(boton))return;
+    const fila=boton.closest('.cf-provider-total'),clave=fila.dataset.key,abrir=boton.getAttribute('aria-expanded')!=='true';
+    state.proveedoresDesplegados ||= new Set();if(abrir)state.proveedoresDesplegados.add(clave);else state.proveedoresDesplegados.delete(clave);
+    boton.textContent=abrir?'−':'+';boton.setAttribute('aria-expanded',String(abrir));
+    boton.title=abrir?'Ocultar servicios':'Mostrar servicios';boton.setAttribute('aria-label',`${boton.title} de ${fila.querySelector('.cf-provider-name strong')?.textContent||'proveedor'}`);
+    let siguiente=fila.nextElementSibling;
+    while(siguiente&&siguiente.classList.contains('cf-service-child')&&siguiente.dataset.proveedorPadre===clave){siguiente.hidden=!abrir;siguiente.style.display=abrir?'':'none';siguiente=siguiente.nextElementSibling;}
+  });
+}
+
+function renderCuentaProveedor() {
+  const panel=$('#panel-cuenta'),p=state.proveedor;
+  if(!panel||!p)return;
+  if(norm(p.tipo)!=='HOTEL'){panel.innerHTML='<div class="cf-empty">Las cuentas compartidas están disponibles para hoteles. Las actividades conservan su proveedor actual.</div>';return;}
+  const docActual=(state.configCuentasHoteles||[]).find(d=>Number(d.anoViaje)===Number(state.ano)&&norm(d.destinoFinanciero)===norm(p.destinoFinanciero));
+  const cuenta=(docActual?.cuentas||[]).find(c=>c.miembrosProveedorIds.includes(p.proveedorId));
+  const catalogo=new Map(state.resumenes.filter(r=>norm(r.tipo)==='HOTEL'&&!r.sinCostoVinculado&&norm(r.destinoFinanciero)===norm(p.destinoFinanciero)).map(r=>[r.proveedorId,{id:r.proveedorId,nombre:r.proveedorNombre}]));
+  for(const id of cuenta?.miembrosProveedorIds||[])if(!catalogo.has(id))catalogo.set(id,{id,nombre:cuenta.nombres?.[id]||id});
+  const seleccion=new Set(cuenta?.miembrosProveedorIds||[p.proveedorId]);
+  const lista=[...catalogo.values()].sort((a,b)=>compararNombre(a.nombre,b.nombre));
+  const cc=p.cuentaCompartida;
+  panel.innerHTML=`<div class="cf-section-head"><h3>Cuenta del proveedor</h3><span class="cf-muted">Año ${state.ano} · ${esc(p.destinoFinanciero)}</span></div>
+    <div class="cf-account-note">Cada hotel conserva sus tarifas, grupos, pagos y cobertura. La cuenta reúne costos y abonos para calcular un saldo por moneda. Los vínculos se aplican a todos los costos y pagos del año seleccionado, incluidos los anteriores.</div>
+    ${cc?`<div class="cf-account-current"><b>Raíz: ${esc(cc.raizNombre)}</b><p>${cc.miembros.map(x=>esc(x.nombre)).join(' + ')}</p>${Object.entries(cc.saldosPorMoneda).map(([m,t])=>`<p><b>${esc(m)}</b> · Costo conjunto: ${fmtMoney(t.totalObligacion,m)} · Aplicado: ${fmtMoney(t.totalAplicado,m)} · Saldo: <b>${fmtMoney(t.saldoPendiente,m)}</b>${t.requiereConfiguracion?' · PARCIAL':''}</p>`).join('')}</div>`:''}
+    <form id="formCuentaHoteles" data-version="${num(docActual?.version)}" data-cuenta-id="${esc(cuenta?.id||'')}">
+      <p>Selecciona los hoteles integrantes. Un hotel solo puede pertenecer a una cuenta en este año y destino.</p>
+      <div class="cf-account-members">${lista.map(h=>{const otra=(docActual?.cuentas||[]).find(c=>c.id!==cuenta?.id&&c.miembrosProveedorIds.includes(h.id));return `<label><input type="checkbox" name="hotelCuenta" value="${esc(h.id)}" ${seleccion.has(h.id)?'checked':''} ${otra?'disabled':''}> ${esc(h.nombre)}${otra?' · ya pertenece a otra cuenta':''}</label>`;}).join('')}</div>
+      <label class="cf-field">Hotel raíz<select id="cuentaHotelRaiz">${lista.filter(h=>seleccion.has(h.id)).map(h=>`<option value="${esc(h.id)}" ${h.id===(cuenta?.raizProveedorId||p.proveedorId)?'selected':''}>${esc(h.nombre)}</option>`).join('')}</select></label>
+      <label class="cf-field">Motivo del cambio<textarea id="cuentaHotelMotivo" rows="2" maxlength="2000" required placeholder="Por qué comparten la cuenta o qué se está modificando"></textarea></label>
+      <div id="cuentaHotelesEstado" class="cf-status" role="status"></div>
+      <div class="cf-row"><button type="submit" class="cf-btn blue">Guardar cuenta compartida</button>${cuenta?'<button type="button" id="btnDisolverCuentaHoteles" class="cf-btn">Desvincular todos los hoteles</button>':''}</div>
+    </form>`;
+  const form=$('#formCuentaHoteles');
+  $$('input[name=hotelCuenta]',form).forEach(input=>input.addEventListener('change',()=>{
+    const raiz=$('#cuentaHotelRaiz'),previa=raiz.value,seleccionados=new Set($$('input[name=hotelCuenta]:checked',form).map(x=>x.value));
+    raiz.innerHTML=lista.filter(h=>seleccionados.has(h.id)).map(h=>`<option value="${esc(h.id)}">${esc(h.nombre)}</option>`).join('');if(seleccionados.has(previa))raiz.value=previa;
+  }));
+  form.onsubmit=e=>{e.preventDefault();guardarCuentaHotelesDesdePanel('GUARDAR');};
+  const eliminar=$('#btnDisolverCuentaHoteles');if(eliminar)eliminar.onclick=()=>{if(confirm('¿Separar esta cuenta? Cada hotel volverá a mostrar su saldo individual. No se eliminarán costos ni pagos.'))guardarCuentaHotelesDesdePanel('ELIMINAR');};
+}
+
+async function guardarCuentaHotelesDesdePanel(accion) {
+  const form=$('#formCuentaHoteles'),p=state.proveedor,motivo=$('#cuentaHotelMotivo').value.trim();
+  const estado=$('#cuentaHotelesEstado');
+  if(!motivo){estado.textContent='Indique el motivo del cambio.';return;}
+  const miembros=$$('input[name=hotelCuenta]:checked',form).map(x=>x.value),raiz=$('#cuentaHotelRaiz').value;
+  if(accion==='GUARDAR'&&(miembros.length<2||!miembros.includes(raiz))){estado.textContent='Seleccione al menos dos hoteles e indique una raíz incluida en la selección.';return;}
+  const botones=$$('button',form);botones.forEach(b=>b.disabled=true);estado.textContent='Guardando cuenta y solicitando recálculo…';
+  try {
+    await llamarCuentasHoteles({accion,anoViaje:Number(state.ano),destinoFinanciero:p.destinoFinanciero,versionEsperada:Number(form.dataset.version),cuentaId:form.dataset.cuentaId||'',raizProveedorId:raiz,miembrosProveedorIds:miembros,motivo});
+    if(!await cargarResumenes())throw new Error('La cuenta se guardó, pero falta actualizar la pantalla. Use Actualizar información.');
+    const siguiente=state.resumenes.find(r=>r.id===p.id)||state.resumenes.find(r=>r.proveedorId===(accion==='GUARDAR'?raiz:p.proveedorId)&&norm(r.destinoFinanciero)===norm(p.destinoFinanciero));
+    if(siguiente){await abrirDetalle(siguiente);activarTab('cuenta');setEstado('Cuenta guardada. Los saldos ya reflejan el vínculo; el backend conserva la agrupación en los siguientes recálculos.',false,'#detalleEstado');}else cerrarDetalle();
+  } catch(error){console.error(error);estado.textContent=`No fue posible completar la operación: ${error.message}`;}
+  finally{botones.forEach(b=>b.disabled=false);}
+}
+
+function cuentasParaExcel(lista) {
+  return totalesCuentaSeleccion(lista).map(r=>({
+    'Cuenta ID':claveCuentaMoneda(r),Destino:destinoVista(r.destinoFinanciero),'Destino original':r.destinoFinanciero,Tipo:r.tipo,
+    'Proveedor raíz':r.cuentaCompartida?.raizNombre||r.proveedorNombre,
+    Integrantes:r.cuentaCompartida?r.cuentaCompartida.miembros.map(x=>x.nombre).join(' + '):r.proveedorNombre,
+    Moneda:moneda(r.monedaObligacion),'Costo conocido':num(r.totalObligacion),'Abonos aplicados':num(r.totalAplicado),'Saldo conjunto':num(r.saldoPendiente),
+    'Por pagar conocido':Math.max(0,num(r.saldoPendiente)),'Saldo a favor confirmado':r.requiereConfiguracion?0:Math.max(0,-num(r.saldoPendiente)),
+    'Costos pendientes':num(r.obligacionesSinTarifa),Estado:r.requiereConfiguracion||num(r.abonosPendientesRevision)?'PARCIAL / PENDIENTE':'DATOS PARA CALCULAR',
+    Alcance:r.cuentaCompartida&&state.resumenes.some(x=>claveCuentaMoneda(x)===claveCuentaMoneda(r)&&!lista.some(y=>y.id===x.id))?'PARCIAL: solo integrantes incluidos en esta exportación':'Selección exportada'
+  }));
+}
+
+// Agrupa cuentas monetarias; nunca cambia los IDs ni el origen de costos y pagos.
+
+function adjuntarCuentasHoteles(resumenes, documentos) {
+  const normal=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+  const n=v=>Number(v)||0, red=v=>Math.round((v+Number.EPSILON)*100)/100;
+  const filas=resumenes.map(r=>{const x={...r};delete x.cuentaCompartida;return x;});
+  const usados=new Set();
+  for(const documento of documentos) {
+    for(const cuenta of documento.cuentas||[]) {
+      const ids=[...new Set(cuenta.miembrosProveedorIds||[])];
+      if(ids.length<2||!ids.includes(cuenta.raizProveedorId))throw new Error('Cuenta hotelera inválida: faltan integrantes o raíz.');
+      for(const id of ids){const k=`${documento.anoViaje}|${normal(documento.destinoFinanciero)}|${id}`;if(usados.has(k))throw new Error('Un hotel figura en más de una cuenta compartida.');usados.add(k);}
+      const miembros=filas.filter(r=>normal(r.tipo)==='HOTEL'&&Number(r.anoViaje)===Number(documento.anoViaje)&&normal(r.destinoFinanciero)===normal(documento.destinoFinanciero)&&ids.includes(r.proveedorId));
+      const nombres=ids.map(id=>({proveedorId:id,nombre:miembros.find(r=>r.proveedorId===id)?.proveedorNombre||cuenta.nombres?.[id]||id}));
+      const saldosPorMoneda={};
+      for(const r of miembros) {
+        const m=r.monedaObligacion||'SIN_DEFINIR';
+        const t=saldosPorMoneda[m] ||= {totalObligacion:0,totalAplicado:0,saldoPendiente:0,totalEnviadoPorMoneda:{},obligacionesSinTarifa:0,abonosPendientesRevision:0,requiereConfiguracion:false};
+        t.totalObligacion=red(t.totalObligacion+n(r.totalObligacion));t.totalAplicado=red(t.totalAplicado+n(r.totalAplicado));
+        t.obligacionesSinTarifa+=n(r.obligacionesSinTarifa);t.abonosPendientesRevision+=n(r.abonosPendientesRevision);
+        t.requiereConfiguracion ||= !!r.requiereConfiguracion;
+        for(const [mon,monto] of Object.entries(r.totalEnviadoPorMoneda||{}))t.totalEnviadoPorMoneda[mon]=red(n(t.totalEnviadoPorMoneda[mon])+n(monto));
+        t.saldoPendiente=red(t.totalObligacion-t.totalAplicado);
+      }
+      const datos={id:cuenta.id,documentoId:documento.id,versionConfig:n(documento.version),anoViaje:Number(documento.anoViaje),destinoFinanciero:documento.destinoFinanciero,raizProveedorId:cuenta.raizProveedorId,raizNombre:nombres.find(x=>x.proveedorId===cuenta.raizProveedorId)?.nombre||cuenta.raizProveedorId,miembros:nombres,saldosPorMoneda};
+      miembros.forEach(r=>{r.cuentaCompartida=datos;});
+    }
+  }
+  return filas;
+}
+
 function bindUI() {
   $('#filtroAno').addEventListener('change', async e => { state.ano = Number(e.target.value); state.destino = null; await cargarResumenes(); });
   $('#filtroTipo').addEventListener('change', e => { state.tipo = e.target.value; renderDestinos(); renderProveedores(); });
@@ -2826,53 +2693,11 @@ function bindUI() {
 }
 
 onAuthStateChanged(auth, async user => {
-  document.body.style.visibility = 'hidden';
-
-  if (!user) {
-    window.location.replace('login.html');
-    return;
-  }
-
-  const correosPermitidos = new Set([
-    'anamaria@raitrai.cl',
-    'yenny@raitrai.cl',
-    'sistemas@raitrai.cl'
-  ]);
-
-  const email = String(user.email || '')
-    .trim()
-    .toLowerCase();
-
-  if (!correosPermitidos.has(email)) {
-    state.usuario = null;
-
-    window.location.replace('index.html');
-    return;
-  }
-
-  state.usuario = user;
-
-  $('#usuarioConectado').textContent =
-    user.email || '';
-
-  construirAnos();
-
-  // Evitar registrar los eventos más de una vez.
-  if (!state.eventosFinanzasPreparados) {
-    bindUI();
-    state.eventosFinanzasPreparados = true;
-  }
-
-  document.body.style.visibility = 'visible';
-
-  try {
-    await cargarResumenes();
-  } catch (error) {
-    console.error(error);
-
-    setEstado(
-      `Error cargando Control Finanzas: ${error.message}`,
-      true
-    );
-  }
+  document.body.style.visibility='hidden';
+  if(!user){window.location.replace('login.html');return;}
+  const permitidos=new Set(['anamaria@raitrai.cl','sistemas@raitrai.cl']);
+  if(!permitidos.has(String(user.email||'').trim().toLowerCase())){state.usuario=null;window.location.replace('index.html');return;}
+  state.usuario=user;$('#usuarioConectado').textContent=user.email||'';construirAnos();
+  if(!state.eventosFinanzasPreparados){bindUI();state.eventosFinanzasPreparados=true;}
+  document.body.style.visibility='visible';await cargarResumenes();
 });
