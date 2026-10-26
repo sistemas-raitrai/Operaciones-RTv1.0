@@ -245,6 +245,22 @@ dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
 .cf-provider-table thead th:first-child,.cf-provider-table thead th:nth-child(2){z-index:6}
 .cf-provider-table tbody td:first-child{background:#f7f9fc}
 .cf-metric-value{color:#334e70}
+/* Cuenta compartida: colores informativos suaves. */
+.cf-provider-fold{display:flex;align-items:flex-start;gap:8px}
+.cf-provider-fold>div{min-width:0}
+.btn-desplegar-proveedor{flex:0 0 28px;width:28px;height:28px;padding:0;border:1px solid #c5d1df;border-radius:6px;background:#eef3f9;color:#405a78;font-size:19px;font-weight:bold;line-height:1;cursor:pointer}
+.btn-desplegar-proveedor:focus-visible{outline:2px solid #6885a7;outline-offset:2px}
+.cf-provider-table .cf-account-balance{background:#e9edf8!important;color:#405576;border-left:2px solid #c1cce0}
+.cf-account-caption{display:block;font-size:11px!important;font-weight:normal;color:#586c89!important;margin-top:6px;line-height:1.45;white-space:normal}
+.cf-account-included{font-size:12px;font-weight:normal;color:#586c89}
+.cf-account-root .cf-provider-name{border-left:3px solid #becbe0}
+.cf-account-note,.cf-account-current{padding:14px;margin:12px 0;background:#f1f4fa;border:1px solid #d5ddea;border-radius:8px;color:#405576}
+.cf-account-current{background:#edf2f9}
+.cf-account-members{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:16px 0;padding:12px;background:#fafbfd;border:1px solid #dce2eb;border-radius:8px}
+.cf-account-members label{display:flex;align-items:flex-start;gap:8px;font-size:13px}
+.cf-account-members input[type=checkbox]{width:17px;min-width:17px;height:17px;margin-top:2px}
+#formCuentaHoteles .cf-field{display:grid;gap:7px;margin:15px 0}
+#formCuentaHoteles select,#formCuentaHoteles textarea{padding:10px;border:1px solid #c9d4e2;border-radius:6px;max-width:750px;font:inherit}
 </style>
 </head>
 <body style="visibility: hidden;">
@@ -308,11 +324,13 @@ dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
         <nav class="cf-tabs" aria-label="Secciones del proveedor">
           <button class="cf-tab active" data-tab="obligaciones" type="button">Costos</button>
           <button class="cf-tab" data-tab="abonos" type="button">Abonos</button>
+          <button class="cf-tab" data-tab="cuenta" type="button">Cuenta del proveedor</button>
           <button class="cf-tab" data-tab="reglas" type="button">Reglas</button>
           <button class="cf-tab" data-tab="historial" type="button">Historial</button>
         </nav>
         <section id="panel-obligaciones" class="cf-tab-panel"></section>
         <section id="panel-abonos" class="cf-tab-panel" hidden></section>
+        <section id="panel-cuenta" class="cf-tab-panel" hidden></section>
         <section id="panel-reglas" class="cf-tab-panel" hidden></section>
         <section id="panel-historial" class="cf-tab-panel" hidden></section>
       </div>
