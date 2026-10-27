@@ -2695,7 +2695,7 @@ function bindUI() {
 onAuthStateChanged(auth, async user => {
   document.body.style.visibility='hidden';
   if(!user){window.location.replace('login.html');return;}
-  const permitidos=new Set(['anamaria@raitrai.cl','sistemas@raitrai.cl']);
+  const permitidos=new Set(['anamaria@raitrai.cl', 'aleoperaciones@raitrai.cl', 'operaciones@raitrai.cl', 'sistemas@raitrai.cl']);
   if(!permitidos.has(String(user.email||'').trim().toLowerCase())){state.usuario=null;window.location.replace('index.html');return;}
   state.usuario=user;$('#usuarioConectado').textContent=user.email||'';construirAnos();
   if(!state.eventosFinanzasPreparados){bindUI();state.eventosFinanzasPreparados=true;}
