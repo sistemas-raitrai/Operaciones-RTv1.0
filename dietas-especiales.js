@@ -259,6 +259,163 @@ function llenarSelect(id, values, nombreTodos) {
   el.replaceChildren(new Option(nombreTodos,''),...values.map(v => new Option(v.label,v.value)));
   if (values.some(v => v.value === anterior)) el.value = anterior;
 }
+
+function consolidarGruposDietas(grupos, filas) {
+  const padres = grupos.map((_, indice) => indice);
+
+  function raiz(indice) {
+    while (padres[indice] !== indice) {
+      padres[indice] = padres[padres[indice]];
+      indice = padres[indice];
+    }
+
+    return indice;
+  }
+
+  function unir(a, b) {
+    const raizA = raiz(a);
+    const raizB = raiz(b);
+
+    if (raizA !== raizB) {
+      padres[raizB] = raizA;
+    }
+  }
+
+  // Si dos grupos operativos comparten un documento de Ventas,
+  // sus fichas forman una nómina conjunta.
+  const propietarioPorVentas = new Map();
+
+  grupos.forEach((grupo, indice) => {
+    for (const ventasId of grupo.ventasIds || []) {
+      if (propietarioPorVentas.has(ventasId)) {
+        unir(indice, propietarioPorVentas.get(ventasId));
+      } else {
+        propietarioPorVentas.set(ventasId, indice);
+      }
+    }
+  });
+
+  const componentes = new Map();
+
+  grupos.forEach((grupo, indice) => {
+    const clave = raiz(indice);
+
+    if (!componentes.has(clave)) {
+      componentes.set(clave, []);
+    }
+
+    componentes.get(clave).push(grupo);
+  });
+
+  const gruposConsolidados = [];
+  const grupoPorIdOriginal = new Map();
+
+  for (const miembros of componentes.values()) {
+    const idsOriginales = [
+      ...new Set(miembros.map(grupo => grupo.idGrupo))
+    ].sort();
+
+    const nombres = [
+      ...new Set(
+        miembros.map(grupo => clean(grupo.grupo)).filter(Boolean)
+      )
+    ];
+
+    const negocios = [
+      ...new Set(
+        miembros.flatMap(grupo =>
+          negociosIndividuales(grupo.negocio)
+        )
+      )
+    ].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+
+    const personasPorId = new Map();
+
+    for (const miembro of miembros) {
+      for (const persona of miembro.personas || []) {
+        // El ID ya incluye documento de Ventas + inscripción.
+        if (!personasPorId.has(persona.id)) {
+          personasPorId.set(persona.id, persona);
+        }
+      }
+    }
+
+    const inicios = miembros
+      .map(grupo => grupo.fecha)
+      .filter(Boolean)
+      .sort();
+
+    const finales = miembros
+      .map(grupo => grupo.fechaFin || grupo.fecha)
+      .filter(Boolean)
+      .sort();
+
+    const consolidado = {
+      idGrupo: JSON.stringify(idsOriginales),
+      idsOperaciones: idsOriginales,
+
+      ventasIds: [
+        ...new Set(
+          miembros.flatMap(grupo => grupo.ventasIds || [])
+        )
+      ],
+
+      grupo: nombres.join(' + '),
+      negocio: negocios.join(' / '),
+
+      personas: [...personasPorId.values()].sort((a, b) =>
+        a.nombre.localeCompare(b.nombre, 'es', {
+          sensitivity: 'base'
+        })
+      ),
+
+      fecha: inicios[0] || '',
+      fechaFin: finales[finales.length - 1] || ''
+    };
+
+    gruposConsolidados.push(consolidado);
+
+    for (const idOriginal of idsOriginales) {
+      grupoPorIdOriginal.set(idOriginal, consolidado);
+    }
+  }
+
+  const filasPorAsignacion = new Map();
+
+  for (const fila of filas) {
+    const grupo = grupoPorIdOriginal.get(fila.idGrupo);
+
+    if (!grupo) continue;
+
+    // Solo se unifican asignaciones del mismo grupo consolidado,
+    // proveedor, hotel/servicio y fechas.
+    const clave = JSON.stringify([
+      grupo.idGrupo,
+      fila.tipo,
+      fila.proveedor,
+      fila.entidadId,
+      fila.fecha || '',
+      fila.fechaFin || ''
+    ]);
+
+    if (!filasPorAsignacion.has(clave)) {
+      filasPorAsignacion.set(clave, {
+        ...fila,
+        idGrupo: grupo.idGrupo,
+        grupo: grupo.grupo,
+        negocio: grupo.negocio,
+        personas: grupo.personas
+      });
+    }
+  }
+
+  return {
+    grupos: gruposConsolidados,
+    filas: [...filasPorAsignacion.values()],
+    grupoPorIdOriginal
+  };
+}
+
 async function cargar() {
   if (estado.cargando) return;
   estado.cargando = true; estado.grupos = []; estado.filas = []; estado.filtradas = []; estado.incidencias = [];
@@ -456,9 +613,15 @@ async function cargar() {
           ventas.nombreGrupo ||
           negocio
         );
-        estado.grupos.push({ idGrupo: docId, negocio, grupo: nombre, personas,
+        estado.grupos.push({
+          idGrupo: docId,
+          ventasIds: ventasVinculadas.map(venta => venta.id),
+          negocio,
+          grupo: nombre,
+          personas,
           fecha: fechaISO(g.fechaInicio || c.fechaInicio),
-          fechaFin: fechaISO(g.fechaFin || c.fechaFin) });
+          fechaFin: fechaISO(g.fechaFin || c.fechaFin)
+        });
         const base = { idGrupo:docId, negocio, grupo:nombre, personas, destino:clean(c.destino || g.destino) };
         const out = [];
         for (const raw of (Array.isArray(c.hoteles) ? c.hoteles : [])) {
@@ -499,11 +662,25 @@ async function cargar() {
         `Revisados ${Math.min(i + 5, resumenes.length)} ` +
         `de ${resumenes.length} grupos de Operaciones…`;
     }
-    estado.filas = [...new Map(filas.map(r => [[r.idGrupo,r.tipo,r.entidadId,r.fecha].join('|'),r])).values()];
+    const consolidacion = consolidarGruposDietas(
+      estado.grupos,
+      filas
+    );
+    
+    estado.grupos = consolidacion.grupos;
+    estado.filas = consolidacion.filas;
     estado.grupos.sort((a,b)=>(a.fecha||'9999').localeCompare(b.fecha||'9999') || a.grupo.localeCompare(b.grupo,'es'));
     llenarSelect('deGrupo',[...new Map(estado.grupos.map(r=>[r.idGrupo,{value:r.idGrupo,label:`${r.grupo} · ${r.negocio}`}])).values()].sort((a,b)=>a.label.localeCompare(b.label,'es')),'Todos');
     const grupoSolicitado = new URLSearchParams(location.search).get('id');
-    if (grupoSolicitado) $('deGrupo').value = grupoSolicitado;
+    
+    if (grupoSolicitado) {
+      const grupoConsolidado =
+        consolidacion.grupoPorIdOriginal.get(grupoSolicitado);
+    
+      $('deGrupo').value = grupoConsolidado
+        ? grupoConsolidado.idGrupo
+        : grupoSolicitado;
+    }
     llenarSelect('deHotel',[...new Map(estado.filas.filter(r=>r.tipo==='hotel').map(r=>[r.entidadId,{value:r.entidadId,label:r.entidad}])).values()].sort((a,b)=>a.label.localeCompare(b.label,'es')),'Todos');
     llenarSelect('deProveedor',[...new Set(estado.filas.filter(r=>r.tipo==='servicio').map(r=>r.proveedor))].sort((a,b)=>a.localeCompare(b,'es')).map(v=>({value:v,label:v})),'Todos');
     mostrar();
