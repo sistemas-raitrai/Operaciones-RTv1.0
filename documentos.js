@@ -5178,8 +5178,8 @@ function getEquipajeConfirmacion(grupo, vuelosNorm){
   if (tieneAereo) {
     items.push(
       'La maleta de bodega deberá tener como máximo 158 cm lineales, sumando largo, ancho y alto.',
-      'Está prohibido transportar elementos cortopunzantes en el equipaje de mano y mercancías peligrosas no autorizadas en cualquier equipaje, como explosivos, combustibles y sustancias corrosivas o tóxicas.',
-      'Los líquidos, aerosoles, geles y artículos de aseo en el equipaje de mano están sujetos a las restricciones de la aerolínea y de los controles de seguridad de los aeropuertos del itinerario.'
+      'Está prohibido transportar elementos cortopunzantes en el bolso de mano y mercancías peligrosas no autorizadas en cualquier equipaje, como explosivos, combustibles y sustancias corrosivas o tóxicas.',
+      'Los líquidos, aerosoles, geles y artículos de aseo en el bolso de mano están sujetos a las restricciones de la aerolínea y de los controles de seguridad de los aeropuertos del itinerario.'
     );
   }
 
