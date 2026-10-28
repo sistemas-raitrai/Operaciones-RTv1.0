@@ -56,6 +56,13 @@ function obtenerAnoOperativo() {
   return mes >= 3 ? ano : ano - 1;
 }
 
+function normalizarCantidadCoordinadores(valor) {
+  const n = Number.parseInt(String(valor ?? 1), 10);
+  return Number.isFinite(n)
+    ? Math.min(3, Math.max(1, n))
+    : 1;
+}
+
 function obtenerAnoDesdeFecha(iso) {
   if (!iso) return null;
   const m = String(iso).match(/^(\d{4})-/);
@@ -1152,20 +1159,27 @@ window.openGroupModal = (grupoId) => {
   document.getElementById('g-cantidadGrupo').value = g.cantidadGrupo || 0;
   document.getElementById('g-adultos').value       = g.adultos || 0;
   document.getElementById('g-estudiantes').value   = g.estudiantes || 0;
-  document.getElementById('g-coordinadores').value = (!g.coordinadores || g.coordinadores === 0) ? 1 : g.coordinadores;
+  document.getElementById('g-coordinadores').value =
+    normalizarCantidadCoordinadores(g.cantidadCoordinadores);
 
   document.getElementById('group-form').dataset.grupoId = grupoId;
   document.getElementById('group-backdrop').style.display = 'block';
   document.getElementById('group-modal').style.display    = 'block';
 
-  ['g-adultos','g-estudiantes'].forEach(id => {
-    document.getElementById(id).oninput = () => ajustarPAXdesdeAdultosEstudiantes();
+  ['g-adultos', 'g-estudiantes'].forEach(id => {
+    document.getElementById(id).oninput = () => {
+      ajustarPAXdesdeAdultosEstudiantes();
+      recalcularTotalFinal();
+    };
   });
-  document.getElementById('g-cantidadGrupo').oninput = () => ajustarAdultosEstudiantesDesdePAX();
 
-  ['g-adultos','g-estudiantes','g-coordinadores'].forEach(id => {
-    document.getElementById(id).oninput = recalcularTotalFinal;
-  });
+  document.getElementById('g-cantidadGrupo').oninput = () => {
+    ajustarAdultosEstudiantesDesdePAX();
+    recalcularTotalFinal();
+  };
+
+  document.getElementById('g-coordinadores').oninput =
+    recalcularTotalFinal;
   recalcularTotalFinal();
 
   if (!g.cantidadGrupo || g.cantidadGrupo === 0) ajustarPAXdesdeAdultosEstudiantes();
@@ -1191,7 +1205,9 @@ function ajustarAdultosEstudiantesDesdePAX(){
 function recalcularTotalFinal(){
   const a = +document.getElementById('g-adultos').value || 0;
   const e = +document.getElementById('g-estudiantes').value || 0;
-  const c = +document.getElementById('g-coordinadores').value || 0;
+  const c = normalizarCantidadCoordinadores(
+    document.getElementById('g-coordinadores').value
+  );
   document.getElementById('g-cantidadTotal').value = a + e + c;
 }
 
@@ -1205,9 +1221,13 @@ async function onSubmitGroup(evt){
     cantidadGrupo: +document.getElementById('g-cantidadGrupo').value || 0,
     adultos:       +document.getElementById('g-adultos').value || 0,
     estudiantes:   +document.getElementById('g-estudiantes').value || 0,
-    coordinadores: Math.max(+document.getElementById('g-coordinadores').value || 1, 1),
+    cantidadCoordinadores: normalizarCantidadCoordinadores(
+      document.getElementById('g-coordinadores').value
+    ),
   };
-  data.cantidadTotal = data.adultos + data.estudiantes + data.coordinadores;
+
+  data.cantidadTotal =
+    data.adultos + data.estudiantes + data.cantidadCoordinadores;
 
   await updateDoc(doc(db,'grupos', id), data);
   await addDoc(collection(db,'historial'), {
@@ -1781,7 +1801,7 @@ async function renderVuelos(){
       const g = grupos.find(x => x.id === gObj.id) || {};
       const a = parseInt(g.adultos     || 0, 10);
       const e = parseInt(g.estudiantes || 0, 10);
-      const c = Math.max(parseInt(g.coordinadores ?? 1, 10), 1);
+      const c = normalizarCantidadCoordinadores(g.cantidadCoordinadores);
       const totalRow = a + e + c;
       totA += a; totE += e; totC += c;
       if (gObj.status === 'confirmado'){ confA += a; confE += e; confC += c; }
@@ -2181,7 +2201,7 @@ function exportToExcel(){
         const g = grupos.find(x => x.id === gObj.id) || {};
         totA += parseInt(g.adultos || 0, 10);
         totE += parseInt(g.estudiantes || 0, 10);
-        totC += parseInt(g.coordinadores || 0, 10);
+        totC += normalizarCantidadCoordinadores(g.cantidadCoordinadores);
       });
     }
     (v.paxExtras || []).forEach(x => { totX += parseInt(x.cantidad || 0, 10); });
@@ -2255,10 +2275,15 @@ function exportToExcel(){
         Grupo_Numero: g.numeroNegocio,
         Grupo_Identificador: g.identificador,
         Grupo_Nombre: g.nombreGrupo,
-        Adultos: g.adultos || 0,
-        Estudiantes: g.estudiantes || 0,
-        Coordinadores: g.coordinadores || 0,
-        Total: (g.adultos||0) + (g.estudiantes||0) + (g.coordinadores||0),
+        Adultos: Number(g.adultos) || 0,
+        Estudiantes: Number(g.estudiantes) || 0,
+        Coordinadores: normalizarCantidadCoordinadores(
+          g.cantidadCoordinadores
+        ),
+        Total:
+          (Number(g.adultos) || 0) +
+          (Number(g.estudiantes) || 0) +
+          normalizarCantidadCoordinadores(g.cantidadCoordinadores),
         Estado: gObj.status,
         Records: (Array.isArray(gObj.reservas) ? gObj.reservas.join(', ') : ''),
         Cambiado_Por: gObj.changedBy || '',
