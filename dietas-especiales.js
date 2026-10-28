@@ -122,6 +122,13 @@ function fechaISO(v) {
 }
 function fechaVisible(iso) { return iso ? iso.split('-').reverse().join('-') : 'Sin fecha'; }
 function numerosNegocio(g = {}) { return String(g.numeroNegocio ?? g.negocioId ?? '').trim(); }
+function negociosIndividuales(valor) {
+  const numeros = String(valor ?? '').match(/\d+/g) || [];
+
+  return [...new Set(
+    numeros.map(numero => numero.replace(/^0+(?=\d)/, ''))
+  )];
+}
 function destinosDeGrupo(g = {}) {
   const s = normalizar([g.destinoPrincipal, g.destino].filter(Boolean).join(' '));
   if (s.includes('BRASIL')) return ['BRASIL'];
@@ -275,21 +282,23 @@ async function cargar() {
   // Ventas solo aporta el vínculo hacia las inscripciones.
   const resumenes = gruposOperaciones;
   
+  // Cada número individual puede apuntar a varios documentos de Ventas.
   const ventasPorNegocio = new Map();
   
   for (const documento of resumenesVentas) {
     const datos = documento.data() || {};
-    const negocio = numerosNegocio(datos);
-  
-    if (!negocio) continue;
-  
+    const negocios = negociosIndividuales(numerosNegocio(datos));
     const docId = clean(datos.groupDocId || documento.id);
   
-    if (!ventasPorNegocio.has(negocio)) {
-      ventasPorNegocio.set(negocio, new Set());
-    }
+    if (!docId || !negocios.length) continue;
   
-    ventasPorNegocio.get(negocio).add(docId);
+    for (const negocio of negocios) {
+      if (!ventasPorNegocio.has(negocio)) {
+        ventasPorNegocio.set(negocio, new Set());
+      }
+  
+      ventasPorNegocio.get(negocio).add(docId);
+    }
   }
   
   const cal = {
@@ -315,45 +324,81 @@ async function cargar() {
           return [];
         }
         
-        const coincidenciasVentas = [
-          ...(ventasPorNegocio.get(negocio) || [])
-        ];
+        const negociosOperacion = negociosIndividuales(negocio);
         
-        if (coincidenciasVentas.length !== 1) {
+        if (!negociosOperacion.length) {
           estado.incidencias.push(
-            coincidenciasVentas.length
-              ? `Negocio ${negocio}: hay varios grupos de Ventas asociados; revisar el vínculo.`
-              : `Negocio ${negocio}: no se encontró su vínculo con las fichas de Ventas.`
+            `Grupo de Operaciones ${d.id}: no se pudieron reconocer sus números de negocio.`
           );
-        
           return [];
         }
         
-        const docId = coincidenciasVentas[0];
+        // Reúne todos los documentos asociados a cualquiera
+        // de los números del grupo de Operaciones.
+        const idsVentas = new Set();
         
-        const ref = await getDoc(
-          doc(db, 'ventas_cotizaciones', docId)
+        for (const numero of negociosOperacion) {
+          const coincidencias = ventasPorNegocio.get(numero);
+        
+          if (!coincidencias?.size) {
+            estado.incidencias.push(
+              `Negocio ${negocio}: no se encontró vínculo de Ventas para ${numero}.`
+            );
+            continue;
+          }
+        
+          for (const id of coincidencias) {
+            idsVentas.add(id);
+          }
+        }
+        
+        if (!idsVentas.size) return [];
+        
+        const documentosVentas = await Promise.all(
+          [...idsVentas].map(async id => {
+            const ref = await getDoc(
+              doc(db, 'ventas_cotizaciones', id)
+            );
+        
+            if (!ref.exists()) {
+              estado.incidencias.push(
+                `Negocio ${negocio}: no existe el grupo de Ventas ${id}.`
+              );
+              return null;
+            }
+        
+            const datos = ref.data() || {};
+            const negocioVentas = numerosNegocio(datos);
+            const numerosVentas = negociosIndividuales(negocioVentas);
+        
+            // Si el documento informa un negocio, debe compartir
+            // al menos un número con el grupo de Operaciones.
+            if (
+              negocioVentas &&
+              !numerosVentas.some(numero => negociosOperacion.includes(numero))
+            ) {
+              estado.incidencias.push(
+                `Negocio ${negocio}: el grupo de Ventas ${id} tiene otro número de negocio (${negocioVentas}).`
+              );
+              return null;
+            }
+        
+            return { id, datos };
+          })
         );
         
-        if (!ref.exists()) {
-          estado.incidencias.push(
-            `Negocio ${negocio}: no existe el grupo de Ventas ${docId}.`
-          );
-          return [];
-        }
+        const ventasVinculadas = documentosVentas.filter(Boolean);
         
-        const ventas = ref.data() || {};
+        if (!ventasVinculadas.length) return [];
         
-        // Verifica el vínculo antes de leer las fichas.
-        const negocioVentas = numerosNegocio(ventas);
+        // La identidad de la fila corresponde al documento de Operaciones.
+        // Así, dos grupos operativos que compartan un documento de Ventas
+        // siguen apareciendo como grupos diferentes.
+        const docId = d.id;
         
-        if (negocioVentas && negocioVentas !== negocio) {
-          estado.incidencias.push(
-            `Negocio ${negocio}: el grupo de Ventas ${docId} tiene otro número de negocio.`
-          );
-          return [];
-        }
-        
+        // Solo se usa como respaldo de los datos operativos.
+        const ventas = ventasVinculadas[0].datos;
+                
         // Conservamos "g" y "x" porque el resto de la función
         // utiliza esos nombres. Los datos operativos tienen prioridad.
         const g = {
@@ -372,7 +417,28 @@ async function cargar() {
           );
         }
         
-        const inscripciones = await loadGroupInscriptions(docId);
+        const lotesInscripciones = await Promise.all(
+          ventasVinculadas.map(async grupoVentas => {
+            const items = await loadGroupInscriptions(grupoVentas.id);
+        
+            return items.map(item => ({
+              ...item,
+        
+              // Evita confundir inscripciones con el mismo ID
+              // ubicadas en documentos de Ventas diferentes.
+              id: `${grupoVentas.id}|${item.id}`,
+              groupDocId: grupoVentas.id,
+              inscripcionId: item.id
+            }));
+          })
+        );
+        
+        const inscripciones = lotesInscripciones
+          .flat()
+          .sort((a, b) =>
+            passengerName(a).localeCompare(passengerName(b), 'es')
+          );
+        
         const personas = datosAlimentacion(inscripciones);
         
         if (!personas.length) return [];
