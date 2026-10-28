@@ -3421,12 +3421,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       vuelosNorm
     );
 
-  const fechaInicioViajeTxt =
-    fechaInicioViajeISO
-      ? formatShortDate(
-          fechaInicioViajeISO
-        )
-      : '—';
+  const fechaInicioViajeTxt = fechaInicioViajeISO
+    ? formatShortDate(fechaInicioViajeISO).toLocaleUpperCase('es-CL')
+    : '—';
 
 
 
@@ -3437,10 +3434,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       ''
     );
 
-  const fechaFinViajeTxt =
-    fechaFinViajeISO
-      ? formatShortDate(fechaFinViajeISO)
-      : '—';
+  const fechaFinViajeTxt = fechaFinViajeISO
+    ? formatShortDate(fechaFinViajeISO).toLocaleUpperCase('es-CL')
+    : '—';
   
   const nombreOperacional =
     getNombreGrupoOperacional(
@@ -3673,13 +3669,10 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
               .toUpperCase();
 
 
-          const dir =
-            (
-              H.direccion ||
-              h.direccion ||
-              ''
-            )
-              .toString();
+          const dir = (H.direccion || h.direccion || '')
+            .toString()
+            .trim()
+            .toLocaleUpperCase('es-CL');
 
 
           const tel1 =
@@ -3784,29 +3777,21 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   // TEXTOS GENERALES
   // ============================================================
 
-  const {
-    docsText,
-    equipajeText1,
-    equipajeText2,
-    recs
-  } =
-    getDERTextos(
-      `${
-        grupo.programa ||
-        ''
-      } ${
-        grupo.destino ||
-        ''
-      }`,
-      grupo.textos || {}
-    );
-
-
-  const documentosHTML =
-    renderDocsList(
-      docsText
-    );
-
+  // Conservamos las recomendaciones generales actuales.
+  const { recs } = getDERTextos(
+    `${grupo.programa || ''} ${grupo.destino || ''}`,
+    grupo.textos || {}
+  );
+  
+  // Documentación compartida con preconfirmación.
+  const documentosHTML = getDocumentosViajeItems(grupo)
+    .map(texto => `<li>${texto}</li>`)
+    .join('');
+  
+  // Equipaje de preconfirmación más detalles de confirmación.
+  const equipajeHTML = getEquipajeConfirmacion(grupo, vuelosNorm)
+    .map(texto => `<li>${texto}</li>`)
+    .join('');
 
   const recomendacionesHTML =
     Array.isArray(recs)
@@ -4070,12 +4055,12 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         }
 
         <p>
-          <strong>Fecha de inicio del viaje:</strong>
+          <strong>FECHA DE INICIO DEL VIAJE:</strong>
           ${fechaInicioViajeTxt}
         </p>
 
         <p>
-          <strong>Fecha de término del viaje:</strong>
+          <strong>FECHA DE TÉRMINO DEL VIAJE:</strong>
           ${fechaFinViajeTxt}
         </p>
 
@@ -4122,23 +4107,15 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
 
       <div class="sec confirm-equipaje">
-
+      
         <div class="sec-title">
           5. EQUIPAJE
         </div>
-
+      
         <ul>
-
-          <li>
-            ${equipajeText1}
-          </li>
-
-          <li>
-            ${equipajeText2}
-          </li>
-
+          ${equipajeHTML}
         </ul>
-
+      
       </div>
 
 
@@ -5117,6 +5094,35 @@ function renderTransportesConfirmacion(vuelosNorm){
   `;
 }
 
+function getDocumentosViajeItems(grupo){
+  const textoPrograma =
+    `${grupo.programa || ''} ${grupo.destino || ''}`;
+
+  const esInternacional =
+    /(bariloche|brasil)/i.test(textoPrograma);
+
+  const documentos = [
+    'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
+  ];
+
+  if (esInternacional) {
+    documentos.push(
+      'Para realizar viajes internacionales, la cédula de identidad deberá tener fecha de vencimiento mínimo de 6 meses desde la fecha de regreso del viaje.',
+      'Los menores de edad deben contar con las autorizaciones notariales de ambos padres para salir del país.',
+      'Las personas extranjeras deberán revisar oportunamente los requisitos de ingreso y salida exigidos según su nacionalidad.'
+    );
+  }
+
+  if (/huilo/i.test(textoPrograma)) {
+    documentos.push(
+      'Para la Reserva Biológica Huilo Huilo será necesario completar documentación propia del recinto, la cual será enviada previamente al viaje.',
+      'Además, cada pasajero deberá considerar saco de dormir, toalla y artículos de aseo personal, ya que estos elementos no son proporcionados por el recinto.'
+    );
+  }
+
+  return documentos;
+}
+
 function getEquipajePreliminar(grupo, vuelosNorm){
 
   const tieneAereo = (vuelosNorm || []).some(v =>
@@ -5158,6 +5164,28 @@ function getEquipajePreliminar(grupo, vuelosNorm){
   ];
 }
 
+function getEquipajeConfirmacion(grupo, vuelosNorm){
+  // Usa las mismas condiciones y kilos de preconfirmación.
+  const items = [
+    ...getEquipajePreliminar(grupo, vuelosNorm)
+  ];
+
+  const tieneAereo = (vuelosNorm || []).some(v =>
+    (v.tipoTransporte || 'aereo').toLowerCase() === 'aereo'
+  );
+
+  // Las indicaciones aéreas no se agregan a viajes solo terrestres.
+  if (tieneAereo) {
+    items.push(
+      'La maleta de bodega deberá tener como máximo 158 cm lineales, sumando largo, ancho y alto.',
+      'Está prohibido transportar elementos cortopunzantes en el equipaje de mano y mercancías peligrosas no autorizadas en cualquier equipaje, como explosivos, combustibles y sustancias corrosivas o tóxicas.',
+      'Los líquidos, aerosoles, geles y artículos de aseo en el equipaje de mano están sujetos a las restricciones de la aerolínea y de los controles de seguridad de los aeropuertos del itinerario.'
+    );
+  }
+
+  return items;
+}
+
 function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
@@ -5173,8 +5201,13 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   const fechaInicioISO = toISO(resumenVuelos.fechaIda || grupo.fechaInicio || grupo.fechaViaje || '');
   const fechaFinISO    = toISO(resumenVuelos.fechaVuelta || grupo.fechaFin || grupo.fechaRegreso || '');
 
-  const fechaInicioTxt = fechaInicioISO ? formatShortDate(fechaInicioISO) : '—';
-  const fechaFinTxt    = fechaFinISO ? formatShortDate(fechaFinISO) : '—';
+  const fechaInicioTxt = fechaInicioISO
+    ? formatShortDate(fechaInicioISO).toLocaleUpperCase('es-CL')
+    : '—';
+  
+  const fechaFinTxt = fechaFinISO
+    ? formatShortDate(fechaFinISO).toLocaleUpperCase('es-CL')
+    : '—';
 
   const aerolineasTxt = resumenVuelos.aerolineas.length
     ? resumenVuelos.aerolineas.join(' / ')
@@ -5196,8 +5229,11 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   
           const hotel = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
           const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
-          const direccion = (H.direccion || h.direccion || '').toString().trim();
-  
+          const direccion = (H.direccion || h.direccion || '')
+            .toString()
+            .trim()
+            .toLocaleUpperCase('es-CL');
+          
           const web = (
             H.contactoWeb ||
             H.web ||
@@ -5231,48 +5267,10 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   const esInternacional = /(bariloche|brasil)/i.test(
     `${grupo.programa || ''} ${grupo.destino || ''}`
   );
-  
-  const documentos = [];
-  
-  documentos.push(
-    'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
-  );
-  
-  // SOLO requisitos internacionales
-  if (esInternacional) {
-  
-    documentos.push(
-      'Para realizar viajes internacionales, la cédula de identidad deberá tener fecha de vencimiento mínimo de 6 meses desde la fecha de regreso del viaje.'
-    );
-  
-    documentos.push(
-      'Los menores de edad deben contar con las autorizaciones notariales de ambos padres para salir del país.'
-    );
-  
-    documentos.push(
-      'Las personas extranjeras deberán revisar oportunamente los requisitos de ingreso y salida exigidos según su nacionalidad.'
-    );
-  }
-  
-  // HUILO HUILO (aplica independiente de si es nacional o internacional)
-  if (/huilo/i.test(`${grupo.programa || ''} ${grupo.destino || ''}`)) {
-  
-    documentos.push(
-      'Para la Reserva Biológica Huilo Huilo será necesario completar documentación propia del recinto, la cual será enviada previamente al viaje.'
-    );
-  
-    documentos.push(
-      'Además, cada pasajero deberá considerar saco de dormir, toalla y artículos de aseo personal, ya que estos elementos no son proporcionados por el recinto.'
-    );
-  }
-  
-  // Aplica a todos los viajes
-  // documentos.push(
-    //'Recordar subir oportunamente la cédula de identidad solicitada en el sistema donde realiza los pagos.'
-  //);
-  
-  const documentosHTML =
-    documentos.map(x => `<li>${x}</li>`).join('');
+
+  const documentosHTML = getDocumentosViajeItems(grupo)
+    .map(texto => `<li>${texto}</li>`)
+    .join('');
   
   const equipajeItems = getEquipajePreliminar(grupo, vuelosNorm)
     .map(t => `<li>${t}</li>`)
@@ -5324,11 +5322,11 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
               <td><strong>${safe(programa)}</strong></td>
             </tr>
             <tr>
-              <th>Fecha de Inicio</th>
+              <th>FECHA DE INICIO DEL VIAJE</th>
               <td><strong>${fechaInicioTxt}</strong></td>
             </tr>
             <tr>
-              <th>Fecha de Regreso</th>
+              <th>FECHA DE TÉRMINO DEL VIAJE</th>
               <td><strong>${fechaFinTxt}</strong></td>
             </tr>
           </tbody>
