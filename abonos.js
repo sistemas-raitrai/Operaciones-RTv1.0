@@ -6470,11 +6470,11 @@ function conectarEventos() {
     );
   
     el('abonoModal')?.addEventListener(
-      'click',
+      'mousedown',
       event => {
         if (
-          event.target ===
-          el('abonoModal')
+          event.button === 0 &&
+          event.target === event.currentTarget
         ) {
           cerrarModalAbono({
             limpiar: true,
