@@ -5160,7 +5160,7 @@ function getEquipajePreliminar(grupo, vuelosNorm){
   }
 
   return [
-    'Las condiciones de equipaje dependerán de la tarifa aérea asociada al viaje. Generalmente permite transportar una maleta de hasta 23 kg más un bolso de mano de 5kg, ambos debidamente marcados con nombre y número de contacto',
+    'Generalmente permite transportar una maleta de hasta 23 kg más un bolso de mano de 5kg, ambos debidamente marcados con nombre y número de contacto',
   ];
 }
 
