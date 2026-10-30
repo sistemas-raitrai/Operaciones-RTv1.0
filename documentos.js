@@ -1786,6 +1786,27 @@ function normalizeVuelo(v){
   };
 }
 
+function getNumeroVueloPorSentido(numero, sentido){
+  const texto = String(numero || '')
+    .trim()
+    .toUpperCase();
+
+  if (!texto) return '';
+
+  // Sin separador: conserva el número original.
+  if (!texto.includes('/')) return texto;
+
+  // Reconoce / y //, con o sin espacios.
+  const partes = texto
+    .split(/\s*\/+\s*/)
+    .map(parte => parte.trim());
+
+  // Primer número = ida. Segundo número = vuelta.
+  return sentido === 'vuelta'
+    ? (partes[1] || '')
+    : (partes[0] || '');
+}
+
 // Particionar y devolver SOLO aéreos de plan (sin transfers)
 function particionarVuelos(vuelosNorm) {
 
@@ -2197,18 +2218,19 @@ function particionarVuelos(vuelosNorm) {
   // SEPARAR IDA / VUELTA
   // ============================================================
 
-  const idaLegsAll =
-    aereos.filter(
-      l =>
-        !!l.fechaIda
-    );
-
-
-  const vueltaLegsAll =
-    aereos.filter(
-      l =>
-        !!l.fechaVuelta
-    );
+  const idaLegsAll = aereos
+    .filter(l => !!l.fechaIda)
+    .map(l => ({
+      ...l,
+      numero: getNumeroVueloPorSentido(l.numero, 'ida')
+    }));
+  
+  const vueltaLegsAll = aereos
+    .filter(l => !!l.fechaVuelta)
+    .map(l => ({
+      ...l,
+      numero: getNumeroVueloPorSentido(l.numero, 'vuelta')
+    }));
 
 
   /*
