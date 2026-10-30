@@ -5129,6 +5129,7 @@ function getEquipajePreliminar(grupo, vuelosNorm){
     (v.tipoTransporte || 'aereo').toLowerCase() === 'aereo'
   );
 
+  // VIAJE SOLO TERRESTRE
   if (!tieneAereo){
     return [
       'Cada persona podrá transportar un equipaje de hasta 23 kg, el cual será almacenado en el compartimiento de equipaje del bus.',
@@ -5142,24 +5143,29 @@ function getEquipajePreliminar(grupo, vuelosNorm){
     .join(' ');
 
   const isRegular = vuelosTxt.includes('REGULAR');
-  const isLatam   = vuelosTxt.includes('LATAM');
-  const isSky     = vuelosTxt.includes('SKY');
+  const isLatam = vuelosTxt.includes('LATAM');
+  const isSky = vuelosTxt.includes('SKY');
 
+  // LATAM NO REGULAR
   if (!isRegular && isLatam){
     return [
-      'Cada persona podrá transportar una maleta de hasta 20 kg más un bolso de mano de 5kg, ambos debidamente marcados con nombre y número de contacto',
-      'La aerolínea no permite agregar equipaje adicional ni sobrepeso para este tipo de vuelos.',
+      'Cada persona podrá transportar una maleta de hasta 20 kg más un bolso de mano de hasta 5 kg, ambos debidamente identificados con nombre y número de contacto.',
+      'La aerolínea no permite agregar equipaje adicional ni sobrepeso para este tipo de vuelos.'
     ];
   }
 
+  // SKY NO REGULAR
   if (!isRegular && isSky){
     return [
-      'Cada persona podrá transportar una maleta de hasta 23 kg más un bolso de mano de 5kg, ambos debidamente marcados con nombre y número de contacto',
-      'La aerolínea no permite agregar equipaje adicional ni sobrepeso para este tipo de vuelos.',
+      'Cada persona podrá transportar una maleta de hasta 23 kg más un bolso de mano de hasta 5 kg, ambos debidamente identificados con nombre y número de contacto.',
+      'La aerolínea no permite agregar equipaje adicional ni sobrepeso para este tipo de vuelos.'
     ];
   }
 
+  // VUELOS REGULARES U OTRAS AEROLÍNEAS
   return [
+    'Cada persona podrá transportar una maleta de hasta 23 kg más un bolso de mano de hasta 5 kg, ambos debidamente identificados con nombre y número de contacto.',
+    'El equipaje adicional o sobrepeso estará sujeto a disponibilidad, condiciones y tarifas de la aerolínea. Cada pasajero deberá gestionar y pagar este servicio directamente con ella.'
   ];
 }
 
