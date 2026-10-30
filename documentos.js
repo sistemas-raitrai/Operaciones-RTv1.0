@@ -5164,8 +5164,7 @@ function getEquipajePreliminar(grupo, vuelosNorm){
 
   // VUELOS REGULARES U OTRAS AEROLÍNEAS
   return [
-    'Cada persona podrá transportar una maleta de hasta 23 kg más un bolso de mano de hasta 5 kg, ambos debidamente identificados con nombre y número de contacto.',
-    'El equipaje adicional o sobrepeso estará sujeto a disponibilidad, condiciones y tarifas de la aerolínea. Cada pasajero deberá gestionar y pagar este servicio directamente con ella.'
+    'Cada persona podrá transportar una maleta de hasta 23 kg más un bolso de mano de hasta 5 kg, ambos debidamente identificados con nombre y número de contacto. En caso de exceder el peso permitido, la aerolínea cobrará los kilos extra y cada pasajero deberá gestionar y pagar ese cobro directamente con ella.'
   ];
 }
 
