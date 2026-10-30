@@ -5160,7 +5160,6 @@ function getEquipajePreliminar(grupo, vuelosNorm){
   }
 
   return [
-    'Generalmente permite transportar una maleta de hasta 23 kg más un bolso de mano de 5kg, ambos debidamente marcados con nombre y número de contacto',
   ];
 }
 
