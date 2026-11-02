@@ -16,8 +16,170 @@ function firma(s){return JSON.stringify({viajes:A(s.viajes),coordinadorId:s.coor
 function instante(f,h,z){if(!/^\d{4}-\d{2}-\d{2}$/.test(f||'')||!/^([01]\d|2[0-3]):[0-5]\d$/.test(h||'')||!z)return null;
  try{const target=Date.parse(f+'T'+h+':00Z');let guess=target;const fmt=new Intl.DateTimeFormat('sv-SE',{timeZone:z,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
  for(let i=0;i<4;i++){const p=Object.fromEntries(fmt.formatToParts(new Date(guess)).map(x=>[x.type,x.value]));const local=Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`);const delta=target-local;if(!delta)return guess;guess+=delta;}return null;}catch{return null;}}
-function evento(g,tipo){const list=A(g.transportes).filter(t=>t.sentido===(tipo==='inicio'?'ida':'vuelta')&&!t.isTransfer);const candidates=list.map(t=>{const f=tipo==='inicio'?t.fechaPresentacion:t.fechaLlegada,h=tipo==='inicio'?t.presentacion:t.llegada,z=tipo==='inicio'?t.zonaSalida:t.zonaLlegada;const ambiguo=tipo==='inicio'?t.fechaPresentacionInferida:t.fechaLlegadaInferida;return {f,h,z,t,ms:ambiguo?null:instante(f,h,z)};}).sort((a,b)=>(a.f+' '+a.h).localeCompare(b.f+' '+b.h));
- if(!candidates.length)return null;return tipo==='inicio'?candidates[0]:candidates.at(-1);}
+function evento(g, tipo) {
+  const esInicio = tipo === 'inicio';
+
+  const list = A(g.transportes).filter(t =>
+    t.sentido === (esInicio ? 'ida' : 'vuelta') &&
+    !t.isTransfer
+  );
+
+  function sumarDiaISO(iso, cantidad) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) {
+      return '';
+    }
+
+    const d = new Date(iso + 'T12:00:00Z');
+
+    if (!Number.isFinite(d.getTime())) {
+      return '';
+    }
+
+    d.setUTCDate(d.getUTCDate() + cantidad);
+
+    return d.toISOString().slice(0, 10);
+  }
+
+  function horaValida(hora) {
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(hora || '');
+  }
+
+  // Obtiene el desfase UTC efectivo de una fecha/hora local.
+  // Permite comparar zonas distintas que ese día tienen
+  // el mismo desfase, por ejemplo Santiago y São Paulo.
+  function desfaseUTC(fecha, hora, ms) {
+    if (ms === null) return null;
+
+    return (
+      Date.parse(fecha + 'T' + hora + ':00Z') - ms
+    ) / 60000;
+  }
+
+  const candidates = list.map(t => {
+    let f = esInicio
+      ? t.fechaPresentacion
+      : t.fechaLlegada;
+
+    const h = esInicio
+      ? t.presentacion
+      : t.llegada;
+
+    const z = esInicio
+      ? t.zonaSalida
+      : t.zonaLlegada;
+
+    const inferida = esInicio
+      ? t.fechaPresentacionInferida
+      : t.fechaLlegadaInferida;
+
+    let ms = null;
+    let fechaDeducida = false;
+    let notaFecha = '';
+
+    if (!inferida) {
+      // Fecha explícita o fecha que no fue marcada como inferida.
+      ms = instante(f, h, z);
+
+    } else if (!esInicio) {
+      // Llegada sin fecha explícita:
+      // comprobar si corresponde al día siguiente.
+      const fechaSalida = t.fechaSalida;
+      const salida = t.salida;
+      const zonaSalida = t.zonaSalida;
+
+      const cruzaMedianoche = (
+        /^\d{4}-\d{2}-\d{2}$/.test(fechaSalida || '') &&
+        horaValida(salida) &&
+        horaValida(h) &&
+        h < salida
+      );
+
+      if (cruzaMedianoche) {
+        // Se calcula desde la fecha de salida:
+        // no se suma otra vez sobre una llegada ya corregida.
+        f = sumarDiaISO(fechaSalida, 1);
+
+        const salidaMs = instante(
+          fechaSalida,
+          salida,
+          zonaSalida
+        );
+
+        const llegadaMs = instante(f, h, z);
+
+        const desfaseSalida = desfaseUTC(
+          fechaSalida,
+          salida,
+          salidaMs
+        );
+
+        const desfaseLlegada = desfaseUTC(
+          f,
+          h,
+          llegadaMs
+        );
+
+        const zonasCompatibles = (
+          desfaseSalida !== null &&
+          desfaseLlegada !== null &&
+          desfaseSalida === desfaseLlegada
+        );
+
+        if (
+          zonasCompatibles &&
+          salidaMs !== null &&
+          llegadaMs !== null &&
+          llegadaMs > salidaMs
+        ) {
+          ms = llegadaMs;
+          fechaDeducida = true;
+
+          notaFecha =
+            'Fecha de llegada deducida: +1 día';
+
+        } else {
+          notaFecha =
+            'Fecha de llegada por verificar: ' +
+            'faltan zonas horarias o sus desfases son distintos';
+        }
+
+      } else {
+        notaFecha =
+          'Fecha de llegada inferida: por verificar';
+      }
+
+    } else {
+      // Mantiene la precaución existente para presentaciones
+      // cuya fecha también fue inferida.
+      notaFecha =
+        'Fecha de presentación inferida: por verificar';
+    }
+
+    return {
+      f,
+      h,
+      z,
+      t,
+      ms,
+      fechaDeducida,
+      notaFecha
+    };
+  });
+
+  candidates.sort((a, b) =>
+    (
+      (a.f || '') + ' ' + (a.h || '')
+    ).localeCompare(
+      (b.f || '') + ' ' + (b.h || '')
+    )
+  );
+
+  if (!candidates.length) return null;
+
+  return esInicio
+    ? candidates[0]
+    : candidates[candidates.length - 1];
+}
 export function crearAmpliacionCoordinadores(api){
  let bordes=[],baseline=new Map(),hist=new Map(),survey=new Map(),salud=new Map(),busy=false,dirty=false;
  const state=()=>api.estado(),getCoord=id=>state().COORDS.find(c=>c.id===id),getGroup=id=>state().ID2GRUPO.get(id);
@@ -348,7 +510,73 @@ export function crearAmpliacionCoordinadores(api){
  }
  function saludRanking(){const root=modal('Salud por grupo · porcentajes sobre todos los viajeros','<p>Casos declarados conocidos. Las categorías pueden coincidir. Fichas pendientes y uso interno restringido limitan la información disponible.</p><label>Ordenar por <select id="coordOrdenSalud"><option value="neuro">Neurodivergencias</option><option value="medica">Situaciones médicas</option><option value="apoyo">Necesidades de apoyo</option><option value="dieta">Dietas</option><option value="pendientes">Fichas pendientes</option></select></label><div id="coordTablaSalud"></div>');const render=()=>{const key=root.querySelector('select').value;const gs=filtros().slice().sort((a,b)=>{const ca=saludGrupo(a)?.cuentas,cb=saludGrupo(b)?.cuentas;return (cb?.total?cb[key]/cb.total:-1)-(ca?.total?ca[key]/ca.total:-1);});root.querySelector('#coordTablaSalud').innerHTML=tabla(['Grupo','ID / Negocio','Destino','Fechas','Cobertura','Coordinadores','Salud'],grupoRows(gs));};root.querySelector('select').onchange=render;render();}
  function mostrarSets(title,ss){modal(title,tabla(['Coordinador','Confirmación','Aceptación','Grupos','Fechas'],ss.map(s=>[H(getCoord(s.coordinadorId)?.nombre||'Sin asignar'),s.confirmado?'Confirmado':'Planificación',H({aprobado:'Aceptado',pendiente:'Pendiente',rechazado:'Rechazado'}[E(s.estadoCoord)]),A(s.viajes).map(id=>H(getGroup(id)?.aliasGrupo||id)).join('<br>'),A(s.viajes).map(id=>fecha(getGroup(id)?.fechaInicio)+' → '+fecha(getGroup(id)?.fechaFin)).join('<br>')])));}
- function mostrarTransiciones(rows){modal('Llegada anterior → presentación siguiente',tabla(['Coordinador','Viaje anterior','Llegada de regreso','Viaje siguiente','Presentación','Horas'],rows.map(r=>[H(getCoord(r.cid)?.nombre||r.cid),H(r.anterior.aliasGrupo),H(r.fin?fecha(r.fin.f)+' '+r.fin.h+' '+r.fin.z:'Sin datos'),H(r.siguiente.aliasGrupo),H(r.ini?fecha(r.ini.f)+' '+r.ini.h+' '+r.ini.z:'Sin datos'),r.horas===null?'Sin verificar':r.horas.toFixed(1)])));}
+
+ function mostrarTransiciones(rows) {
+   function mostrarEvento(ev) {
+     if (!ev) return 'Sin datos';
+ 
+     const texto = [
+       ev.f ? fecha(ev.f) : 'Fecha sin informar',
+       ev.h || 'Hora sin informar',
+       ev.z || 'Zona horaria sin informar'
+     ].join(' ');
+ 
+     const nota = ev.notaFecha
+       ? '<br><small>' + H(ev.notaFecha) + '</small>'
+       : '';
+ 
+     return H(texto) + nota;
+   }
+ 
+   function mostrarDescanso(horas) {
+     if (!Number.isFinite(horas)) {
+       return 'Sin verificar';
+     }
+ 
+     const minutosTotales = Math.round(
+       Math.abs(horas) * 60
+     );
+ 
+     const hh = Math.floor(minutosTotales / 60);
+     const mm = minutosTotales % 60;
+ 
+     return (
+       (horas < 0 ? '−' : '') +
+       hh + ' h ' +
+       String(mm).padStart(2, '0') + ' min'
+     );
+   }
+ 
+   modal(
+     'Llegada anterior → presentación siguiente',
+ 
+     tabla(
+       [
+         'Coordinador',
+         'Viaje anterior',
+         'Llegada de regreso',
+         'Viaje siguiente',
+         'Presentación',
+         'Descanso'
+       ],
+ 
+       rows.map(r => [
+         H(getCoord(r.cid)?.nombre || r.cid),
+ 
+         H(r.anterior.aliasGrupo),
+ 
+         mostrarEvento(r.fin),
+ 
+         H(r.siguiente.aliasGrupo),
+ 
+         mostrarEvento(r.ini),
+ 
+         mostrarDescanso(r.horas)
+       ])
+     )
+   );
+ }
+  
  function resumen(){const root=document.getElementById('resumen-wrap');if(!root)return;const gs=filtros(),rows=[];for(const d of DESTINOS_COORD){const list=gs.filter(g=>destinoCoord(g.destino)===d);rows.push([d,list]);}for(const f of [...new Set(gs.map(g=>g.fechaInicio))].sort())rows.push([fecha(f),gs.filter(g=>g.fechaInicio===f)]);root.innerHTML=tabla(['Destino / Fecha de inicio','Grupos'],rows.map(([label,list],i)=>[H(label),`<button class="btn small" data-res="${i}">${list.length}</button>`]));root.querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>mostrarGrupos(rows[Number(b.dataset.res)][0],rows[Number(b.dataset.res)][1]));}
  function hoteles(){const rows=new Map(),gs=filtros();for(const g of gs){const asign=state().SETS.filter(s=>s.confirmado&&s.coordinadorId&&A(s.viajes).includes(g.id));for(const h of A(g.hoteles)){if(!h.checkIn||!h.checkOut)continue;let d=h.checkIn;let guard=0;while(d<h.checkOut&&guard++<400){const k=(h.hotelId||h.nombre)+'|'+d;if(!rows.has(k))rows.set(k,{nombre:h.nombre,d,coords:new Map()});for(const s of asign){const c=getCoord(s.coordinadorId);if(!c)continue;const m=rows.get(k).coords;if(!m.has(c.id))m.set(c.id,{c,grupos:new Set()});m.get(c.id).grupos.add(g.aliasGrupo);}const next=new Date(d+'T12:00:00Z');next.setUTCDate(next.getUTCDate()+1);d=next.toISOString().slice(0,10);}}}
  modal('Hoteles por noche · hotel del grupo · check-out excluido',tabla(['Hotel','Noche','Hombres','Mujeres','Sin informar','Coordinadores y grupos'],[...rows.values()].sort((a,b)=>a.d.localeCompare(b.d)||a.nombre.localeCompare(b.nombre)).map(r=>{const cs=[...r.coords.values()];return [H(r.nombre),fecha(r.d),cs.filter(x=>x.c.sexo==='hombre').length,cs.filter(x=>x.c.sexo==='mujer').length,cs.filter(x=>!['hombre','mujer'].includes(x.c.sexo)).length,cs.map(x=>H(x.c.nombre)+' · '+H([...x.grupos].join(' / '))).join('<br>')];})));}
