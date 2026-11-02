@@ -4812,6 +4812,22 @@ function renderTransportesPreconfirmacion(vuelosNorm){
 }
 
 function renderTransportesConfirmacion(vuelosNorm) {
+  // Si hay traslado de ida, el punto inicial de reunión
+  // se destaca en el traslado y no en el vuelo.
+  const tieneTrasladoIda = (vuelosNorm || []).some(viaje => {
+    if (!esTransferReal(viaje)) return false;
+
+    const sentido = String(
+      viaje.transferLeg || ''
+    ).trim().toLowerCase();
+
+    // Un traslado solo de vuelta no cambia el destaque del vuelo.
+    if (sentido === 'vuelta') return false;
+
+    // Coincide con los traslados de ida que se muestran:
+    // ida, ida+vuelta y registros antiguos sin sentido.
+    return !!viaje.fechaIda;
+  });
   const {
     idaLegsPlan,
     vueltaLegsPlan
@@ -4866,7 +4882,10 @@ function renderTransportesConfirmacion(vuelosNorm) {
         <td>${texto(proveedor)}</td>
         <td>${texto(formatShortDate(fecha))}</td>
         <td>${texto(vuelo.origen)}</td>
-        ${celdaPresentacion(hrs(presentacion), esIda)}
+        ${celdaPresentacion(
+          hrs(presentacion),
+          esIda && !tieneTrasladoIda
+        )}
         <td>${texto(hrs(salida))}</td>
         <td>${texto(vuelo.destino)}</td>
         <td>${texto(hrs(arribo))}</td>
