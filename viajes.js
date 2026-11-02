@@ -1984,8 +1984,8 @@ async function renderVuelos(){
       } else {
         const lbus = (v.idaHora || v.vueltaHora) ?
           `<div style="font-size:.92em; color:#333; margin-top:.2em;">
-            <div><strong>Salida Bus (ida):</strong> ${v.idaHora || '—'}</div>
-            <div><strong>Regreso Bus:</strong> ${v.vueltaHora || '—'}</div>
+            <div><strong>Presentación IDA:</strong> ${v.idaHora || '—'}</div>
+            <div><strong>Presentación REGRESO:</strong> ${v.vueltaHora || '—'}</div>
           </div>` : '';
         horariosTL = lbus;
       }
