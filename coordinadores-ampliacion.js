@@ -73,15 +73,278 @@ export function crearAmpliacionCoordinadores(api){
  function saludHtml(g){const r=saludGrupo(g);if(!r)return '<span class="muted">Salud no disponible o cruce por negocio ambiguo</span>';const c=r.cuentas;return ['neuro','medica','dieta','apoyo','pendientes'].map(k=>`${{neuro:'Neurodivergencias',medica:'Situaciones médicas',dieta:'Dietas',apoyo:'Apoyo',pendientes:'Fichas pendientes'}[k]}: <b>${c[k]} / ${c.total} · ${c.total?(100*c[k]/c.total).toFixed(1)+' %':'—'}</b>`).join(' · ');}
  function grupoRows(gs){return gs.map(g=>{const c=cobertura(g),names=state().SETS.filter(s=>s.confirmado&&A(s.viajes).includes(g.id)).map(s=>H(getCoord(s.coordinadorId)?.nombre||'Sin coordinador')+' · '+H({aprobado:'Aceptado',rechazado:'Rechazado',pendiente:'Pendiente'}[E(s.estadoCoord)]));return [H(g.aliasGrupo),H(g.id)+' / '+H(g.numeroNegocio),H(destinoCoord(g.destino)),fecha(g.fechaInicio)+' → '+fecha(g.fechaFin),`${c.confirmados}/${c.requeridos} confirmados · ${c.faltan} faltan · ${c.planificados} en planificación`,names.join('<br>')||'—',saludHtml(g)];});}
  function mostrarGrupos(title,gs){modal(title,tabla(['Grupo','ID Operaciones / Negocio','Destino','Fechas','Cobertura','Coordinadores','Salud'],grupoRows(gs)));}
- function stats(){const root=document.getElementById('stats-viajes-wrap');if(!root)return;const gs=filtros(),groupSet=new Set(gs.map(g=>g.id)),ss=state().SETS.filter(s=>A(s.viajes).some(id=>groupSet.has(id))),cs=gs.map(g=>({g,c:cobertura(g)}));
- const buttons=[['Grupos del año filtrados',gs.length,()=>mostrarGrupos('Todos los grupos',gs)],['Grupos sin coordinadores confirmados',cs.filter(x=>!x.c.confirmados).length,()=>mostrarGrupos('Sin coordinadores confirmados',cs.filter(x=>!x.c.confirmados).map(x=>x.g))],['Grupos sin planificación',cs.filter(x=>!x.c.planificados).length,()=>mostrarGrupos('Sin planificación',cs.filter(x=>!x.c.planificados).map(x=>x.g))],['Grupos parcialmente cubiertos',cs.filter(x=>x.c.confirmados>0&&x.c.faltan>0).length,()=>mostrarGrupos('Parcialmente cubiertos',cs.filter(x=>x.c.confirmados>0&&x.c.faltan>0).map(x=>x.g))],['Grupos completos',cs.filter(x=>!x.c.faltan).length,()=>mostrarGrupos('Cobertura completa',cs.filter(x=>!x.c.faltan).map(x=>x.g))],['Cupos pendientes de confirmar',cs.reduce((n,x)=>n+x.c.faltan,0),()=>mostrarGrupos('Grupos con cupos pendientes',cs.filter(x=>x.c.faltan).map(x=>x.g))],['Conjuntos en planificación',ss.filter(s=>!s.confirmado).length,()=>mostrarSets('En planificación',ss.filter(s=>!s.confirmado))],['Conjuntos confirmados',ss.filter(s=>s.confirmado&&s.coordinadorId).length,()=>mostrarSets('Confirmados',ss.filter(s=>s.confirmado&&s.coordinadorId))]];
- for(const size of [...new Set(ss.map(s=>A(s.viajes).length))].sort((a,b)=>a-b)){const selected=ss.filter(s=>A(s.viajes).length===size);buttons.push([`Conjuntos de ${size} grupos`,selected.length,()=>mostrarSets(`Conjuntos de ${size} grupos`,selected)]);}
- for(const est of ['aprobado','pendiente','rechazado']){const selected=ss.filter(s=>s.coordinadorId&&E(s.estadoCoord)===est);buttons.push(['Conjuntos '+({aprobado:'aceptados',pendiente:'pendientes de aceptación',rechazado:'rechazados'}[est]),selected.length,()=>mostrarSets('Aceptación por conjunto',selected)]);}
- const coords=[...new Set(ss.map(s=>s.coordinadorId).filter(Boolean))];buttons.push(['Coordinadores distintos',coords.length,()=>mostrarSets('Coordinadores y sus conjuntos',ss.filter(s=>s.coordinadorId))]);
- const tr=transiciones().filter(r=>groupSet.has(r.anterior.id)||groupSet.has(r.siguiente.id));for(const [tipo,label]of [['descanso','Transiciones con menos de 12 h'],['conflicto','Conflictos de horarios'],['verificar_cruce','Cruces de fechas por verificar'],['sin_horarios','Descansos sin verificar']]){const rows=tr.filter(r=>r.tipo===tipo);buttons.push([label,rows.length,()=>mostrarTransiciones(rows)]);}
- buttons.push(['Alertas por revisar',ss.reduce((n,s)=>n+A(s.alertas).length,0),()=>modal('Alertas: cada fila es una advertencia, no un grupo único',tabla(['Coordinador','Tipo','Detalle'],ss.flatMap(s=>A(s.alertas).map(a=>[H(getCoord(s.coordinadorId)?.nombre||'Sin asignar'),a.tipo==='err'?'Conflicto':'Aviso',H(a.msg)]))))]);
- root.innerHTML='<p>Grupos, cupos, conjuntos y personas se cuentan por separado. Los filtros de destino y fecha aplican a estas estadísticas.</p><div class="coord-kpis">'+buttons.map(([label,n],i)=>`<button class="coord-kpi" data-kpi="${i}"><span>${H(label)}</span><b>${n}</b></button>`).join('')+'</div><div class="row" style="margin-top:12px"><button class="btn" data-hoteles>Hoteles y coincidencias</button><button class="btn" data-salud>Salud de los grupos</button></div>';
- root.querySelectorAll('[data-kpi]').forEach(b=>b.onclick=()=>buttons[Number(b.dataset.kpi)][2]());root.querySelector('[data-hoteles]').onclick=hoteles;root.querySelector('[data-salud]').onclick=saludRanking;
+ function stats() {
+   const root = document.getElementById('stats-viajes-wrap');
+ 
+   if (!root) return;
+ 
+   const gs = filtros();
+ 
+   const groupSet = new Set(
+     gs.map(g => g.id)
+   );
+ 
+   const ss = state().SETS.filter(s =>
+     A(s.viajes).some(id => groupSet.has(id))
+   );
+ 
+   const cs = gs.map(g => ({
+     g,
+     c: cobertura(g)
+   }));
+ 
+   const buttons = [
+     [
+       'Grupos del año filtrados',
+       gs.length,
+       () => mostrarGrupos('Todos los grupos', gs)
+     ],
+     [
+       'Grupos sin coordinadores confirmados',
+       cs.filter(x => !x.c.confirmados).length,
+       () => mostrarGrupos(
+         'Sin coordinadores confirmados',
+         cs.filter(x => !x.c.confirmados).map(x => x.g)
+       )
+     ],
+     [
+       'Grupos sin planificación',
+       cs.filter(x => !x.c.planificados).length,
+       () => mostrarGrupos(
+         'Sin planificación',
+         cs.filter(x => !x.c.planificados).map(x => x.g)
+       )
+     ],
+     [
+       'Grupos parcialmente cubiertos',
+       cs.filter(x =>
+         x.c.confirmados > 0 && x.c.faltan > 0
+       ).length,
+       () => mostrarGrupos(
+         'Parcialmente cubiertos',
+         cs.filter(x =>
+           x.c.confirmados > 0 && x.c.faltan > 0
+         ).map(x => x.g)
+       )
+     ],
+     [
+       'Grupos completos',
+       cs.filter(x => !x.c.faltan).length,
+       () => mostrarGrupos(
+         'Cobertura completa',
+         cs.filter(x => !x.c.faltan).map(x => x.g)
+       )
+     ],
+     [
+       'Cupos pendientes de confirmar',
+       cs.reduce((n, x) => n + x.c.faltan, 0),
+       () => mostrarGrupos(
+         'Grupos con cupos pendientes',
+         cs.filter(x => x.c.faltan).map(x => x.g)
+       )
+     ],
+     [
+       'Conjuntos en planificación',
+       ss.filter(s => !s.confirmado).length,
+       () => mostrarSets(
+         'En planificación',
+         ss.filter(s => !s.confirmado)
+       )
+     ],
+     [
+       'Conjuntos confirmados',
+       ss.filter(s =>
+         s.confirmado && s.coordinadorId
+       ).length,
+       () => mostrarSets(
+         'Confirmados',
+         ss.filter(s =>
+           s.confirmado && s.coordinadorId
+         )
+       )
+     ]
+   ];
+ 
+   // Cantidad de viajes por conjunto.
+   const tamanos = [
+     ...new Set(
+       ss.map(s => A(s.viajes).length)
+     )
+   ].sort((a, b) => a - b);
+ 
+   for (const size of tamanos) {
+     const selected = ss.filter(s =>
+       A(s.viajes).length === size
+     );
+ 
+     buttons.push([
+       `Conjuntos de ${size} grupos`,
+       selected.length,
+       () => mostrarSets(
+         `Conjuntos de ${size} grupos`,
+         selected
+       )
+     ]);
+   }
+ 
+   // Estado de aceptación.
+   const nombresEstado = {
+     aprobado: 'aceptados',
+     pendiente: 'pendientes de aceptación',
+     rechazado: 'rechazados'
+   };
+ 
+   for (const est of ['aprobado', 'pendiente', 'rechazado']) {
+     const selected = ss.filter(s =>
+       s.coordinadorId &&
+       E(s.estadoCoord) === est
+     );
+ 
+     buttons.push([
+       'Conjuntos ' + nombresEstado[est],
+       selected.length,
+       () => mostrarSets(
+         'Aceptación por conjunto',
+         selected
+       )
+     ]);
+   }
+ 
+   // Coordinadores distintos.
+   const coords = [
+     ...new Set(
+       ss.map(s => s.coordinadorId).filter(Boolean)
+     )
+   ];
+ 
+   buttons.push([
+     'Coordinadores distintos',
+     coords.length,
+     () => mostrarSets(
+       'Coordinadores y sus conjuntos',
+       ss.filter(s => s.coordinadorId)
+     )
+   ]);
+ 
+   // Transiciones que corresponden a los grupos filtrados.
+   const tr = transiciones().filter(r =>
+     groupSet.has(r.anterior.id) ||
+     groupSet.has(r.siguiente.id)
+   );
+ 
+   const indicadoresTransiciones = [
+     {
+       label: 'Transiciones con menos de 12 h',
+       filtrar: r => r.tipo === 'descanso'
+     },
+     {
+       label: 'Transiciones entre 12 y menos de 24 h',
+       filtrar: r =>
+         Number.isFinite(r.horas) &&
+         r.horas >= 12 &&
+         r.horas < 24
+     },
+     {
+       label: 'Conflictos de horarios',
+       filtrar: r => r.tipo === 'conflicto'
+     },
+     {
+       label: 'Cruces de fechas por verificar',
+       filtrar: r => r.tipo === 'verificar_cruce'
+     },
+     {
+       label: 'Descansos sin verificar',
+       filtrar: r => r.tipo === 'sin_horarios'
+     }
+   ];
+ 
+   for (const indicador of indicadoresTransiciones) {
+     const rows = tr
+       .filter(indicador.filtrar)
+       .sort((a, b) =>
+         (a.horas ?? Infinity) - (b.horas ?? Infinity)
+       );
+ 
+     buttons.push([
+       indicador.label,
+       rows.length,
+       () => mostrarTransiciones(rows)
+     ]);
+   }
+ 
+   // Alertas existentes.
+   buttons.push([
+     'Alertas por revisar',
+ 
+     ss.reduce(
+       (n, s) => n + A(s.alertas).length,
+       0
+     ),
+ 
+     () => modal(
+       'Alertas: cada fila es una advertencia, no un grupo único',
+ 
+       tabla(
+         ['Coordinador', 'Tipo', 'Detalle'],
+ 
+         ss.flatMap(s =>
+           A(s.alertas).map(a => [
+             H(
+               getCoord(s.coordinadorId)?.nombre ||
+               'Sin asignar'
+             ),
+ 
+             a.tipo === 'err'
+               ? 'Conflicto'
+               : 'Aviso',
+ 
+             H(a.msg)
+           ])
+         )
+       )
+     )
+   ]);
+ 
+   // Dibujar tarjetas.
+   root.innerHTML = `
+     <p>
+       Grupos, cupos, conjuntos y personas se cuentan por separado.
+       Los filtros de destino y fecha aplican a estas estadísticas.
+     </p>
+ 
+     <div class="coord-kpis">
+       ${
+         buttons.map(([label, n], i) => `
+           <button
+             class="coord-kpi"
+             data-kpi="${i}"
+           >
+             <span>${H(label)}</span>
+             <b>${n}</b>
+           </button>
+         `).join('')
+       }
+     </div>
+ 
+     <div class="row" style="margin-top:12px">
+       <button class="btn" data-hoteles>
+         Hoteles y coincidencias
+       </button>
+ 
+       <button class="btn" data-salud>
+         Salud de los grupos
+       </button>
+     </div>
+   `;
+ 
+   root.querySelectorAll('[data-kpi]').forEach(b => {
+     b.onclick = () => {
+       buttons[Number(b.dataset.kpi)][2]();
+     };
+   });
+ 
+   root.querySelector('[data-hoteles]').onclick = hoteles;
+   root.querySelector('[data-salud]').onclick = saludRanking;
  }
  function saludRanking(){const root=modal('Salud por grupo · porcentajes sobre todos los viajeros','<p>Casos declarados conocidos. Las categorías pueden coincidir. Fichas pendientes y uso interno restringido limitan la información disponible.</p><label>Ordenar por <select id="coordOrdenSalud"><option value="neuro">Neurodivergencias</option><option value="medica">Situaciones médicas</option><option value="apoyo">Necesidades de apoyo</option><option value="dieta">Dietas</option><option value="pendientes">Fichas pendientes</option></select></label><div id="coordTablaSalud"></div>');const render=()=>{const key=root.querySelector('select').value;const gs=filtros().slice().sort((a,b)=>{const ca=saludGrupo(a)?.cuentas,cb=saludGrupo(b)?.cuentas;return (cb?.total?cb[key]/cb.total:-1)-(ca?.total?ca[key]/ca.total:-1);});root.querySelector('#coordTablaSalud').innerHTML=tabla(['Grupo','ID / Negocio','Destino','Fechas','Cobertura','Coordinadores','Salud'],grupoRows(gs));};root.querySelector('select').onchange=render;render();}
  function mostrarSets(title,ss){modal(title,tabla(['Coordinador','Confirmación','Aceptación','Grupos','Fechas'],ss.map(s=>[H(getCoord(s.coordinadorId)?.nombre||'Sin asignar'),s.confirmado?'Confirmado':'Planificación',H({aprobado:'Aceptado',pendiente:'Pendiente',rechazado:'Rechazado'}[E(s.estadoCoord)]),A(s.viajes).map(id=>H(getGroup(id)?.aliasGrupo||id)).join('<br>'),A(s.viajes).map(id=>fecha(getGroup(id)?.fechaInicio)+' → '+fecha(getGroup(id)?.fechaFin)).join('<br>')])));}
