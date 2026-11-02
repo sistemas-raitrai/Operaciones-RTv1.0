@@ -4226,6 +4226,27 @@ function tipoLegTxt(leg){
   return 'TRASLADO';
 }
 
+function calcularPresentacionTerrestre(horaSalida) {
+  const hora = normTime(horaSalida || '');
+  if (!hora) return '—';
+
+  const [hh, mm] = hora.split(':').map(Number);
+  const salidaMinutos = hh * 60 + mm;
+  const presentacionMinutos = (salidaMinutos - 30 + 1440) % 1440;
+
+  const horas = String(
+    Math.floor(presentacionMinutos / 60)
+  ).padStart(2, '0');
+
+  const minutos = String(
+    presentacionMinutos % 60
+  ).padStart(2, '0');
+
+  return `${horas}:${minutos} HRS${
+    salidaMinutos < 30 ? ' (DÍA ANTERIOR)' : ''
+  }`;
+}
+
 function hrs(t){
   return t ? `${t} HRS` : '—';
 }
@@ -4414,208 +4435,103 @@ function renderTransfersPreconfirmacion(vuelosNorm){
   `;
 }
 
-function renderTransfersConfirmacion(vuelosNorm){
-  const transfers =
-    (vuelosNorm || []).filter(
-      esTransferReal
-    );
-
-  if (!transfers.length) {
-    return '';
-  }
-
+function renderTransfersConfirmacion(vuelosNorm) {
+  const transfers = (vuelosNorm || []).filter(esTransferReal);
   const items = [];
   const vistos = new Set();
 
-  const addItem = ({
-    tramo,
-    origen,
-    destino,
-    fecha,
-    hora
-  }) => {
-    if (!fecha) {
-      return;
-    }
+  const agregar = (viaje, sentido) => {
+    const esIda = sentido === 'ida';
+    const fecha = esIda ? viaje.fechaIda : viaje.fechaVuelta;
+    if (!fecha) return;
 
-    const desde =
-      origen ||
-      'Origen por informar';
+    const ruta = getRutaTransfer(viaje, sentido);
 
-    const hasta =
-      destino ||
-      'Destino por informar';
+    const salida = normTime(
+      esIda
+        ? (viaje.idaHora || viaje.vueloIdaHora)
+        : (viaje.vueltaHora || viaje.vueloVueltaHora)
+    );
 
-    const horaNormalizada =
-      normTime(
-        hora ||
-        ''
-      );
-
-    const key = [
-      tramo,
-      desde,
-      hasta,
+    const clave = [
+      sentido,
+      ruta.desde,
+      ruta.hasta,
       fecha,
-      horaNormalizada
+      salida
     ].join('__');
 
-    if (vistos.has(key)) {
-      return;
-    }
+    if (vistos.has(clave)) return;
+    vistos.add(clave);
 
-    vistos.add(key);
+    const presentacion = calcularPresentacionTerrestre(salida);
+    const destacar = esIda && !!salida;
 
-    const horaHTML =
-      horaNormalizada
-        ? ` · ${hrs(horaNormalizada)}`
-        : '';
+    items.push({
+      fecha,
+      salida,
+      html: `
+        <li style="margin-bottom:2mm;break-inside:avoid;">
+          <div>
+            <strong>
+              ${esIda ? 'IDA' : 'VUELTA'}:
+              ${escapeHtml(ruta.desde)} →
+              ${escapeHtml(ruta.hasta)}
+            </strong>
+          </div>
 
-    items.push(`
-      <li>
-        <strong>${desde} → ${hasta}:</strong>
-        ${formatShortDate(fecha)}${horaHTML}
-      </li>
-    `);
+          <div>
+            ${escapeHtml(formatShortDate(fecha))}
+          </div>
+
+          <div>
+            ${
+              destacar
+                ? `
+                  <span class="confirm-transfer-presentacion">
+                    <strong><u>
+                      Presentación:
+                      ${escapeHtml(presentacion)}
+                    </u></strong>
+                  </span>
+                `
+                : `
+                  Presentación: ${escapeHtml(presentacion)}
+                `
+            }
+            · Salida: ${escapeHtml(hrs(salida))}
+          </div>
+        </li>
+      `
+    });
   };
 
-  transfers.forEach(v => {
-    const leg =
-      String(
-        v.transferLeg ||
-        ''
-      ).toLowerCase();
+  transfers.forEach(viaje => {
+    const sentido = String(viaje.transferLeg || '').toLowerCase();
 
-    if (leg === 'ida') {
-      const ruta =
-        getRutaTransfer(
-          v,
-          'ida'
-        );
-
-      addItem({
-        tramo: 'IDA',
-        origen: ruta.desde,
-        destino: ruta.hasta,
-        fecha: v.fechaIda,
-        hora:
-          v.idaHora ||
-          v.vueloIdaHora
-      });
-
-      return;
-    }
-
-    if (leg === 'vuelta') {
-      const ruta =
-        getRutaTransfer(
-          v,
-          'vuelta'
-        );
-
-      addItem({
-        tramo: 'VUELTA',
-        origen: ruta.desde,
-        destino: ruta.hasta,
-        fecha: v.fechaVuelta,
-        hora:
-          v.vueltaHora ||
-          v.vueloVueltaHora
-      });
-
-      return;
-    }
-
-    if (leg === 'ida+vuelta') {
-      const rutaIda =
-        getRutaTransfer(
-          v,
-          'ida'
-        );
-
-      const rutaVuelta =
-        getRutaTransfer(
-          v,
-          'vuelta'
-        );
-
-      addItem({
-        tramo: 'IDA',
-        origen: rutaIda.desde,
-        destino: rutaIda.hasta,
-        fecha: v.fechaIda,
-        hora:
-          v.idaHora ||
-          v.vueloIdaHora
-      });
-
-      addItem({
-        tramo: 'VUELTA',
-        origen: rutaVuelta.desde,
-        destino: rutaVuelta.hasta,
-        fecha: v.fechaVuelta,
-        hora:
-          v.vueltaHora ||
-          v.vueloVueltaHora
-      });
-
-      return;
-    }
-
-    /*
-      Respaldo para traslados antiguos
-      que todavía no tengan transferLeg.
-    */
-    if (v.fechaIda) {
-      const rutaIda =
-        getRutaTransfer(
-          v,
-          'ida'
-        );
-
-      addItem({
-        tramo: 'IDA',
-        origen: rutaIda.desde,
-        destino: rutaIda.hasta,
-        fecha: v.fechaIda,
-        hora:
-          v.idaHora ||
-          v.vueloIdaHora
-      });
-    }
-
-    if (v.fechaVuelta) {
-      const rutaVuelta =
-        getRutaTransfer(
-          v,
-          'vuelta'
-        );
-
-      addItem({
-        tramo: 'VUELTA',
-        origen: rutaVuelta.desde,
-        destino: rutaVuelta.hasta,
-        fecha: v.fechaVuelta,
-        hora:
-          v.vueltaHora ||
-          v.vueloVueltaHora
-      });
+    if (sentido === 'ida') {
+      agregar(viaje, 'ida');
+    } else if (sentido === 'vuelta') {
+      agregar(viaje, 'vuelta');
+    } else {
+      // IDA + VUELTA o registros antiguos sin transferLeg.
+      agregar(viaje, 'ida');
+      agregar(viaje, 'vuelta');
     }
   });
 
-  if (!items.length) {
-    return '';
-  }
+  items.sort((a, b) =>
+    a.fecha.localeCompare(b.fecha) ||
+    (a.salida || '99:99').localeCompare(b.salida || '99:99')
+  );
+
+  if (!items.length) return '';
 
   return `
-    <div
-      class="note"
-      style="margin-top:1.5mm;"
-    >
-      <strong>Traslado(s):</strong>
-
+    <div class="note confirm-traslados">
+      <div class="confirm-tramo-title">TRASLADOS</div>
       <ul style="margin-top:1mm;">
-        ${items.join('')}
+        ${items.map(item => item.html).join('')}
       </ul>
     </div>
   `;
@@ -4895,154 +4811,163 @@ function renderTransportesPreconfirmacion(vuelosNorm){
   `;
 }
 
-function renderTransportesConfirmacion(vuelosNorm){
+function renderTransportesConfirmacion(vuelosNorm) {
   const {
     idaLegsPlan,
     vueltaLegsPlan
   } = particionarVuelos(vuelosNorm);
 
-  const filasIda = [];
-  const filasVuelta = [];
-
   const texto = valor =>
     escapeHtml(String(valor || '—'));
 
-  const crearFila = ({
-    tipo,
-    proveedor,
-    fecha,
-    origen,
-    presentacion,
-    salida,
-    destino,
-    arribo
-  }) => `
-    <tr>
-      <td><strong>${texto(tipo)}</strong></td>
-      <td>${texto(proveedor)}</td>
-      <td>${texto(formatShortDate(fecha))}</td>
-      <td>${texto(origen)}</td>
-      <td>${texto(hrs(presentacion))}</td>
-      <td>${texto(hrs(salida))}</td>
-      <td>${texto(destino)}</td>
-      <td>${texto(hrs(arribo))}</td>
-    </tr>
-  `;
+  /*
+    Presentación visible en ambos sentidos.
+    Solo IDA se remarca y lleva la hora en negrita.
+  */
+  const celdaPresentacion = (valor, destacar) => {
+    if (destacar && valor && valor !== '—') {
+      return `
+        <td class="confirm-presentacion-destacada">
+          <strong>${texto(valor)}</strong>
+        </td>
+      `;
+    }
 
-  // Vuelos de ida: conserva el orden de las conexiones.
-  idaLegsPlan.forEach(v => {
-    filasIda.push(crearFila({
-      tipo: 'AÉREO',
-      proveedor: [
-        v.aerolinea,
-        v.numero
-      ].filter(Boolean).join(' '),
-      fecha: v.fechaIda || v.fecha,
-      origen: v.origen,
-      presentacion: v.presentacionIda,
-      salida: v.salidaIda,
-      destino: v.destino,
-      arribo: v.arriboIda
-    }));
-  });
+    return `<td>${texto(valor)}</td>`;
+  };
 
-  // Vuelos de vuelta: conserva el orden de las conexiones.
-  vueltaLegsPlan.forEach(v => {
-    filasVuelta.push(crearFila({
-      tipo: 'AÉREO',
-      proveedor: [
-        v.aerolinea,
-        v.numero
-      ].filter(Boolean).join(' '),
-      fecha: v.fechaVuelta || v.fecha,
-      origen: v.origen,
-      presentacion: v.presentacionVuelta,
-      salida: v.salidaVuelta,
-      destino: v.destino,
-      arribo: v.arriboVuelta
-    }));
-  });
+  const crearFilaAerea = (vuelo, sentido) => {
+    const esIda = sentido === 'ida';
 
-  // Mantiene los transportes terrestres principales.
-  // Los traslados locales se muestran en su bloque independiente.
-  const terrestres = (vuelosNorm || []).filter(v =>
-    norm(v.tipoTransporte || '') === 'terrestre' &&
-    !esTransferReal(v)
+    const proveedor = [
+      vuelo.aerolinea,
+      vuelo.numero
+    ].filter(Boolean).join(' ');
+
+    const fecha = esIda
+      ? (vuelo.fechaIda || vuelo.fecha)
+      : (vuelo.fechaVuelta || vuelo.fecha);
+
+    const presentacion = esIda
+      ? vuelo.presentacionIda
+      : vuelo.presentacionVuelta;
+
+    const salida = esIda
+      ? vuelo.salidaIda
+      : vuelo.salidaVuelta;
+
+    const arribo = esIda
+      ? vuelo.arriboIda
+      : vuelo.arriboVuelta;
+
+    return `
+      <tr>
+        <td><strong>AÉREO</strong></td>
+        <td>${texto(proveedor)}</td>
+        <td>${texto(formatShortDate(fecha))}</td>
+        <td>${texto(vuelo.origen)}</td>
+        ${celdaPresentacion(hrs(presentacion), esIda)}
+        <td>${texto(hrs(salida))}</td>
+        <td>${texto(vuelo.destino)}</td>
+        <td>${texto(hrs(arribo))}</td>
+      </tr>
+    `;
+  };
+
+  const crearFilaTerrestre = (viaje, sentido) => {
+    const esIda = sentido === 'ida';
+    const fecha = esIda ? viaje.fechaIda : viaje.fechaVuelta;
+
+    const salida = normTime(
+      esIda ? viaje.idaHora : viaje.vueltaHora
+    );
+
+    const origen = esIda ? viaje.origen : viaje.destino;
+    const destino = esIda ? viaje.destino : viaje.origen;
+
+    const presentacion =
+      calcularPresentacionTerrestre(salida);
+
+    return `
+      <tr>
+        <td><strong>TERRESTRE</strong></td>
+        <td>${texto(viaje.proveedor)}</td>
+        <td>${texto(formatShortDate(fecha))}</td>
+        <td>${texto(origen)}</td>
+        ${celdaPresentacion(presentacion, esIda)}
+        <td>${texto(hrs(salida))}</td>
+        <td>${texto(destino)}</td>
+      </tr>
+    `;
+  };
+
+  const terrestres = (vuelosNorm || []).filter(viaje =>
+    norm(viaje.tipoTransporte || '') === 'terrestre' &&
+    !esTransferReal(viaje)
   );
 
-  terrestres.forEach(v => {
-    if (v.fechaIda) {
-      filasIda.push(crearFila({
-        tipo: 'TERRESTRE',
-        proveedor: v.proveedor,
-        fecha: v.fechaIda,
-        origen: v.origen,
-        presentacion: '',
-        salida: v.idaHora,
-        destino: v.destino,
-        arribo: ''
-      }));
-    }
-
-    if (v.fechaVuelta) {
-      filasVuelta.push(crearFila({
-        tipo: 'TERRESTRE',
-        proveedor: v.proveedor,
-        fecha: v.fechaVuelta,
-        origen: v.destino,
-        presentacion: '',
-        salida: v.vueltaHora,
-        destino: v.origen,
-        arribo: ''
-      }));
-    }
-  });
-
-  const crearTabla = (titulo, filas) => {
+  const crearTabla = (filas, esTerrestre) => {
     if (!filas.length) return '';
+
+    const anchos = esTerrestre
+      ? [10, 18, 15, 17, 14, 11, 15]
+      : [9, 16, 14, 15, 12, 10, 14, 10];
+
+    return `
+      <table class="confirm-flight-table confirm-tramos-table">
+        <colgroup>
+          ${anchos.map(ancho =>
+            `<col style="width:${ancho}%">`
+          ).join('')}
+        </colgroup>
+
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>${esTerrestre ? 'Proveedor' : 'Proveedor / vuelo'}</th>
+            <th>Fecha</th>
+            <th>Origen</th>
+            <th>Presentación</th>
+            <th>Salida</th>
+            <th>Destino</th>
+            ${esTerrestre ? '' : '<th>Arribo</th>'}
+          </tr>
+        </thead>
+
+        <tbody>${filas.join('')}</tbody>
+      </table>
+    `;
+  };
+
+  const crearBloque = (titulo, sentido, vuelosAereos) => {
+    const esIda = sentido === 'ida';
+
+    const filasAereas = vuelosAereos.map(vuelo =>
+      crearFilaAerea(vuelo, sentido)
+    );
+
+    const filasTerrestres = terrestres
+      .filter(viaje =>
+        esIda ? !!viaje.fechaIda : !!viaje.fechaVuelta
+      )
+      .map(viaje => crearFilaTerrestre(viaje, sentido));
+
+    if (!filasAereas.length && !filasTerrestres.length) {
+      return '';
+    }
 
     return `
       <div class="confirm-tramo-block">
-        <div class="confirm-tramo-title">
-          ${titulo}
-        </div>
-
-        <table class="confirm-flight-table confirm-tramos-table">
-          <colgroup>
-            <col style="width:9%">
-            <col style="width:16%">
-            <col style="width:14%">
-            <col style="width:15%">
-            <col style="width:12%">
-            <col style="width:10%">
-            <col style="width:14%">
-            <col style="width:10%">
-          </colgroup>
-
-          <thead>
-            <tr>
-              <th>Tipo</th>
-              <th>Proveedor / vuelo</th>
-              <th>Fecha</th>
-              <th>Origen</th>
-              <th>Presentación</th>
-              <th>Salida</th>
-              <th>Destino</th>
-              <th>Arribo</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            ${filas.join('')}
-          </tbody>
-        </table>
+        <div class="confirm-tramo-title">${titulo}</div>
+        ${crearTabla(filasAereas, false)}
+        ${crearTabla(filasTerrestres, true)}
       </div>
     `;
   };
 
   const tablasHTML = [
-    crearTabla('TRAMO IDA', filasIda),
-    crearTabla('TRAMO VUELTA', filasVuelta)
+    crearBloque('TRAMO IDA', 'ida', idaLegsPlan),
+    crearBloque('TRAMO VUELTA', 'vuelta', vueltaLegsPlan)
   ].join('');
 
   const trasladosHTML =
@@ -5058,51 +4983,78 @@ function renderTransportesConfirmacion(vuelosNorm){
 
   return `
     <style>
-      .confirm-doc:not(.preconfirm-doc)
-      .confirm-tramo-block {
-        margin-top: 2.5mm;
+      .confirm-doc:not(.preconfirm-doc) .confirm-tramo-block {
+        margin-top:2.5mm;
       }
 
-      .confirm-doc:not(.preconfirm-doc)
-      .confirm-tramo-title {
-        margin-bottom: 1.5mm;
-        font-size: 8.5pt;
-        font-weight: 700;
-        break-after: avoid;
-        page-break-after: avoid;
+      .confirm-doc:not(.preconfirm-doc) .confirm-tramo-title {
+        margin-bottom:1.5mm;
+        font-size:8.5pt;
+        font-weight:700;
+        break-after:avoid;
+        page-break-after:avoid;
       }
 
-      /*
-        Anula los anchos antiguos de nueve columnas.
-        Los nuevos anchos se definen en el colgroup.
-      */
       .confirm-doc:not(.preconfirm-doc)
       .confirm-flight-table.confirm-tramos-table th,
       .confirm-doc:not(.preconfirm-doc)
       .confirm-flight-table.confirm-tramos-table td {
-        width: auto !important;
-        padding: 1.2mm 0.8mm !important;
-        border: 1px solid #d4d8dd !important;
-        white-space: normal !important;
-        overflow-wrap: anywhere !important;
+        width:auto !important;
+        padding:1.2mm 0.8mm !important;
+        border:1px solid #d4d8dd !important;
+        white-space:normal !important;
+        overflow-wrap:anywhere !important;
       }
 
       .confirm-doc:not(.preconfirm-doc)
       .confirm-flight-table.confirm-tramos-table th {
-        background: #f0f2f4 !important;
-        font-weight: 700;
+        background:#f0f2f4 !important;
+        font-weight:700;
       }
 
       .confirm-doc:not(.preconfirm-doc)
       .confirm-flight-table.confirm-tramos-table tr {
-        break-inside: avoid;
-        page-break-inside: avoid;
+        break-inside:avoid;
+        page-break-inside:avoid;
+      }
+
+      /* Solo las presentaciones de IDA con hora registrada. */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table.confirm-tramos-table
+      td.confirm-presentacion-destacada {
+        background:#fff2b3 !important;
+        border:2px solid #333 !important;
+        font-weight:800 !important;
+        color:#000 !important;
+        -webkit-print-color-adjust:exact;
+        print-color-adjust:exact;
       }
 
       .confirm-doc:not(.preconfirm-doc)
-      .confirm-horarios-aviso {
-        margin: 1.5mm 0 2.5mm;
-        font-size: 8pt;
+      .confirm-presentacion-destacada strong {
+        font-weight:800 !important;
+      }
+
+      /* Presentación del traslado de IDA. */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-transfer-presentacion {
+        display:inline-block;
+        background:#fff2b3 !important;
+        color:#000 !important;
+        padding:0.5mm 1mm;
+        font-weight:800 !important;
+        text-decoration:underline !important;
+        -webkit-print-color-adjust:exact;
+        print-color-adjust:exact;
+      }
+
+      .confirm-doc:not(.preconfirm-doc) .confirm-traslados {
+        margin:2mm 0 3mm;
+      }
+
+      .confirm-doc:not(.preconfirm-doc) .confirm-horarios-aviso {
+        margin:1.5mm 0 2.5mm;
+        font-size:8pt;
       }
     </style>
 
@@ -5111,8 +5063,8 @@ function renderTransportesConfirmacion(vuelosNorm){
       pueden sufrir modificaciones sin previo aviso.
     </p>
 
-    ${tablasHTML}
     ${trasladosHTML}
+    ${tablasHTML}
   `;
 }
 
