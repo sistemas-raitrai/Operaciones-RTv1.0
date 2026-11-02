@@ -198,10 +198,130 @@ export function crearAmpliacionCoordinadores(api){
  api.setCoordinadores(cat.docs.filter(d=>d.id!=='_borradores').map(d=>{const c=d.data(),y=by.get(d.id);const legacy=A(c.disponibilidad||c.fechasDisponibles).filter(r=>T(r.inicio).slice(0,4)===String(ano)||T(r.fin).slice(0,4)===String(ano));return {...c,id:d.id,nombre:T(c.nombre),correo:T(c.correo),destinos:y?A(y.destinos).map(destinoCoord):legacy.length?A(c.destinos||c.destinosAptos).map(destinoCoord):[],disponibilidad:y?A(y.disponibilidad):legacy,activo:y?y.activo!==false:c.activo!==false,_perfilAnual:!!y};}));}
  async function loadHoras(){const m=new Map();for(const g of state().GRUPOS){const t=evento(g,'inicio');if(t){const x={pres:t.h||null,inicio:t.t.salida||null,fuente:t.t.tipoTransporte,vueloId:t.t.fuenteId||null};m.set(g.id,x);g._horasInicio=x;}}api.setHoras(m);}
  async function loadHoteles(){const m=new Map(),names=new Map();for(const g of state().GRUPOS){m.set(g.id,A(g.hoteles).map(h=>({nombre:h.nombre,ini:h.checkIn,fin:h.checkOut,hotelId:h.hotelId})));A(g.hoteles).forEach(h=>names.set(h.hotelId,h.nombre));}api.setHoteles(m,names);}
- async function loadSets(){const result=await post('cargarConjuntosCoordinadores',{anoViaje:state().ano});const ids=state().ID2GRUPO;bordes=result.bordes||[];
- const sets=result.conjuntos.map(x=>({...x,id:x.id,viajes:A(x.viajes).map(String).filter(id=>ids.has(id)),anoViaje:state().ano,coordinadorId:x.owner==='_borradores'?x.coordinadorId||null:x.owner,_ownerCoordId:x.owner,_version:x.version,confirmado:x.owner!=='_borradores'&&!!x.confirmado,estadoCoord:E(x.estadoCoord),alertas:[]})).filter(x=>x.viajes.length);
- const PREV=state().PREV;PREV.grupos.clear();state().GRUPOS.forEach(g=>PREV.grupos.set(g.id,clone(g)));baseline=new Map(sets.map(s=>[s._ownerCoordId+'/'+s.id,{...clone(s),_firma:firma(s)}]));PREV.sets.clear();baseline.forEach((v,k)=>PREV.sets.set(k,clone(v)));api.setSets(sets);dirty=false;api.refresh();}
- function resetCache(){bordes=[];hist.clear();survey.clear();salud.clear();baseline.clear();}
+
+ async function loadSets() {
+   const inicioServidor = performance.now();
+ 
+   console.log(
+     '[COORD CONJUNTOS] Solicitando al servidor…'
+   );
+ 
+   const result = await post(
+     'cargarConjuntosCoordinadores',
+     {
+       anoViaje: state().ano
+     }
+   );
+ 
+   console.log(
+     '[COORD CONJUNTOS] Respuesta recibida:',
+     {
+       segundos: Number(
+         (
+           (performance.now() - inicioServidor) / 1000
+         ).toFixed(2)
+       ),
+ 
+       conjuntos: A(result.conjuntos).length,
+       bordes: A(result.bordes).length
+     }
+   );
+ 
+   const inicioPreparacion = performance.now();
+   const ids = state().ID2GRUPO;
+ 
+   bordes = result.bordes || [];
+ 
+   const sets = result.conjuntos
+     .map(x => ({
+       ...x,
+ 
+       id: x.id,
+ 
+       viajes: A(x.viajes)
+         .map(String)
+         .filter(id => ids.has(id)),
+ 
+       anoViaje: state().ano,
+ 
+       coordinadorId: x.owner === '_borradores'
+         ? x.coordinadorId || null
+         : x.owner,
+ 
+       _ownerCoordId: x.owner,
+       _version: x.version,
+ 
+       confirmado:
+         x.owner !== '_borradores' &&
+         !!x.confirmado,
+ 
+       estadoCoord: E(x.estadoCoord),
+       alertas: []
+     }))
+     .filter(x => x.viajes.length);
+ 
+   const PREV = state().PREV;
+ 
+   PREV.grupos.clear();
+ 
+   state().GRUPOS.forEach(g => {
+     PREV.grupos.set(g.id, clone(g));
+   });
+ 
+   baseline = new Map(
+     sets.map(s => [
+       s._ownerCoordId + '/' + s.id,
+ 
+       {
+         ...clone(s),
+         _firma: firma(s)
+       }
+     ])
+   );
+ 
+   PREV.sets.clear();
+ 
+   baseline.forEach((v, k) => {
+     PREV.sets.set(k, clone(v));
+   });
+ 
+   api.setSets(sets);
+   dirty = false;
+ 
+   console.log(
+     '[COORD CONJUNTOS] Preparación en memoria:',
+     (
+       (performance.now() - inicioPreparacion) / 1000
+     ).toFixed(2) + ' s'
+   );
+ 
+   const inicioRender = performance.now();
+ 
+   console.log(
+     '[COORD CONJUNTOS] Iniciando render…'
+   );
+ 
+   api.refresh();
+ 
+   console.log(
+     '[COORD CONJUNTOS] Render síncrono terminado:',
+     (
+       (performance.now() - inicioRender) / 1000
+     ).toFixed(2) + ' s'
+   );
+ 
+   // Medición aproximada hasta que el navegador puede
+   // atender el siguiente cuadro, incluidos los decoradores.
+   requestAnimationFrame(() => {
+     console.log(
+       '[COORD CONJUNTOS] Tiempo hasta siguiente cuadro:',
+       (
+         (performance.now() - inicioRender) / 1000
+       ).toFixed(2) + ' s'
+     );
+   });
+ }
+ 
  async function save(index=null){if(busy)throw new Error('Hay un guardado en curso');busy=true;try{
  const current=state().SETS,selected=index===null?current:[current[index]],guardar=[];const selectedKeys=new Set();
  for(const s of selected){if(!s)continue;const k=s._ownerCoordId&&s.id?s._ownerCoordId+'/'+s.id:'';if(k)selectedKeys.add(k);const prev=k?baseline.get(k):null;if(!A(s.viajes).length)continue;if(prev&&prev._firma===firma(s))continue;
