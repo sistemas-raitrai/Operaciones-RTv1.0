@@ -10054,44 +10054,143 @@ function handleExcel(evt){
    Boot
    ========================================================= */
 async function __bootCoordinadores() {
-  RT_COORD.montar();
+  const inicioTotal = performance.now();
+  const mediciones = [];
 
-  SETS = [];
+  const btnGuardar = document.getElementById('btn-guardar');
+
+  btnGuardar?.setAttribute('disabled', '');
+
+  async function medir(nombre, tarea) {
+    const inicio = performance.now();
+
+    console.log(
+      '[COORD CARGA] INICIO:',
+      nombre
+    );
+
+    if (elMsg) {
+      elMsg.textContent = 'Cargando: ' + nombre + '…';
+    }
+
+    try {
+      const resultado = await tarea();
+
+      const segundos = (
+        (performance.now() - inicio) / 1000
+      ).toFixed(2);
+
+      mediciones.push({
+        etapa: nombre,
+        segundos: Number(segundos),
+        estado: 'OK'
+      });
+
+      console.log(
+        '[COORD CARGA] FIN:',
+        nombre,
+        segundos + ' s'
+      );
+
+      return resultado;
+
+    } catch (error) {
+      const segundos = (
+        (performance.now() - inicio) / 1000
+      ).toFixed(2);
+
+      mediciones.push({
+        etapa: nombre,
+        segundos: Number(segundos),
+        estado: 'ERROR'
+      });
+
+      console.error(
+        '[COORD CARGA] ERROR:',
+        nombre,
+        error
+      );
+
+      throw error;
+    }
+  }
+
+  console.log(
+    '[COORD CARGA] Comienza carga del año',
+    ANO_COORDINADORES
+  );
 
   try {
-    await loadCoordinadores();
-    await loadGrupos();
-    await loadHorasViajes();
-    await loadHotelAssignments();
+    await medir(
+      'Preparar interfaz',
+      () => RT_COORD.montar()
+    );
 
-    populateFilterOptions();
+    SETS = [];
 
-    await loadSets();
+    await medir(
+      'Coordinadores y perfiles anuales',
+      () => loadCoordinadores()
+    );
 
-    render();
+    await medir(
+      'Grupos y resumen de salud',
+      () => loadGrupos()
+    );
+
+    await medir(
+      'Preparar horarios en memoria',
+      () => loadHorasViajes()
+    );
+
+    await medir(
+      'Preparar hoteles en memoria',
+      () => loadHotelAssignments()
+    );
+
+    await medir(
+      'Preparar filtros',
+      () => populateFilterOptions()
+    );
+
+    await medir(
+      'Conjuntos del servidor y primer render',
+      () => loadSets()
+    );
+
+    // loadSets() ya llama api.refresh(), que ejecuta render().
+    // No repetir render() aquí.
+
+    btnGuardar?.removeAttribute('disabled');
+
+    if (elMsg) {
+      elMsg.textContent = '';
+    }
 
   } catch (error) {
+    if (elMsg) {
+      elMsg.textContent =
+        'Error al cargar: ' + error.message;
+    }
+
     console.error(
       '[coordinadores] Error de carga',
       error
     );
 
-    if (elMsg) {
-      elMsg.textContent = error.message;
-    }
-
-    document
-      .getElementById('btn-guardar')
-      ?.setAttribute('disabled', '');
-
     throw error;
+
+  } finally {
+    console.table(mediciones);
+
+    console.log(
+      '[COORD CARGA] TOTAL:',
+      (
+        (performance.now() - inicioTotal) / 1000
+      ).toFixed(2) + ' s'
+    );
   }
-
-  document
-    .getElementById('btn-guardar')
-    ?.removeAttribute('disabled');
 }
-
 // 🔁 Ejecuta el boot siempre (con o sin DOMContentLoaded)
 if (document.readyState === 'loading'){
   window.addEventListener('DOMContentLoaded', __bootCoordinadores, { once:true });
