@@ -5022,7 +5022,7 @@ function renderTransportesConfirmacion(vuelosNorm) {
       .confirm-doc:not(.preconfirm-doc)
       .confirm-flight-table.confirm-tramos-table
       td.confirm-presentacion-destacada {
-        background:#fff2b3 !important;
+        background:#ffffff !important;
         border:2px solid #333 !important;
         font-weight:800 !important;
         color:#000 !important;
@@ -5036,10 +5036,12 @@ function renderTransportesConfirmacion(vuelosNorm) {
       }
 
       /* Presentación del traslado de IDA. */
+
       .confirm-doc:not(.preconfirm-doc)
       .confirm-transfer-presentacion {
         display:inline-block;
-        background:#fff2b3 !important;
+        background:#ffffff !important;
+        border:2px solid #333 !important;
         color:#000 !important;
         padding:0.5mm 1mm;
         font-weight:800 !important;
