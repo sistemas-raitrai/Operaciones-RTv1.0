@@ -129,37 +129,54 @@ const ICONS = {
   del: '🗑️'
 };
 
-function refreshUI(){
-  const t    = transporteEl?.value || 'aereo';
-  const tipo = tipoVueloEl?.value  || 'charter';
-  const usarMulti = (t === 'aereo' && tipo === 'regular' && !!multitramoChkEl?.checked);
+function refreshUI() {
+  const transporte = transporteEl?.value || 'aereo';
+  const tipo = tipoVueloEl?.value || 'charter';
+  const esAereo = transporte === 'aereo';
+  const esRegular = esAereo && tipo === 'regular';
 
-  // 0) PUBLICAR: SIEMPRE visible
-  (publicarOpEl ||= document.getElementById('publicacion-opcion'));
-  if (publicarOpEl) publicarOpEl.style.display = '';
-
-  // 1) Habilitar/Deshabilitar selector de tipo
-  if (tipoVueloEl) tipoVueloEl.disabled = (t !== 'aereo');
-
-  // 2) Mostrar opción Multitramos solo si AÉREO REGULAR
-  if (multitramoOpEl) {
-    multitramoOpEl.style.display = (t === 'aereo' && tipo === 'regular') ? '' : 'none';
-  }
-
-  // 3) Si NO es AÉREO o NO es REGULAR, apaga el check de multitramos
-  if ((t !== 'aereo' || tipo !== 'regular') && multitramoChkEl) {
+  if (!esRegular && multitramoChkEl) {
     multitramoChkEl.checked = false;
   }
 
-  // 4) Conmutar “simple” vs “tramos”
-  if (camposSimpleEl)  camposSimpleEl.style.display  = usarMulti ? 'none'  : 'block';
-  if (tramosSectionEl) tramosSectionEl.style.display = usarMulti ? 'block' : 'none';
+  const usarMulti = esRegular && !!multitramoChkEl?.checked;
 
-  // 5) NUEVO: mostrar/ocultar el campo de encuentro
-  const encRow = document.getElementById('encuentro-aeropuerto-row');
-  if (encRow) encRow.style.display = (t === 'aereo') ? '' : 'none';
+  publicarOpEl ||= document.getElementById('publicacion-opcion');
+  if (publicarOpEl) publicarOpEl.style.display = '';
+
+  if (tipoVueloEl) tipoVueloEl.disabled = !esAereo;
+
+  if (multitramoOpEl) {
+    multitramoOpEl.style.display = esRegular ? '' : 'none';
+  }
+
+  if (camposSimpleEl) {
+    camposSimpleEl.style.display = usarMulti ? 'none' : 'block';
+  }
+
+  if (tramosSectionEl) {
+    tramosSectionEl.style.display = usarMulti ? 'block' : 'none';
+  }
+
+  const horariosAereos = document
+    .getElementById('m-presentacionIdaHora')
+    ?.closest('fieldset');
+
+  const horariosTerrestres = document
+    .getElementById('m-idaHora')
+    ?.closest('fieldset');
+
+  if (horariosAereos) {
+    horariosAereos.style.display = esAereo ? '' : 'none';
+  }
+
+  if (horariosTerrestres) {
+    horariosTerrestres.style.display = esAereo ? 'none' : '';
+  }
+
+  const encuentro = document.getElementById('encuentro-aeropuerto-row');
+  if (encuentro) encuentro.style.display = esAereo ? '' : 'none';
 }
-
 
 // ======= Helpers de normalización =======
 
