@@ -604,41 +604,7 @@
       // 3) Lógica principal de esta página
       await import('./viajes.js');
 
-      // (Opcional) Pequeña ayuda visual: muestra/oculta fieldsets de horarios
-      // según selección de transporte. No es obligatorio para que funcione.
-      const transpSel = document.getElementById('m-transporte');
-      const fieldAer  = document.querySelector('fieldset .legend') ? null : null; // placeholder
-      const aeroBox   = document.querySelector('fieldset:nth-of-type(1)');
-      const busBox    = document.querySelector('fieldset:nth-of-type(2)');
-      const tipoSel   = document.getElementById('m-tipoVuelo');
-      const tramosSec = document.getElementById('tramos-section');
-      const multiOp   = document.getElementById('multitramo-opcion');
-      const simpleBox = document.getElementById('campos-vuelo-simple');
-
-      function toggleBoxes(){
-        const t = transpSel?.value || 'aereo';
-        if (t === 'aereo'){
-          if (aeroBox) aeroBox.style.display = '';
-          if (busBox)  busBox.style.display  = 'none';
-          if (tipoSel) tipoSel.disabled = false;
-          if (multiOp && tipoSel?.value === 'regular') multiOp.style.display = 'block';
-        } else {
-          if (aeroBox) aeroBox.style.display = 'none';
-          if (busBox)  busBox.style.display  = '';
-          if (tipoSel) tipoSel.disabled = true;
-          if (multiOp) multiOp.style.display = 'none';
-          if (tramosSec) tramosSec.style.display = 'none';
-          if (simpleBox) simpleBox.style.display = 'block';
-          const mult = document.getElementById('m-multitramo'); if (mult) mult.checked = false;
-        }
-      
-        // ⛔️ NUNCA ocultar PUBLICAR HORARIOS
-        const pub = document.getElementById('publicacion-opcion');
-        if (pub) pub.style.display = '';
-      }
-      toggleBoxes();
-      if (transpSel) transpSel.addEventListener('change', toggleBoxes);
-      if (tipoSel) tipoSel.addEventListener('change', toggleBoxes);
+    
     })();
   </script>
 
