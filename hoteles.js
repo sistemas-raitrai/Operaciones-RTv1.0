@@ -1031,6 +1031,33 @@ async function onSubmitHotel(e) {
       )
     };
 
+        // Leer las condiciones económicas del formulario.
+    // Las tarifas pueden quedar vacías.
+    const tarifaGeneral = leerTarifaGeneralHotel();
+
+    const tarifaRef = doc(
+      db,
+      'FinanzasHotelesTarifas',
+      idTarifaHotelFinanzas(
+        hotelRef.id,
+        anoHotelActivo
+      )
+    );
+
+    const tarifaSnap = await getDoc(tarifaRef);
+
+    const tarifaAntes = tarifaSnap.exists()
+      ? tarifaSnap.data()
+      : null;
+
+    const tarifaDespues = {
+      ...tarifaGeneral,
+      anoViaje: Number(anoHotelActivo),
+      hotelId: hotelRef.id,
+      actualizadoPor: currentUserEmail || '',
+      actualizadoAt: serverTimestamp()
+    };
+
     const batch = writeBatch(db);
 
     if (hotelSnap.exists()) {
