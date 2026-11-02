@@ -235,6 +235,301 @@ export function crearAmpliacionCoordinadores(api){
  function saludHtml(g){const r=saludGrupo(g);if(!r)return '<span class="muted">Salud no disponible o cruce por negocio ambiguo</span>';const c=r.cuentas;return ['neuro','medica','dieta','apoyo','pendientes'].map(k=>`${{neuro:'Neurodivergencias',medica:'Situaciones médicas',dieta:'Dietas',apoyo:'Apoyo',pendientes:'Fichas pendientes'}[k]}: <b>${c[k]} / ${c.total} · ${c.total?(100*c[k]/c.total).toFixed(1)+' %':'—'}</b>`).join(' · ');}
  function grupoRows(gs){return gs.map(g=>{const c=cobertura(g),names=state().SETS.filter(s=>s.confirmado&&A(s.viajes).includes(g.id)).map(s=>H(getCoord(s.coordinadorId)?.nombre||'Sin coordinador')+' · '+H({aprobado:'Aceptado',rechazado:'Rechazado',pendiente:'Pendiente'}[E(s.estadoCoord)]));return [H(g.aliasGrupo),H(g.id)+' / '+H(g.numeroNegocio),H(destinoCoord(g.destino)),fecha(g.fechaInicio)+' → '+fecha(g.fechaFin),`${c.confirmados}/${c.requeridos} confirmados · ${c.faltan} faltan · ${c.planificados} en planificación`,names.join('<br>')||'—',saludHtml(g)];});}
  function mostrarGrupos(title,gs){modal(title,tabla(['Grupo','ID Operaciones / Negocio','Destino','Fechas','Cobertura','Coordinadores','Salud'],grupoRows(gs)));}
+ function obtenerTransfersGrupo(g) {
+   const vistos = new Set();
+ 
+   return A(g?.transportes).filter(t => {
+     const marcadoTransfer = (
+       t.isTransfer === true ||
+       t.isTransfer === 1 ||
+       String(t.isTransfer || '').toLowerCase() === 'true'
+     );
+ 
+     if (!marcadoTransfer) return false;
+ 
+     // Solo transfers terrestres/locales.
+     if (N(t.tipoTransporte) === 'aereo') return false;
+ 
+     const proveedor = N(
+       [t.proveedor, t.numero].filter(Boolean).join(' ')
+     );
+ 
+     if (
+       /(latam|sky|jetsmart|jet smart|avianca|copa|gol|azul|\bh2\b)/i
+         .test(proveedor)
+     ) {
+       return false;
+     }
+ 
+     // Evitar repetir la misma pierna dentro del grupo.
+     const clave = JSON.stringify([
+       t.fuenteId || '',
+       t.sentido || '',
+       t.fechaSalida || '',
+       t.salida || '',
+       t.origen || '',
+       t.destino || ''
+     ]);
+ 
+     if (vistos.has(clave)) return false;
+ 
+     vistos.add(clave);
+     return true;
+   }).sort((a, b) =>
+     String(a.fechaSalida || '').localeCompare(
+       String(b.fechaSalida || '')
+     ) ||
+     String(a.salida || '').localeCompare(
+       String(b.salida || '')
+     )
+   );
+ }
+ 
+ 
+ function textoAdvertenciaTransfer() {
+   return (
+     'Este grupo tiene transfer. Verificar si el coordinador ' +
+     'acompaña el traslado; su participación podría adelantar ' +
+     'la presentación o extender el término del servicio.'
+   );
+ }
+ 
+ 
+ function presentacionTransfer(t) {
+   if (T(t.presentacion)) {
+     return (
+       (t.fechaPresentacion ? fecha(t.fechaPresentacion) + ' ' : '') +
+       T(t.presentacion)
+     );
+   }
+ 
+   // Misma referencia utilizada en documentos:
+   // presentación 30 minutos antes de la salida terrestre.
+   const salida = T(t.salida);
+ 
+   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(salida)) {
+     return 'Sin informar';
+   }
+ 
+   const [hh, mm] = salida.split(':').map(Number);
+   const minutosSalida = hh * 60 + mm;
+   const minutosPresentacion = (
+     minutosSalida - 30 + 1440
+   ) % 1440;
+ 
+   const hora = (
+     String(Math.floor(minutosPresentacion / 60)).padStart(2, '0') +
+     ':' +
+     String(minutosPresentacion % 60).padStart(2, '0')
+   );
+ 
+   return (
+     hora +
+     (minutosSalida < 30 ? ' (día anterior)' : '') +
+     ' · calculada: salida −30 min'
+   );
+ }
+ 
+ 
+ function bloqueTransfersGrupo(g) {
+   const transfers = obtenerTransfersGrupo(g);
+ 
+   if (!transfers.length) return '';
+ 
+   const filas = transfers.map(t => {
+     const sentido = (
+       t.sentido === 'ida'
+         ? 'TRANSFER IDA'
+         : t.sentido === 'vuelta'
+           ? 'TRANSFER VUELTA'
+           : 'TRANSFER'
+     );
+ 
+     return `
+       <div style="margin-top:6px">
+         <strong>${H(sentido)}</strong>
+         <div>
+           ${H(t.origen || 'Origen por informar')}
+           →
+           ${H(t.destino || 'Destino por informar')}
+         </div>
+         <div>
+           Fecha:
+           ${H(t.fechaSalida ? fecha(t.fechaSalida) : 'Sin informar')}
+           · Presentación: ${H(presentacionTransfer(t))}
+           · Salida: ${H(t.salida || 'Sin informar')}
+         </div>
+         ${
+           t.proveedor
+             ? `<div>Proveedor: ${H(t.proveedor)}</div>`
+             : ''
+         }
+       </div>
+     `;
+   }).join('');
+ 
+   return `
+     <div style="
+       margin-top:8px;
+       padding:9px;
+       border:1px solid #d69e32;
+       border-radius:7px;
+       background:#fff8e6;
+       color:#513b12;
+       font-size:12px;
+       line-height:1.45;
+       text-transform:none;
+     ">
+       ${filas}
+       <div style="margin-top:8px">
+         <strong>Participación del coordinador por verificar.</strong>
+         ${H(textoAdvertenciaTransfer())}
+       </div>
+     </div>
+   `;
+ }
+ 
+ 
+ function mostrarGruposConTransfer() {
+   const grupos = filtros().filter(g =>
+     obtenerTransfersGrupo(g).length > 0
+   );
+ 
+   const filas = grupos.flatMap(g => {
+     const coordinadorIds = [
+       ...new Set(
+         state().SETS
+           .filter(s =>
+             s.confirmado &&
+             s.coordinadorId &&
+             A(s.viajes).includes(g.id)
+           )
+           .map(s => s.coordinadorId)
+       )
+     ];
+ 
+     const coordinadores = coordinadorIds
+       .map(id => getCoord(id)?.nombre || id)
+       .join(' / ') || 'Sin coordinador confirmado';
+ 
+     return obtenerTransfersGrupo(g).map(t => [
+       H(g.aliasGrupo || g.nombreGrupo || g.id),
+ 
+       H(g.id) + ' / ' + H(g.numeroNegocio || '—'),
+ 
+       H(coordinadores),
+ 
+       H(
+         t.sentido === 'ida'
+           ? 'IDA'
+           : t.sentido === 'vuelta'
+             ? 'VUELTA'
+             : 'Por verificar'
+       ),
+ 
+       H(t.proveedor || 'Sin informar'),
+ 
+       H(t.origen || 'Sin informar') +
+         ' → ' +
+         H(t.destino || 'Sin informar'),
+ 
+       H(t.fechaSalida ? fecha(t.fechaSalida) : 'Sin informar'),
+ 
+       H(presentacionTransfer(t)),
+ 
+       H(t.salida || 'Sin informar')
+     ]);
+   });
+ 
+   modal(
+     'Grupos con transfer',
+ 
+     `<p>${H(textoAdvertenciaTransfer())}</p>
+      <p>
+        ${grupos.length} grupo(s).
+        Cada fila corresponde a una pierna de transfer.
+      </p>` +
+ 
+     tabla(
+       [
+         'Grupo',
+         'ID / Negocio',
+         'Coordinadores confirmados',
+         'Sentido',
+         'Proveedor',
+         'Ruta',
+         'Fecha de salida',
+         'Presentación',
+         'Salida'
+       ],
+       filas
+     )
+   );
+ }
+ 
+ 
+ function agregarKpiTransfers(root) {
+   const contenedor = root?.querySelector('.coord-kpis');
+ 
+   if (!contenedor) return;
+ 
+   const cantidad = filtros().filter(g =>
+     obtenerTransfersGrupo(g).length > 0
+   ).length;
+ 
+   let boton = contenedor.querySelector('[data-kpi-transfers]');
+ 
+   if (!boton) {
+     boton = document.createElement('button');
+     boton.type = 'button';
+     boton.className = 'coord-kpi';
+     boton.dataset.kpiTransfers = '1';
+     contenedor.appendChild(boton);
+   }
+ 
+   boton.innerHTML = `
+     <span>Grupos con transfer</span>
+     <b>${cantidad}</b>
+   `;
+ 
+   boton.onclick = mostrarGruposConTransfer;
+ }
+ 
+ 
+ function decorarTransfersEnViajes() {
+   document
+     .querySelectorAll('#conjuntos-wrap input[data-alias]')
+     .forEach(input => {
+       const g = getGroup(input.dataset.alias);
+       const celda = input.parentElement;
+ 
+       if (!celda || !g) return;
+ 
+       const html = bloqueTransfersGrupo(g);
+ 
+       let bloque = celda.querySelector(
+         '[data-coord-transfer-detalle]'
+       );
+ 
+       if (!html) {
+         bloque?.remove();
+         return;
+       }
+ 
+       if (!bloque) {
+         bloque = document.createElement('div');
+         bloque.dataset.coordTransferDetalle = '1';
+         celda.appendChild(bloque);
+       }
+ 
+       // Evita un ciclo de render con el MutationObserver.
+       if (bloque._htmlTransfer !== html) {
+         bloque._htmlTransfer = html;
+         bloque.innerHTML = html;
+       }
+     });
+ }
+ 
  function stats() {
    const root = document.getElementById('stats-viajes-wrap');
  
@@ -507,6 +802,8 @@ export function crearAmpliacionCoordinadores(api){
  
    root.querySelector('[data-hoteles]').onclick = hoteles;
    root.querySelector('[data-salud]').onclick = saludRanking;
+  
+   agregarKpiTransfers(root);
  }
  function saludRanking(){const root=modal('Salud por grupo · porcentajes sobre todos los viajeros','<p>Casos declarados conocidos. Las categorías pueden coincidir. Fichas pendientes y uso interno restringido limitan la información disponible.</p><label>Ordenar por <select id="coordOrdenSalud"><option value="neuro">Neurodivergencias</option><option value="medica">Situaciones médicas</option><option value="apoyo">Necesidades de apoyo</option><option value="dieta">Dietas</option><option value="pendientes">Fichas pendientes</option></select></label><div id="coordTablaSalud"></div>');const render=()=>{const key=root.querySelector('select').value;const gs=filtros().slice().sort((a,b)=>{const ca=saludGrupo(a)?.cuentas,cb=saludGrupo(b)?.cuentas;return (cb?.total?cb[key]/cb.total:-1)-(ca?.total?ca[key]/ca.total:-1);});root.querySelector('#coordTablaSalud').innerHTML=tabla(['Grupo','ID / Negocio','Destino','Fechas','Cobertura','Coordinadores','Salud'],grupoRows(gs));};root.querySelector('select').onchange=render;render();}
  function mostrarSets(title,ss){modal(title,tabla(['Coordinador','Confirmación','Aceptación','Grupos','Fechas'],ss.map(s=>[H(getCoord(s.coordinadorId)?.nombre||'Sin asignar'),s.confirmado?'Confirmado':'Planificación',H({aprobado:'Aceptado',pendiente:'Pendiente',rechazado:'Rechazado'}[E(s.estadoCoord)]),A(s.viajes).map(id=>H(getGroup(id)?.aliasGrupo||id)).join('<br>'),A(s.viajes).map(id=>fecha(getGroup(id)?.fechaInicio)+' → '+fecha(getGroup(id)?.fechaFin)).join('<br>')])));}
@@ -547,8 +844,35 @@ export function crearAmpliacionCoordinadores(api){
      );
    }
  
+   function mostrarVarianteTransfer(r) {
+     const bloques = [];
+ 
+     if (obtenerTransfersGrupo(r.anterior).length) {
+       bloques.push(
+         '<strong>Viaje anterior</strong>' +
+         bloqueTransfersGrupo(r.anterior)
+       );
+     }
+ 
+     if (obtenerTransfersGrupo(r.siguiente).length) {
+       bloques.push(
+         '<strong>Viaje siguiente</strong>' +
+         bloqueTransfersGrupo(r.siguiente)
+       );
+     }
+ 
+     return bloques.length
+       ? bloques.join('<br>')
+       : 'Sin transfer registrado';
+   }
+ 
    modal(
      'Llegada anterior → presentación siguiente',
+ 
+     `<p>
+        El descanso se calcula con los horarios del viaje principal.
+        Si hay transfer, verificar la participación del coordinador.
+      </p>` +
  
      tabla(
        [
@@ -557,21 +881,18 @@ export function crearAmpliacionCoordinadores(api){
          'Llegada de regreso',
          'Viaje siguiente',
          'Presentación',
-         'Descanso'
+         'Descanso',
+         'Variante por transfer'
        ],
  
        rows.map(r => [
          H(getCoord(r.cid)?.nombre || r.cid),
- 
          H(r.anterior.aliasGrupo),
- 
          mostrarEvento(r.fin),
- 
          H(r.siguiente.aliasGrupo),
- 
          mostrarEvento(r.ini),
- 
-         mostrarDescanso(r.horas)
+         mostrarDescanso(r.horas),
+         mostrarVarianteTransfer(r)
        ])
      )
    );
@@ -1284,7 +1605,7 @@ export function crearAmpliacionCoordinadores(api){
    }
  }
  async function perfil(cid){const c=getCoord(cid);if(!c)return;const root=modal('Foto y datos del coordinador',`${c.fotoURL?`<img class="coord-photo" src="${H(c.fotoURL)}" alt="Foto">`:''}<p>${H(c.nombre)}</p><label>Dato para conteos de hoteles <select id="coordSexo"><option value="sin_informar">Sin informar</option><option value="hombre">Hombre</option><option value="mujer">Mujer</option></select></label><p><input id="coordFoto" type="file" accept="image/jpeg,image/png,image/webp"></p><button class="btn" id="coordGuardarPerfil">Guardar foto y datos</button><p id="coordPerfilMsg"></p>`);root.querySelector('#coordSexo').value=c.sexo||'sin_informar';root.querySelector('#coordGuardarPerfil').onclick=async()=>{const btn=root.querySelector('#coordGuardarPerfil');btn.disabled=true;try{const file=root.querySelector('#coordFoto').files[0];let fotoURL=c.fotoURL||'',fotoPath=c.fotoPath||'';if(file){if(file.size>5*1024*1024||!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Use JPG, PNG o WEBP de hasta 5 MB');fotoPath='coordinadores-fotos/'+cid+'/perfil';const r=ref(storage,fotoPath);await uploadBytes(r,file,{contentType:file.type});fotoURL=(await getDownloadURL(r))+'&v='+Date.now();}const sexo=root.querySelector('#coordSexo').value;await setDoc(doc(db,'coordinadores',cid),{sexo,fotoURL,fotoPath,actualizadoAt:serverTimestamp()},{merge:true});Object.assign(c,{sexo,fotoURL,fotoPath});root.querySelector('#coordPerfilMsg').textContent='Guardado';api.refresh();}catch(e){root.querySelector('#coordPerfilMsg').textContent=e.message;}finally{btn.disabled=false;}};}
- function decorar(){document.querySelectorAll('#conjuntos-wrap select[data-coord]').forEach(sel=>{const i=Number(sel.dataset.coord),s=state().SETS[i];if(!s)return;const parent=sel.parentElement;if(parent.querySelector('[data-coord-ficha]'))return;const box=document.createElement('span');box.className='row';box.dataset.coordFicha=String(i);const c=getCoord(s.coordinadorId);box.innerHTML=(c?.fotoURL?`<img class="coord-photo-mini" src="${H(c.fotoURL)}" alt="${H(c.nombre)}">`:'')+`<button class="btn small" ${c?'':'disabled'}>Ver coordinador</button>`;box.querySelector('button').onclick=()=>ficha(s.coordinadorId);parent.append(box);});
+ function decorar(){decorarTransfersEnViajes();document.querySelectorAll('#conjuntos-wrap select[data-coord]').forEach(sel=>{const i=Number(sel.dataset.coord),s=state().SETS[i];if(!s)return;const parent=sel.parentElement;if(parent.querySelector('[data-coord-ficha]'))return;const box=document.createElement('span');box.className='row';box.dataset.coordFicha=String(i);const c=getCoord(s.coordinadorId);box.innerHTML=(c?.fotoURL?`<img class="coord-photo-mini" src="${H(c.fotoURL)}" alt="${H(c.nombre)}">`:'')+`<button class="btn small" ${c?'':'disabled'}>Ver coordinador</button>`;box.querySelector('button').onclick=()=>ficha(s.coordinadorId);parent.append(box);});
  document.querySelectorAll('#conjuntos-wrap input[data-alias]').forEach(input=>{const gid=input.dataset.alias,g=getGroup(gid);if(!g||input.parentElement.querySelector('.coord-salud'))return;const div=document.createElement('div');div.className='coord-salud';div.innerHTML=saludHtml(g)+'<br>'+A(g.transportes).map(t=>H((t.sentido==='ida'?'IDA':'REGRESO')+' · '+t.tipoTransporte+' · '+t.origen+' → '+t.destino)+'<br>Presentación: '+H(fecha(t.fechaPresentacion)+' '+(t.presentacion||'—'))+' · Salida: '+H(fecha(t.fechaSalida)+' '+(t.salida||'—'))+' · Llegada: '+H(fecha(t.fechaLlegada)+' '+(t.llegada||'—'))+(t.fechaLlegadaInferida?' (fecha inferida)':'')).join('<br>');input.parentElement.append(div);});
  const head=document.querySelector('#tabla-coords thead tr');if(head&&!head.querySelector('[data-foto-head]')){const th=document.createElement('th');th.dataset.fotoHead='1';th.textContent='FOTO / DATOS';head.append(th);}document.querySelectorAll('#tabla-coords tbody tr').forEach(tr=>{if(tr.querySelector('[data-profile-cell]'))return;const inp=tr.querySelector('input[data-f="nombre"]'),c=state().COORDS[Number(inp?.dataset.i)];if(!c)return;const td=document.createElement('td');td.dataset.profileCell='1';td.innerHTML=(c.fotoURL?`<img class="coord-photo-mini" src="${H(c.fotoURL)}" alt="Foto">`:'')+`<button class="btn small" ${c.id?'':'disabled'}>Foto / datos</button><small>${c.id?'':'Guarda primero el coordinador'}</small>`;td.querySelector('button').onclick=()=>perfil(c.id);tr.append(td);});}
  function sugerir(i){const s=state().SETS[i];if(!s)return;const old=s.coordinadorId;const grupos=A(s.viajes).map(getGroup).filter(Boolean);const candidatos=state().COORDS.filter(c=>c.activo!==false&&grupos.every(g=>!A(c.destinos).length||c.destinos.map(destinoCoord).includes(destinoCoord(g.destino)))&&grupos.every(g=>A(c.disponibilidad).some(r=>g.fechaInicio>=r.inicio&&g.fechaFin<=r.fin))).filter(c=>{s.coordinadorId=c.id;const bad=transiciones().some(r=>r.sets.includes(i)&&['conflicto','verificar_cruce'].includes(r.tipo));s.coordinadorId=old;return !bad;});s.coordinadorId=old;if(!candidatos.length){alert('No hay candidatos con disponibilidad informada y destino apto, sin cruces pendientes. Puedes revisar las fichas y asignar manualmente.');return;}s.coordinadorId=candidatos[0].id;s.estadoCoord='pendiente';api.refresh();}
