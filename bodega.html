@@ -625,6 +625,53 @@
       </div>
       <div class="modalBody">
 
+        <div class="row">
+          <div class="field">
+            <label for="cxCajaEntrada">Caja existente</label>
+            <select id="cxCajaEntrada"></select>
+          </div>
+        
+          <div class="field">
+            <label for="cxCantidadEntrada">Unidades a agregar</label>
+            <input id="cxCantidadEntrada" type="number" min="1" step="1" value="1" />
+          </div>
+        
+          <div class="field">
+            <label for="cxVarianteEntrada">Talla o variante</label>
+            <input id="cxVarianteEntrada" type="text" placeholder="Ej: M, L, XL" />
+          </div>
+        
+          <button id="btnCxAgregarExistente" type="button" class="btn primary">
+            Agregar stock
+          </button>
+        </div>
+        
+        <p id="cxResumenStock" class="mini" aria-live="polite"></p>
+        
+        <details>
+          <summary>Historial del producto · últimos 3 meses</summary>
+          <p id="cxResumenMovimientos" class="mini" aria-live="polite"></p>
+          <div style="overflow-x:auto;">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Caja</th>
+                  <th>Movimiento</th>
+                  <th>Unidades</th>
+                  <th>Saldo en caja</th>
+                  <th>Motivo</th>
+                  <th>Destino o referencia</th>
+                  <th>Usuario</th>
+                </tr>
+              </thead>
+              <tbody id="cxHistorialTbody"></tbody>
+            </table>
+          </div>
+        </details>
+        
+        <div class="sep"></div>
+
         <!-- ✅ CREACIÓN MASIVA DE CAJAS (reemplaza "Agregar stock a caja" y "Nueva caja") -->
         <div class="row">
           <div class="field" style="min-width:160px;">
