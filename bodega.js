@@ -1626,258 +1626,430 @@ async function loadStocksForItem(itemId){
   }
 }
 
-async function refreshCajasModalTable(){
-  const it = state.modal.item;
-  if(!it) return;
+async function cargarResumenDetalleBodega(item, filas) {
+  const bodegaId = state.bodegaId;
+  const selector = $('cxCajaEntrada');
+  const resumen = $('cxResumenMovimientos');
+  const tbody = $('cxHistorialTbody');
 
-  const tb = $('cajasTbody');
-  tb.innerHTML = '';
+  const cajasConStock = filas.filter(fila => fila.id !== '_SIN_CAJA_').length;
+  const unidades = filas.reduce((total, fila) => total + fila.unidades, 0);
 
-  // ✅ Solo mostramos cajas donde este ÍTEM tiene stock > 0
-  // Fuente: stocksByCaja (subcolección items/{itemId}/stocks)
-  const filas = [];
+  $('cxResumenStock').textContent =
+    `${cajasConStock} cajas con stock · ${unidades} unidades en total`;
 
-  // 1) Cajas reales (solo si tienen stock > 0)
-  for(const c of state.cajas){
-    const s = state.modal.stocksByCaja.get(c.id);
-    const unidades = safeNum(s?.unidades, 0);
-    if(unidades > 0){
-      const vars = (s?.variantes && typeof s.variantes === 'object') ? s.variantes : null;
-      filas.push({
-        id: c.id,
-        nombre: c.nombre || '(sin nombre)',
-        ubicacion: c.ubicacion || '',
-        unidades,
-        variantes: vars
-      });
-    }
+  const cajaSeleccionada = selector.value;
+  selector.replaceChildren(new Option('Selecciona una caja', ''));
+
+  const etiquetas = state.cajas.map(caja =>
+    `${caja.nombre || '(sin nombre)'} · ${displayUbic(caja.ubicacion || '')}`
+  );
+  const frecuencias = new Map();
+
+  for (const etiqueta of etiquetas) {
+    frecuencias.set(etiqueta, (frecuencias.get(etiqueta) || 0) + 1);
   }
 
+  state.cajas.forEach((caja, indice) => {
+    const etiqueta = etiquetas[indice];
+    const texto = frecuencias.get(etiqueta) > 1
+      ? `${etiqueta} · ID ${caja.id}`
+      : etiqueta;
+    selector.add(new Option(texto, caja.id));
+  });
 
-  // 2) “Sin caja” SOLO si tiene stock > 0
-  {
-    const s = state.modal.stocksByCaja.get('_SIN_CAJA_');
-    const unidades = safeNum(s?.unidades, 0);
-    if(unidades > 0){
-      const vars = (s?.variantes && typeof s.variantes === 'object') ? s.variantes : null;
-      filas.push({
-        id: '_SIN_CAJA_',
-        nombre: '(sin caja)',
-        ubicacion: '',
-        unidades,
-        variantes: vars
-      });
-    }
+  if (state.cajasById.has(cajaSeleccionada)) {
+    selector.value = cajaSeleccionada;
   }
 
+  $('btnCxAgregarExistente').onclick = () => agregarStockCajaExistente(item);
 
-  // 3) Si no hay nada con stock, mostramos mensaje (en vez de listado con 0)
-  if(filas.length === 0){
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="4" class="muted">Este ítem no tiene stock asignado a ninguna caja.</td>`;
-    tb.appendChild(tr);
+  tbody.replaceChildren();
+  resumen.textContent = 'Cargando movimientos…';
+
+  const desde = new Date();
+  const dia = desde.getDate();
+  desde.setDate(1);
+  desde.setMonth(desde.getMonth() - 3);
+  const ultimoDiaDelMes = new Date(
+    desde.getFullYear(), desde.getMonth() + 1, 0
+  ).getDate();
+  desde.setDate(Math.min(dia, ultimoDiaDelMes));
+
+  try {
+    const snap = await getDocs(query(
+      movsBodegaCol(bodegaId),
+      where('itemId', '==', item.id),
+      where('ts', '>=', desde),
+      orderBy('ts', 'desc')
+    ));
+
+    if (state.bodegaId !== bodegaId || state.modal.item?.id !== item.id) return;
+
+    let entradas = 0;
+    let salidas = 0;
+    let unidadesIngresadas = 0;
+    let unidadesRetiradas = 0;
+    const filasHistorial = document.createDocumentFragment();
+
+    for (const registro of snap.docs) {
+      const mov = registro.data();
+      const delta = Number(mov.delta);
+      if (!Number.isFinite(delta) || delta === 0) continue;
+
+      if (delta > 0) {
+        entradas++;
+        unidadesIngresadas += delta;
+      } else {
+        salidas++;
+        unidadesRetiradas += Math.abs(delta);
+      }
+
+      const fecha = mov.ts?.toDate();
+      const fila = document.createElement('tr');
+      const valores = [
+        fecha ? fecha.toLocaleString('es-CL', {
+          timeZone: 'America/Santiago'
+        }) : '—',
+        [mov.cajaNombre, displayUbic(mov.cajaUbic || '')].filter(Boolean).join(' · '),
+        delta > 0 ? 'Entrada' : 'Salida de unidades',
+        `${delta > 0 ? '+' : ''}${delta}${mov.variante ? ` (${mov.variante})` : ''}`,
+        mov.stock ?? '—',
+        delta < 0 ? mov.motivo || 'Sin registrar' : '—',
+        mov.destino || '—',
+        mov.by || '—'
+      ];
+
+      for (const valor of valores) {
+        const celda = document.createElement('td');
+        celda.textContent = String(valor);
+        fila.appendChild(celda);
+      }
+
+      filasHistorial.appendChild(fila);
+    }
+
+    tbody.replaceChildren(filasHistorial);
+    resumen.textContent =
+      `${entradas + salidas} movimientos · ` +
+      `${entradas} entradas (+${unidadesIngresadas} unidades) · ` +
+      `${salidas} salidas (−${unidadesRetiradas} unidades)`;
+  } catch (error) {
+    console.error('[BODEGA] Historial del producto', error);
+    if (state.bodegaId === bodegaId && state.modal.item?.id === item.id) {
+      resumen.textContent = 'No se pudo cargar el historial del producto.';
+    }
+  }
+}
+
+async function agregarStockCajaExistente(item) {
+  const boton = $('btnCxAgregarExistente');
+  const cajaId = $('cxCajaEntrada').value;
+  const cantidad = $('cxCantidadEntrada').valueAsNumber;
+  const variante = U($('cxVarianteEntrada').value.trim()) || null;
+
+  if (!state.cajasById.has(cajaId)) return toast('Selecciona una caja.');
+  if (!Number.isSafeInteger(cantidad) || cantidad < 1) {
+    return toast('Ingresa una cantidad entera mayor que cero.');
+  }
+
+  const stock = state.modal.stocksByCaja.get(cajaId);
+  const unidades = safeNum(stock?.unidades, 0);
+
+  if (unidades > 0 && boxHasVariants(item.id, cajaId) && !variante) {
+    return toast('Esta caja tiene stock por talla. Indica la talla de entrada.');
+  }
+
+  if (unidades > 0 && !boxHasVariants(item.id, cajaId) && variante) {
+    return toast('Esta caja tiene stock general de este producto. Usa otra caja para cargar por talla.');
+  }
+
+  boton.disabled = true;
+
+  try {
+    await applyDeltaToItemCaja({
+      bodegaId: state.bodegaId,
+      itemId: item.id,
+      cajaId,
+      delta: cantidad,
+      nota: 'Entrada a caja existente',
+      variante
+    });
+  } catch (error) {
+    console.error('[BODEGA] Entrada de stock', error);
+    toast('No se pudo guardar la entrada.');
+    return;
+  } finally {
+    boton.disabled = false;
+  }
+
+  $('cxCantidadEntrada').value = '1';
+  $('cxVarianteEntrada').value = '';
+  toast('Entrada guardada.');
+
+  try {
+    await loadItems();
+    await openCajasModal(item, true);
+  } catch (error) {
+    console.error('[BODEGA] Actualizar detalle tras entrada', error);
+    toast('La entrada se guardó. Actualiza el inventario para ver el saldo.');
+  }
+}
+
+async function registrarSalidaUnidades(item, caja, cantidadFija = null) {
+  const cantidad = cantidadFija ?? pedirCantidad({
+    titulo: `Retirar unidades de ${caja.nombre}\nCantidad:`,
+    sugerida: 1
+  });
+
+  if (cantidad === null) return;
+  if (!Number.isSafeInteger(cantidad) || cantidad < 1) {
+    return toast('Ingresa una cantidad entera mayor que cero.');
+  }
+
+  let variante = null;
+
+  if (boxHasVariants(item.id, caja.id)) {
+    variante = pedirVarianteExistenteEnCaja({
+      itemId: item.id,
+      cajaId: caja.id,
+      titulo: `Retirar de ${caja.nombre} · Elige una talla`
+    });
+    if (variante === null) return;
+  }
+
+  const motivo = window.prompt(
+    'Motivo de la salida (obligatorio).\nEj.: Entrega a grupo, consumo interno, baja.'
+  );
+  if (motivo === null) return;
+  if (!motivo.trim()) return toast('Debes indicar un motivo.');
+
+  const destino = window.prompt(
+    '¿Adónde fue el stock? Indica el destinatario, ID de grupo, número de negocio o escribe «No aplica».'
+  );
+  if (destino === null) return;
+  if (!destino.trim()) return toast('Indica un destino o escribe «No aplica».');
+
+  try {
+    await applyDeltaToItemCaja({
+      bodegaId: state.bodegaId,
+      itemId: item.id,
+      cajaId: caja.id,
+      delta: -cantidad,
+      nota: `${motivo.trim()} · ${destino.trim()}`,
+      variante,
+      motivo: motivo.trim(),
+      destino: destino.trim()
+    });
+  } catch (error) {
+    console.error('[BODEGA] Salida de stock', error);
+    const saldoInsuficiente = ['NEG', 'NEG_ITEM_VAR'].includes(error.message);
+    toast(saldoInsuficiente ? 'Stock insuficiente para el retiro.' : 'No se pudo guardar la salida.');
     return;
   }
 
-  // 4) Orden por nombre
-  filas.sort((a,b)=> naturalCompare(a?.nombre, b?.nombre));
+  toast('Salida guardada.');
 
-  // 5) Render + acciones (mismas acciones que ya tenías)
-  for(const c of filas){
+  try {
+    await loadItems();
+    await openCajasModal(item, true);
+  } catch (error) {
+    console.error('[BODEGA] Actualizar detalle tras salida', error);
+    toast('La salida se guardó. Actualiza el inventario para ver el saldo.');
+  }
+}
+
+async function refreshCajasModalTable() {
+  const it = state.modal.item;
+  if (!it) return;
+
+  const tb = $('cajasTbody');
+  tb.replaceChildren();
+
+  const filas = [];
+
+  for (const caja of state.cajas) {
+    const stock = state.modal.stocksByCaja.get(caja.id);
+    const unidades = safeNum(stock?.unidades, 0);
+
+    if (unidades > 0) {
+      filas.push({
+        id: caja.id,
+        nombre: caja.nombre || '(sin nombre)',
+        ubicacion: caja.ubicacion || '',
+        unidades,
+        variantes: stock.variantes || null
+      });
+    }
+  }
+
+  const stockSinCaja = state.modal.stocksByCaja.get('_SIN_CAJA_');
+  const unidadesSinCaja = safeNum(stockSinCaja?.unidades, 0);
+
+  if (unidadesSinCaja > 0) {
+    filas.push({
+      id: '_SIN_CAJA_',
+      nombre: '(sin caja)',
+      ubicacion: '',
+      unidades: unidadesSinCaja,
+      variantes: stockSinCaja.variantes || null
+    });
+  }
+
+  // También prepara el selector y el historial si el producto está en cero.
+  void cargarResumenDetalleBodega(it, filas);
+
+  if (filas.length === 0) {
+    tb.innerHTML = `
+      <tr>
+        <td colspan="4" class="muted">Este ítem no tiene stock.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  filas.sort((a, b) => naturalCompare(a.nombre, b.nombre));
+
+  for (const c of filas) {
     const tr = document.createElement('tr');
+    const esCajaReal = c.id !== '_SIN_CAJA_';
+
     tr.innerHTML = `
-      <td style="font-weight:900;">${escapeHtml(c.nombre||'')}</td>
-      <td class="muted">${escapeHtml(displayUbic(c.ubicacion)||'')}</td>
+      <td style="font-weight:900;">${escapeHtml(c.nombre)}</td>
+      <td class="muted">${escapeHtml(displayUbic(c.ubicacion))}</td>
       <td style="font-weight:900;">
         <div>${c.unidades}</div>
-        ${c.variantes ? `<div class="muted" style="font-weight:700; font-size:12px; margin-top:2px;">
-          ${escapeHtml(formatVariants(c.variantes))}
-        </div>` : ''}
+        ${c.variantes ? `
+          <div class="muted" style="font-weight:700; font-size:12px; margin-top:2px;">
+            ${escapeHtml(formatVariants(c.variantes))}
+          </div>
+        ` : ''}
       </td>
-
       <td>
         <button class="btn small" data-act="dec">−1</button>
         <button class="btn small" data-act="inc">+1</button>
-
         <button class="btn small" data-act="add">Agregar</button>
         <button class="btn small" data-act="rem">Retirar</button>
-
-        ${c.id === '_SIN_CAJA_' ? '' : `<button class="btn small" data-act="editBox">Editar</button>`}
-        ${c.id === '_SIN_CAJA_' ? '' : `<button class="btn small danger" data-act="del">Borrar</button>`}
+        ${esCajaReal ? `
+          <button class="btn small" data-act="editBox">Editar</button>
+          <button class="btn small danger" data-act="del">Borrar</button>
+        ` : ''}
       </td>
     `;
 
-    // +1 (rápido)
-    tr.querySelector('[data-act="inc"]').onclick = async ()=>{
-      const hasVars = boxHasVariants(it.id, c.id);
-    
+    tr.querySelector('[data-act="dec"]').onclick = () =>
+      registrarSalidaUnidades(it, c, 1);
+
+    tr.querySelector('[data-act="rem"]').onclick = () =>
+      registrarSalidaUnidades(it, c);
+
+    tr.querySelector('[data-act="inc"]').onclick = async () => {
       let variante = null;
-      if(hasVars){
-        // A: solo variantes existentes en ESA caja (stock > 0)
-        const v = pedirVarianteExistenteEnCaja({
+
+      if (boxHasVariants(it.id, c.id)) {
+        variante = pedirVarianteExistenteEnCaja({
           itemId: it.id,
           cajaId: c.id,
           titulo: `Agregar +1 en ${c.nombre} (elige variante)`
         });
-        if(v === null) return; // canceló o inválida
-        variante = v;
+
+        if (variante === null) return;
       }
-    
+
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: it.id,
         cajaId: c.id,
-        delta: +1,
+        delta: 1,
         nota: variante ? `+1 (${variante})` : '+1',
         variante
       });
-    
+
       await loadItems();
       await openCajasModal(it, true);
-      toast('OK');
+      toast('Entrada guardada.');
     };
 
-    // -1 (rápido)
-    tr.querySelector('[data-act="dec"]').onclick = async ()=>{
-      const hasVars = boxHasVariants(it.id, c.id);
-    
-      let variante = null;
-      if(hasVars){
-        const v = pedirVarianteExistenteEnCaja({
-          itemId: it.id,
-          cajaId: c.id,
-          titulo: `Retirar −1 en ${c.nombre} (elige variante)`
-        });
-        if(v === null) return; // canceló o inválida
-        variante = v;
-      }
-    
-      await applyDeltaToItemCaja({
-        bodegaId: state.bodegaId,
-        itemId: it.id,
-        cajaId: c.id,
-        delta: -1,
-        nota: variante ? `-1 (${variante})` : '-1',
-        variante
+    tr.querySelector('[data-act="add"]').onclick = async () => {
+      const cantidad = pedirCantidad({
+        titulo: `Agregar en ${c.nombre}\nCantidad:`,
+        sugerida: 1
       });
-    
-      await loadItems();
-      await openCajasModal(it, true);
-      toast('OK');
-    };
 
+      if (cantidad === null) return;
 
-    // AGREGAR (masivo): pide cantidad; si hay variantes en la caja, permite escribir variante (default vacío).
-    tr.querySelector('[data-act="add"]').onclick = async ()=>{
-      const cant = pedirCantidad({ titulo: `Agregar en ${c.nombre}\nCantidad:`, sugerida: 0 });
-      if(cant === null) return;
-      if(cant <= 0) return toast('Cantidad 0 (sin cambios)');
-
-      const hasVars = boxHasVariants(it.id, c.id);
+      if (!Number.isSafeInteger(cantidad) || cantidad < 1) {
+        return toast('Ingresa una cantidad entera mayor que cero.');
+      }
 
       let variante = null;
-      if(hasVars){
-        // permite escribir (default vacío). si escribe, se normaliza.
-        const t = prompt(`Variante (deja vacío para GENERAL)\n\n(En esta caja existen: ${getVariantOptionsInBox(it.id, c.id).join(', ')})`, '');
-        if(t === null) return;
-        variante = t.trim() ? U(t) : null;
+
+      if (boxHasVariants(it.id, c.id)) {
+        const opciones = getVariantOptionsInBox(it.id, c.id);
+        const talla = prompt(
+          `Indica la talla de la entrada.\nTallas actuales: ${opciones.join(', ')}`
+        );
+
+        if (talla === null) return;
+        variante = U(talla);
+        if (!variante) return toast('Indica la talla de la entrada.');
       }
 
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: it.id,
         cajaId: c.id,
-        delta: +cant,
-        nota: variante ? `Agregar ${cant} (${variante})` : `Agregar ${cant}`,
+        delta: cantidad,
+        nota: variante ? `Agregar ${cantidad} (${variante})` : `Agregar ${cantidad}`,
         variante
       });
 
       await loadItems();
       await openCajasModal(it, true);
-      toast('OK');
+      toast('Entrada guardada.');
     };
 
-    // RETIRAR (masivo): pide cantidad; si hay variantes => selector SOLO con variantes existentes en ESA caja (stock>0).
-    tr.querySelector('[data-act="rem"]').onclick = async ()=>{
-      const cant = pedirCantidad({ titulo: `Retirar en ${c.nombre}\nCantidad:`, sugerida: 0 });
-      if(cant === null) return;
-      if(cant <= 0) return toast('Cantidad 0 (sin cambios)');
+    if (esCajaReal) {
+      tr.querySelector('[data-act="del"]').onclick = async () => {
+        await deleteCajaSeguro(c.id);
+        await openCajasModal(it, true);
+      };
 
-      const hasVars = boxHasVariants(it.id, c.id);
+      tr.querySelector('[data-act="editBox"]').onclick = async () => {
+        const nombre = prompt('Nombre de la caja:', c.nombre);
+        if (nombre === null) return;
+        if (!nombre.trim()) return toast('Indica el nombre de la caja.');
 
-      let variante = null;
-      if(hasVars){
-        const v = pedirVarianteExistenteEnCaja({ itemId: it.id, cajaId: c.id, titulo: `Retirar en ${c.nombre} (elige variante)` });
-        if(v === null) return toast('Variante inválida/cancelado o sin stock por variante.');
-        variante = v;
-      }
+        const ubicacion = prompt(
+          'Ubicación (HUECHURABA / POCURO / OFICINA):',
+          displayUbic(c.ubicacion) || 'HUECHURABA'
+        );
+        if (ubicacion === null) return;
 
-      await applyDeltaToItemCaja({
-        bodegaId: state.bodegaId,
-        itemId: it.id,
-        cajaId: c.id,
-        delta: -cant,
-        nota: variante ? `Retirar ${cant} (${variante})` : `Retirar ${cant}`,
-        variante
-      });
+        try {
+          setEstado('Actualizando caja...');
 
-      await loadItems();
-      await openCajasModal(it, true);
-      toast('OK');
-    };
+          await updateDoc(cajaDoc(state.bodegaId, c.id), {
+            nombre: nombre.trim(),
+            ubicacion: normalizeUbic(ubicacion),
+            actualizadoEn: serverTimestamp()
+          });
 
-
-
-    if(c.id !== '_SIN_CAJA_'){
-      const btnDel = tr.querySelector('[data-act="del"]');
-      if(btnDel){
-        btnDel.onclick = async ()=>{
-          await deleteCajaSeguro(c.id);
-          await loadCajas();
+          await loadItems();
           await openCajasModal(it, true);
-        };
-      }
-
-      const btnEdit = tr.querySelector('[data-act="editBox"]');
-      if(btnEdit){
-        btnEdit.onclick = async ()=>{
-          const nuevoNombre = prompt('Nombre de la caja:', c.nombre || '');
-          if(nuevoNombre === null) return;
-      
-          const nuevaUbic = prompt(
-            'Ubicación (HUECHURABA / POCURO / OFICINA):',
-            displayUbic(c.ubicacion) || 'HUECHURABA'
-          );
-          if(nuevaUbic === null) return;
-      
-          try{
-            setEstado('Actualizando caja...');
-      
-            await updateDoc(cajaDoc(state.bodegaId, c.id), {
-              nombre: (nuevoNombre || '').trim(),
-              ubicacion: normalizeUbic(nuevaUbic),
-              actualizadoEn: serverTimestamp()
-            });
-      
-            toast('Caja actualizada ✅');
-            await loadCajas();
-            await openCajasModal(it, true);
-            setEstado('Listo.');
-          }catch(e){
-            console.error(e);
-            toast('Error actualizando caja');
-            setEstado('Error.');
-          }
-        };
-      }
+          toast('Caja actualizada.');
+          setEstado('Listo.');
+        } catch (error) {
+          console.error(error);
+          toast('Error actualizando caja.');
+          setEstado('Error.');
+        }
+      };
     }
 
     tb.appendChild(tr);
   }
 }
-
-
-/* Core: delta por caja + total */
 async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota, variante=null }){
   const _cajaId = cajaId || '_SIN_CAJA_';
 
