@@ -14,6 +14,7 @@ import {
   uploadBytesResumable,
   getDownloadURL,
   getBlob,
+  listAll,
   deleteObject
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-storage.js';
 
@@ -72,6 +73,7 @@ function formatVariants(obj){
 function setEstado(msg){
   $('lblEstado').textContent = msg || 'Listo.';
 }
+const enMayusculas = valor => String(valor ?? '').toLocaleUpperCase('es-CL');
 function U(s){ return String(s||'').trim().toUpperCase(); }
 function escapeHtml(str){
   return String(str ?? '')
@@ -216,6 +218,7 @@ function instalarSelectorVarianteBodega(id) {
   const libre = document.createElement('input');
   libre.id = `${id}Libre`;
   libre.type = 'text';
+  libre.classList.add('dato-mayuscula');
   libre.placeholder = 'Escribe la variante';
   libre.setAttribute('aria-label', 'Nombre de la variante');
   libre.maxLength = 60;
@@ -296,8 +299,10 @@ function abrirAccionBodega({
     if (campo.max !== undefined) control.max = campo.max;
     if (campo.tipo === 'number') control.step = '1';
 
+    const esTexto = control.matches('input[type=text], textarea');
+    if (esTexto) control.classList.add('dato-mayuscula');
     control.required = Boolean(campo.requerido);
-    control.value = campo.valor ?? '';
+    control.value = esTexto ? enMayusculas(campo.valor) : (campo.valor ?? '');
     control.readOnly = Boolean(campo.soloLectura);
     controles[campo.nombre] = control;
     fila.append(texto, control);
@@ -306,7 +311,8 @@ function abrirAccionBodega({
     if (campo.dependeDe) {
       const origen = controles[campo.dependeDe];
       const actualizarVisibilidad = () => {
-        const mostrar = origen.value === campo.mostrarCon;
+        const mostrar = campo.ocultarCon === undefined
+          ? origen.value === campo.mostrarCon : origen.value !== campo.ocultarCon;
         fila.hidden = !mostrar;
         fila.style.display = mostrar ? '' : 'none';
         control.disabled = !mostrar;
@@ -328,7 +334,8 @@ function abrirAccionBodega({
     const valores = Object.fromEntries(
       Object.entries(controles).map(([nombre, control]) => [
         nombre,
-        control.disabled ? '' : control.value.trim()
+        control.disabled ? '' : control.matches('input[type=text], textarea')
+          ? U(control.value) : control.value.trim()
       ])
     );
 
@@ -488,6 +495,11 @@ async function boot(){
 
     wireFilters();
     wireCajasModal();
+    if ($('guiaLista')) {
+      void guiaActualizar().catch(error => {
+        if ($('guiaEstado')) $('guiaEstado').textContent = error.message;
+      });
+    }
     for (const id of ['itVariante', 'cxVarianteEntrada', 'cxVarianteMasiva']) {
       instalarSelectorVarianteBodega(id);
     }
@@ -584,7 +596,7 @@ async function loadBodegasIntoSelect(){
 
     opt.value = b.id;
     opt.textContent =
-      b.nombre ||
+      enMayusculas(b.nombre) ||
       '(sin nombre)';
 
     sel.appendChild(opt);
@@ -643,7 +655,7 @@ async function loadCajas(){
     // ✅ Normaliza visualmente: Z1 -> HUECHURABA (y mayúsculas consistentes)
     const ubicTxt = displayUbic(c.ubicacion || '');
   
-    const t = `${c.nombre || '(sin nombre)'}${ubicTxt ? ' · ' + ubicTxt : ''}`;
+    const t = `${enMayusculas(c.nombre) || '(sin nombre)'}${ubicTxt ? ' · ' + ubicTxt : ''}`;
   
     // Select del formulario (crear ítem)
     const o1 = document.createElement('option');
@@ -667,14 +679,14 @@ async function loadCajas(){
 $('btnCrearItem').addEventListener('click', async ()=>{
   if(!state.bodegaId){ toast('Selecciona bodega.'); return; }
 
-  const nombre = $('itNombre').value.trim();
-  const desc = $('itDesc').value.trim();
+  const nombre = U($('itNombre').value);
+  const desc = U($('itDesc').value);
   const minimo = Math.max(0, safeNum($('itMinimo').value, 0));
   const unidadesInit = Math.max(0, safeNum($('itUnidades').value, 0));
   const file = $('itFoto').files?.[0] || null;
 
   const cajaSel = $('itCajaSel').value || '';
-  const cajaNueva = ($('itCajaNueva').value || '').trim();
+  const cajaNueva = U($('itCajaNueva').value);
   const cajaUbic = ($('itCajaUbic').value || '').trim();
 
   if(!nombre){ toast('Ponle un nombre al ítem.'); return; }
@@ -1217,8 +1229,8 @@ function renderItemCard(it){
         ${it.fotoURL ? `<img src="${it.fotoURL}" alt="foto">` : `<span class="muted" style="font-size:12px;font-weight:900;">SIN<br>FOTO</span>`}
       </div>
       <div class="meta">
-        <b title="${escapeHtml(it.nombre||'')}">${escapeHtml(it.nombre||'(sin nombre)')}</b>
-        <div class="desc">${escapeHtml(it.descripcion||'')}</div>
+        <b title="${escapeHtml(it.nombre||'')}">${escapeHtml(enMayusculas(it.nombre)||'(sin nombre)')}</b>
+        <div class="desc">${escapeHtml(enMayusculas(it.descripcion))}</div>
         <div class="badges">
           <span class="badge ${badgeClass}">${badgeText}</span>
           <span class="badge">MÍN: ${minimo}</span>
@@ -1943,6 +1955,7 @@ function registrarSalidaUnidades(item, caja, cantidadFija = null) {
   const bodegaId = state.bodegaId;
   const stock = state.modal.stocksByCaja.get(caja.id);
   const variantes = getVariantOptionsInBox(item.id, caja.id);
+  let datosUltimoRetiroAGuias = false;
 
   const campos = [];
 
@@ -1979,6 +1992,7 @@ function registrarSalidaUnidades(item, caja, cantidadFija = null) {
       opciones: [
         ['', 'Selecciona un motivo'],
         ['Entrega a grupo', 'Entrega a grupo'],
+        ['Entrega a coordinadores', 'Entrega a coordinadores'],
         ['Consumo interno', 'Consumo interno'],
         ['Baja', 'Baja'],
         ['Ajuste de inventario', 'Ajuste de inventario'],
@@ -1995,7 +2009,9 @@ function registrarSalidaUnidades(item, caja, cantidadFija = null) {
     {
       nombre: 'destino',
       etiqueta: 'Destino o referencia (para grupos, ID o número de negocio)',
-      requerido: true
+      requerido: true,
+      ocultarCon: 'Entrega a coordinadores',
+      dependeDe: 'motivo'
     }
   );
 
@@ -2010,7 +2026,8 @@ function registrarSalidaUnidades(item, caja, cantidadFija = null) {
       const cantidad = Number(datos.cantidad);
       const variante = datos.variante || null;
       const motivo = datos.motivo === 'Otro' ? datos.otroMotivo : datos.motivo;
-      const destino = datos.destino;
+      const aGuias = datos.motivo === 'Entrega a coordinadores';
+      const destino = aGuias ? 'STOCK DE GUÍAS' : datos.destino;
 
       if (!Number.isSafeInteger(cantidad) || cantidad < 1) {
         throw new Error('Ingresa una cantidad entera mayor que cero.');
@@ -2041,6 +2058,7 @@ function registrarSalidaUnidades(item, caja, cantidadFija = null) {
           variante,
           motivo,
           destino,
+          aGuias,
           nota: `${motivo} · ${destino}`
         });
       } catch (error) {
@@ -2050,6 +2068,7 @@ function registrarSalidaUnidades(item, caja, cantidadFija = null) {
         throw error;
       }
 
+      datosUltimoRetiroAGuias = aGuias;
       return `Retiro guardado · ${cantidad} ${item.nombre}` +
         `${variante ? ` · ${variante}` : ''} · ${caja.nombre} → ${destino}`;
     },
@@ -2058,6 +2077,7 @@ function registrarSalidaUnidades(item, caja, cantidadFija = null) {
       if (state.bodegaId !== bodegaId) return;
       await loadItems();
       await openCajasModal(item, true);
+      if (datosUltimoRetiroAGuias) await guiaActualizar();
     }
   });
 }
@@ -2238,7 +2258,7 @@ async function refreshCajasModalTable() {
     const esCajaReal = c.id !== '_SIN_CAJA_';
 
     tr.innerHTML = `
-      <td style="font-weight:900;">${escapeHtml(c.nombre)}</td>
+      <td style="font-weight:900;">${escapeHtml(enMayusculas(c.nombre))}</td>
       <td class="muted">${escapeHtml(displayUbic(c.ubicacion))}</td>
       <td style="font-weight:900;">
         <div>${c.unidades}</div>
@@ -2294,7 +2314,8 @@ async function applyDeltaToItemCaja({
   nota,
   variante = null,
   motivo = '',
-  destino = ''
+  destino = '',
+  aGuias = false
 }) {
   if (!Number.isSafeInteger(delta) || delta === 0) {
     throw new Error('La cantidad del movimiento debe ser un entero distinto de cero.');
@@ -2308,12 +2329,17 @@ async function applyDeltaToItemCaja({
   const refMovimientoCaja = doc(movsCol(bodegaId, itemId, idCaja));
   const refMovimientoBodega = doc(movsBodegaCol(bodegaId));
   const usuario = state.user?.email || null;
+  const uid = state.user?.uid;
+  if (aGuias && (delta >= 0 || !uid)) throw new Error('Traspaso inválido.');
+  const refGuia = aGuias ? guiaStock(guiaStockId(bodegaId, itemId, claveVariante || '')) : null;
+  const refMovimientoGuia = refGuia ? doc(guiaMov) : null;
 
   await runTransaction(db, async tx => {
-    const [itemSnap, stockSnap, cajaSnap] = await Promise.all([
+    const [itemSnap, stockSnap, cajaSnap, guiaSnap] = await Promise.all([
       tx.get(refItem),
       tx.get(refStock),
-      refCaja ? tx.get(refCaja) : Promise.resolve(null)
+      refCaja ? tx.get(refCaja) : Promise.resolve(null),
+      refGuia ? tx.get(refGuia) : Promise.resolve(null)
     ]);
 
     if (!itemSnap.exists()) throw new Error('Este ítem ya no está disponible.');
@@ -2367,6 +2393,20 @@ async function applyDeltaToItemCaja({
       cambiosItem.variantesTotal = variantesTotal;
     }
 
+    if (refGuia) {
+      const saldo = guiaSnap.data()?.unidades ?? 0;
+      if (!Number.isSafeInteger(saldo) || saldo < 0 || !Number.isSafeInteger(saldo - delta)) {
+        throw new Error('Revisa el saldo del producto en Stock de guías.');
+      }
+      tx.set(refGuia, {
+        nombre: U(item.nombre), talla: claveVariante || '', unidades: saldo - delta, bodegaId, itemId
+      }, {merge:true});
+      tx.set(refMovimientoGuia, {
+        tipo:'traspaso_bodega', stockId:refGuia.id, cantidad:-delta,
+        bodegaId, itemId, cajaId:idCaja, movimientoBodegaId:refMovimientoBodega.id,
+        fecha:serverTimestamp(), por:uid
+      });
+    }
     tx.set(refStock, cambiosStock, { merge: true });
     tx.update(refItem, cambiosItem);
 
@@ -2852,10 +2892,75 @@ async function deleteCajaSeguro(cajaId){
 }
 // Stock de guías. Catálogo vinculado por ID, cantidades independientes.
 const guiaCol = nombre => collection(db, nombre);
+const guiaStockId = (bodegaId,itemId,talla) => encodeURIComponent(JSON.stringify([bodegaId,itemId,talla]));
 const guiaStock = id => doc(guiaCol('bodega_guia_stock'), id);
 const guiaEntregas = guiaCol('bodega_guia_entregas');
 const guiaFirmas = guiaCol('bodega_guia_firmas');
 const guiaMov = guiaCol('bodega_guia_movimientos');
+const guiaPuedeBorrar = () => auth.currentUser?.email === 'sistemas@raitrai.cl' &&
+  auth.currentUser.emailVerified;
+
+async function guiaBorrarEntrega(ref) {
+  if (!guiaPuedeBorrar()) throw new Error('Se requiere la cuenta de Sistemas con correo verificado.');
+  if (!confirm('¿Borrar esta entrega de prueba? Se eliminarán la firma y los adjuntos. Si se confirmó la entrega, se reintegrarán las unidades que aún no se devolvieron.')) return;
+
+  const uid = auth.currentUser.uid;
+  const movimiento = doc(guiaMov);
+  const existe = await runTransaction(db, async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return false;
+    const e = snap.data();
+    if (e.estado === 'eliminando') return true;
+    if (!['preparada', 'entregada'].includes(e.estado)) throw new Error('Estado de entrega desconocido.');
+
+    const cambios = new Map();
+    if (e.estado === 'entregada') {
+      for (const linea of e.lineas) {
+        const {stockId,cantidad,devuelto} = linea;
+        if (!stockId || !Number.isSafeInteger(cantidad) || !Number.isSafeInteger(devuelto) ||
+            cantidad < 1 || devuelto < 0 || devuelto > cantidad) {
+          throw new Error('Hay una línea con saldo inválido. Revisa la entrega.');
+        }
+        const saldo = cantidad - devuelto;
+        if (saldo) cambios.set(stockId, (cambios.get(stockId) || 0) + saldo);
+      }
+    }
+    const saldos = await Promise.all([...cambios].map(async ([id, cantidad]) => {
+      const stock = await tx.get(guiaStock(id));
+      const anterior = stock.data()?.unidades;
+      if (!Number.isSafeInteger(anterior) || anterior < 0 || !Number.isSafeInteger(anterior + cantidad)) {
+        throw new Error('No se pudo verificar el saldo de un artículo. Revisa Stock de guías.');
+      }
+      return {ref:stock.ref,unidades:anterior + cantidad};
+    }));
+    for (const saldo of saldos) tx.update(saldo.ref, {unidades:saldo.unidades});
+    if (e.firmaId) tx.delete(doc(guiaFirmas,e.firmaId));
+    tx.update(ref, {estado:'eliminando', eliminacionIniciadaEn:serverTimestamp()});
+    tx.set(movimiento, {
+      tipo:'eliminacion_entrega_prueba', entregaId:ref.id,
+      lineas:[...cambios].map(([stockId,cantidad])=>({stockId,cantidad})),
+      fecha:serverTimestamp(), por:uid
+    });
+    return true;
+  });
+
+  if (existe) {
+    try {
+      const archivos = await listAll(sRef(storage,`bodega_guia_anexos/${ref.id}`));
+      for (const archivo of archivos.items) {
+        try { await deleteObject(archivo); }
+        catch (error) { if (error.code !== 'storage/object-not-found') throw error; }
+      }
+      await deleteDoc(ref);
+    } catch (error) {
+      console.error('[GUÍAS] Limpieza pendiente', error);
+      try { await guiaActualizar(); } catch (refreshError) { console.error(refreshError); }
+      throw new Error('Firma invalidada y saldo procesado. Usa Reintentar borrado para terminar de eliminar los adjuntos.');
+    }
+  }
+  toast('Entrega de prueba borrada.');
+  await guiaActualizar();
+}
 const guiaFecha = valor => {
   const d = valor?.toDate?.() || (valor ? new Date(valor) : null);
   if (!d || !Number.isFinite(+d)) return '';
@@ -2872,7 +2977,11 @@ const guiaBoton = (titulo, fn) => {
     if (b.disabled) return;
     b.disabled = true;
     try { await fn(); }
-    catch (e) { $('guiaEstado').textContent = e.message; }
+    catch (e) {
+      const estado = $('guiaEstado');
+      if (estado) estado.textContent = e.message;
+      else console.error(e);
+    }
     finally { b.disabled = false; }
   };
   return b;
@@ -2881,34 +2990,45 @@ const guiaBoton = (titulo, fn) => {
 async function guiaActualizar() {
   const [stock, entregas] = await Promise.all([getDocs(guiaCol('bodega_guia_stock')), getDocs(guiaEntregas)]);
   const panel = $('guiaLista');
+  if (!panel || !state.user) return;
   panel.replaceChildren();
   const inventario = guiaTexto('details', '');
   inventario.append(guiaTexto('summary', 'Disponible para entregar'));
   for (const d of stock.docs) {
     const s = d.data();
-    inventario.append(guiaTexto('div', `${s.nombre} · ${s.talla || 'Sin talla'} · ${s.unidades}`));
+    inventario.append(guiaTexto('div', `${enMayusculas(s.nombre)} · ${enMayusculas(s.talla) || 'Sin talla'} · ${s.unidades}`));
   }
   panel.append(inventario);
   const hoy = guiaFecha(new Date());
+  let visibles = 0;
   const orden = entregas.docs.sort((a,b) => (b.data().creado?.seconds || 0) - (a.data().creado?.seconds || 0));
   for (const d of orden) {
     const e = d.data();
+    if (e.estado === 'eliminando') {
+      if (guiaPuedeBorrar()) {
+        const pendiente = guiaTexto('div', `${enMayusculas(e.coordinador)} · Limpieza pendiente`);
+        pendiente.append(guiaBoton('Reintentar borrado', () => guiaBorrarEntrega(d.ref)));
+        panel.append(pendiente);
+      }
+      continue;
+    }
+    visibles++;
     const pendientes = e.estado === 'entregada' ? e.lineas.filter(l => !l.cortesia && l.devuelto < l.cantidad) : [];
     const monto = pendientes.reduce((s,l) => s + (l.cantidad-l.devuelto)*l.valor, 0);
     const fila = guiaTexto('div', '');
     fila.className = 'card';
     fila.style.marginTop = '10px';
-    fila.append(guiaTexto('strong', e.coordinador), guiaTexto('div',
+    fila.append(guiaTexto('strong', enMayusculas(e.coordinador)), guiaTexto('div',
       e.estado === 'preparada' ? 'Preparada' : pendientes.length
         ? `${e.plazo < hoy ? 'Vencida' : 'Pendiente'} · ${e.plazo} · CLP ${monto.toLocaleString('es-CL')}`
         : 'Cerrada'));
-    fila.append(guiaTexto('div', e.viajes.map(v=>v.nombre).join(' · ')));
+    fila.append(guiaTexto('div', e.viajes.map(v=>enMayusculas(v.nombre)).join(' · ')));
     const detalle = guiaTexto('details', '');
     detalle.append(guiaTexto('summary', 'Ver artículos y devoluciones'));
     for (const l of e.lineas) {
       const saldo = e.estado === 'preparada' ? 'Por entregar' : l.cortesia
         ? 'Cortesía' : `${l.devuelto} devueltas · ${l.cantidad - l.devuelto} pendientes`;
-      detalle.append(guiaTexto('div', `${l.nombre} · ${l.talla || 'Sin talla'} · ${l.cantidad} un. · ${saldo}`));
+      detalle.append(guiaTexto('div', `${enMayusculas(l.nombre)} · ${enMayusculas(l.talla) || 'Sin talla'} · ${l.cantidad} un. · ${saldo}`));
     }
     fila.append(detalle);
     fila.append(
@@ -2926,12 +3046,13 @@ async function guiaActualizar() {
       guiaBoton('Adjuntar anexo firmado', () => guiaAdjuntar(d.ref))
     );
     if (e.estado === 'preparada') fila.append(guiaBoton('Confirmar entrega física', async () => {
-      if (confirm(`¿Confirmar la entrega física a ${e.coordinador}?`)) await guiaMover(d.ref);
+      if (confirm(`¿Confirmar la entrega física a ${enMayusculas(e.coordinador)}?`)) await guiaMover(d.ref);
     }));
     if (pendientes.length) fila.append(guiaBoton('Registrar devolución', () => guiaDevolver(d.ref, e)));
+    if (guiaPuedeBorrar()) fila.append(guiaBoton('Borrar entrega de prueba', () => guiaBorrarEntrega(d.ref)));
     panel.append(fila);
   }
-  $('guiaEstado').textContent = `${entregas.size} entregas registradas.`;
+  $('guiaEstado').textContent = `${visibles} entregas registradas.`;
 }
 
 async function guiaIngresar() {
@@ -2940,7 +3061,7 @@ async function guiaIngresar() {
   abrirAccionBodega({
     titulo:'Ingresar stock de guías',
     campos:[
-      {nombre:'item', etiqueta:'Producto del catálogo', opciones:[['','Selecciona'],...catalogo.map(i=>[i.id,i.nombre])], requerido:true},
+      {nombre:'item', etiqueta:'Producto del catálogo', opciones:[['','Selecciona'],...catalogo.map(i=>[i.id,enMayusculas(i.nombre)])], requerido:true},
       {nombre:'talla', etiqueta:'Talla', opciones:[['','Sin talla'],...BODEGA_TALLAS.map(t=>[t,t]),['__OTRA__','Otra variante']]},
       {nombre:'otra', etiqueta:'Variante', dependeDe:'talla', mostrarCon:'__OTRA__', requerido:true},
       {nombre:'cantidad', etiqueta:'Unidades', tipo:'number', min:1, requerido:true}
@@ -2952,11 +3073,11 @@ async function guiaIngresar() {
       if (!item || !Number.isSafeInteger(cantidad) || cantidad<1 || (datos.talla==='__OTRA__' && !talla)) {
         throw new Error('Revisa producto, cantidad y variante.');
       }
-      const id = encodeURIComponent(JSON.stringify([bodegaId,item.id,talla]));
+      const id = guiaStockId(bodegaId,item.id,talla);
       const ref = guiaStock(id);
       await runTransaction(db, async tx => {
         const anterior = (await tx.get(ref)).data()?.unidades ?? 0;
-        tx.set(ref,{nombre:item.nombre,talla,unidades:anterior+cantidad,bodegaId,itemId:item.id});
+        tx.set(ref,{nombre:U(item.nombre),talla,unidades:anterior+cantidad,bodegaId,itemId:item.id});
         tx.set(doc(guiaMov),{tipo:'ingreso',stockId:id,cantidad,fecha:serverTimestamp(),por:state.user.uid});
       });
       return 'Stock de guías ingresado.';
@@ -3007,7 +3128,7 @@ async function guiaNuevaEntrega() {
   const campos = [{nombre:'coord',etiqueta:'Coordinador',requerido:true,
     opciones:[['','Selecciona'],...personas.filter(p=>viajes.some(v=>v.coords.includes(p.id)))
       .sort((a,b)=>String(a.data().nombre).localeCompare(String(b.data().nombre),'es'))
-      .map(p=>[p.id,p.data().nombre || p.id])]}];
+      .map(p=>[p.id,enMayusculas(p.data().nombre) || p.id])]}];
   abrirAccionBodega({
     titulo:'Preparar anexo de entrega',
     contexto:'Selecciona los viajes y agrega las líneas de una sola entrega.',
@@ -3024,14 +3145,24 @@ async function guiaNuevaEntrega() {
         if (!s || !Number.isSafeInteger(n) || n<1 || !Number.isSafeInteger(precio) || precio<0 || (!cortesia.checked && precio===0)) {
           throw new Error('Completa producto, cantidad y valor de reposición. Solo la cortesía admite valor cero.');
         }
-        return {stockId:s.id,nombre:s.nombre,talla:s.talla,cantidad:n,valor:precio,cortesia:cortesia.checked,devuelto:0};
+        return {stockId:s.id,nombre:U(s.nombre),talla:U(s.talla),cantidad:n,valor:precio,cortesia:cortesia.checked,devuelto:0};
       });
       if (!lineas.length || lineas.length>20) throw new Error('Agrega entre 1 y 20 líneas.');
-      const resumenViajes = seleccion.map(({id,nombre,destino,inicio,fin})=>({id,nombre,destino,inicio,fin}));
+      const cantidades = new Map();
+      for (const linea of lineas) {
+        cantidades.set(linea.stockId, (cantidades.get(linea.stockId) || 0) + linea.cantidad);
+      }
+      for (const [id, cantidad] of cantidades) {
+        const articulo = stock.find(s => s.id === id);
+        if (cantidad > articulo.unidades) {
+          throw new Error(`La suma de las líneas supera el stock de ${U(articulo.nombre)}.`);
+        }
+      }
+      const resumenViajes = seleccion.map(({id,nombre,destino,inicio,fin})=>({id,nombre:U(nombre),destino:U(destino),inicio,fin}));
       const plazo = resumenViajes.map(v=>v.fin).sort().at(-1);
       const entrega = doc(guiaEntregas);
       const firma = activarFirma.checked ? doc(guiaFirmas,crypto.randomUUID().replaceAll('-','')) : null;
-      const anexo = {folio:entrega.id,coordinador:persona.data().nombre || persona.id,viajes:resumenViajes,plazo,lineas};
+      const anexo = {folio:entrega.id,coordinador:U(persona.data().nombre) || persona.id,viajes:resumenViajes,plazo,lineas};
       await runTransaction(db, async tx => {
         if (firma) tx.set(firma,{...anexo,firma:'',vence:new Date(Date.now()+7*86400000)});
         tx.set(entrega,{...anexo,coordinadorId:persona.id,firmaId:firma?.id || '',estado:'preparada',creado:serverTimestamp(),por:state.user.uid});
@@ -3069,7 +3200,7 @@ async function guiaNuevaEntrega() {
       c.style.width = 'auto';
       c.onchange = sugerir;
       controlesViajes.set(v.id,c);
-      const etiqueta = guiaTexto('label', ` ${v.nombre} · ${v.destino} · ${v.inicio} a ${v.fin}`);
+      const etiqueta = guiaTexto('label', ` ${enMayusculas(v.nombre)} · ${enMayusculas(v.destino)} · ${v.inicio} a ${v.fin}`);
       etiqueta.style.display = 'block';
       etiqueta.prepend(c);
       listaViajes.append(etiqueta);
@@ -3084,7 +3215,7 @@ async function guiaNuevaEntrega() {
     select.required = true;
     select.setAttribute('aria-label','Producto y talla');
     select.add(new Option('Selecciona producto y talla',''));
-    stock.forEach(s=>select.add(new Option(`${s.nombre} · ${s.talla || 'Sin talla'} (${s.unidades} disponibles)`,s.id)));
+    stock.forEach(s=>select.add(new Option(`${enMayusculas(s.nombre)} · ${enMayusculas(s.talla) || 'Sin talla'} (${s.unidades} disponibles)`,s.id)));
     f.append(select);
     for (const [nombre,min,valor] of [['Cantidad',1,1],['Valor unitario CLP',0,'']]) {
       const label = guiaTexto('label',nombre);
@@ -3144,7 +3275,7 @@ function guiaDevolver(ref,e) {
   abrirAccionBodega({
     titulo:'Registrar devolución', contexto:e.coordinador,
     campos:e.lineas.flatMap((l,i)=> l.cortesia || l.devuelto>=l.cantidad ? [] : [{
-      nombre:String(i),etiqueta:`${l.nombre} · ${l.talla || 'Sin talla'} · ${l.cantidad-l.devuelto} pendientes`,
+      nombre:String(i),etiqueta:`${enMayusculas(l.nombre)} · ${enMayusculas(l.talla) || 'Sin talla'} · ${l.cantidad-l.devuelto} pendientes`,
       tipo:'number',min:0,max:l.cantidad-l.devuelto,valor:0,requerido:true
     }]),
     guardar:async datos=>{
@@ -3165,10 +3296,22 @@ function guiaAdjuntar(ref) {
       return;
     }
     try {
+      const entrega = (await getDoc(ref)).data();
+      if (!entrega || entrega.estado === 'eliminando') throw new Error('La entrega ya no admite adjuntos.');
       const ruta = `bodega_guia_anexos/${ref.id}/${crypto.randomUUID()}`;
       const tarea = uploadBytesResumable(sRef(storage,ruta),archivo);
       await new Promise((ok,fail)=>tarea.on('state_changed',null,fail,ok));
-      await updateDoc(ref,{respaldoRuta:ruta,respaldoFecha:serverTimestamp(),respaldoPor:state.user.uid});
+      try {
+        await runTransaction(db, async tx => {
+          const actual = (await tx.get(ref)).data();
+          if (!actual || actual.estado === 'eliminando') throw new Error('La entrega ya no admite adjuntos.');
+          tx.update(ref,{respaldoRuta:ruta,respaldoFecha:serverTimestamp(),respaldoPor:state.user.uid});
+        });
+      } catch (error) {
+        try { await deleteObject(sRef(storage,ruta)); }
+        catch (limpieza) { if (limpieza.code !== 'storage/object-not-found') console.error(limpieza); }
+        throw error;
+      }
       try { await guiaActualizar(); }
       catch (error) { console.error('[GUÍAS] Recargar anexo',error); }
       $('guiaEstado').textContent = 'Anexo firmado adjuntado.';
@@ -3190,16 +3333,16 @@ async function guiaLeerFirma(e) {
 function guiaAnexo(e,folio) {
   const nodo = guiaTexto('article','');
   nodo.append(guiaTexto('h1','Anexo de entrega de equipamiento'),
-    guiaTexto('p',`Folio ${folio} · Coordinador: ${e.coordinador}`),
+    guiaTexto('p',`Folio ${folio} · Coordinador: ${enMayusculas(e.coordinador)}`),
     guiaTexto('p',`Devolución prevista: ${e.plazo}`));
-  for (const v of e.viajes) nodo.append(guiaTexto('div',`${v.nombre} · ${v.destino} · ${v.inicio} a ${v.fin}`));
+  for (const v of e.viajes) nodo.append(guiaTexto('div',`${enMayusculas(v.nombre)} · ${enMayusculas(v.destino)} · ${v.inicio} a ${v.fin}`));
   const tabla = document.createElement('table');
   const cabecera = tabla.createTHead().insertRow();
   for (const valor of ['Artículo','Talla','Cantidad','Valor unitario CLP','Devolución']) cabecera.append(guiaTexto('th',valor));
   const cuerpo = tabla.createTBody();
   for (const l of e.lineas) {
     const fila = cuerpo.insertRow();
-    for (const valor of [l.nombre,l.talla || '—',l.cantidad,l.valor,l.cortesia?'Cortesía':'Sí']) fila.insertCell().textContent=valor;
+    for (const valor of [enMayusculas(l.nombre),enMayusculas(l.talla) || '—',l.cantidad,l.valor,l.cortesia?'Cortesía':'Sí']) fila.insertCell().textContent=valor;
   }
   nodo.append(tabla,guiaTexto('p','Los artículos marcados para devolución deben entregarse al término del último viaje indicado. Los artículos de cortesía quedan con el coordinador.'));
   return nodo;
@@ -3288,6 +3431,17 @@ async function guiaAbrirFirma(token) {
       guiaBoton('Limpiar firma',()=>{ctx.clearRect(0,0,lienzo.width,lienzo.height);trazo=false;}),firmar,estado);
   } catch (e) { panel.append(guiaTexto('p','Enlace inválido, vencido o inaccesible.')); }
 }
+
+document.addEventListener('input', evento => {
+  const campo = evento.target;
+  if (evento.isComposing || !campo.matches?.('.dato-mayuscula')) return;
+  const valor = enMayusculas(campo.value);
+  if (valor === campo.value) return;
+  const inicio = enMayusculas(campo.value.slice(0,campo.selectionStart)).length;
+  const fin = enMayusculas(campo.value.slice(0,campo.selectionEnd)).length;
+  campo.value = valor;
+  campo.setSelectionRange(inicio,fin);
+});
 
 const guiaToken = location.hash.match(/^#firmar-guia=([a-f0-9]{32})$/)?.[1];
 if (guiaToken) {
