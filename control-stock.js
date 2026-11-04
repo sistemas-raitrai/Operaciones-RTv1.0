@@ -3179,7 +3179,7 @@ async function guiaNuevaEntrega() {
   const activarFirma = document.createElement('input');
   activarFirma.type = 'checkbox';
   activarFirma.style.width = 'auto';
-  const etiquetaFirma = guiaTexto('label',' Habilitar enlace de firma por 7 días');
+  const etiquetaFirma = guiaTexto('label',' Habilitar enlace de firma por 2 días');
   etiquetaFirma.prepend(activarFirma);
 
   function sugerir() {
