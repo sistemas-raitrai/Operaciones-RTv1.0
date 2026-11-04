@@ -735,7 +735,29 @@
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <dialog id="bdAccionModal" class="modal" aria-labelledby="bdAccionTitulo"
+          style="width:min(540px,calc(100% - 28px));padding:0;">
+    <form id="bdAccionForm">
+      <div class="modalHead">
+        <b id="bdAccionTitulo"></b>
+      </div>
+  
+      <div class="modalBody">
+        <p id="bdAccionContexto" class="mini muted"></p>
+        <div id="bdAccionCampos" style="display:grid;gap:12px;"></div>
+        <p id="bdAccionEstado" role="status" aria-live="polite"></p>
+  
+        <div class="row" style="justify-content:flex-end;">
+          <button id="bdAccionCancelar" type="button" class="btn">Cancelar</button>
+          <button id="bdAccionGuardar" type="submit" class="btn primary">
+            Guardar
+          </button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module" src="./bodega.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
