@@ -1807,6 +1807,25 @@ function getNumeroVueloPorSentido(numero, sentido){
     : (partes[0] || '');
 }
 
+function prepararTramoAereoDeVuelta(tramo) {
+  const tipoTramo = String(tramo.tipoTramo || '')
+    .trim()
+    .toLowerCase();
+
+  // En vuelos simples y registros antiguos sin tipoTramo,
+  // ambas fechas indican que la ruta se registró para ida y vuelta.
+  const rutaCompartida =
+    tipoTramo === 'ida+vuelta' ||
+    (!tipoTramo && Boolean(tramo.fechaIda && tramo.fechaVuelta));
+
+  return {
+    ...tramo,
+    origen: rutaCompartida ? tramo.destino : tramo.origen,
+    destino: rutaCompartida ? tramo.origen : tramo.destino,
+    numero: getNumeroVueloPorSentido(tramo.numero, 'vuelta')
+  };
+}
+
 // Particionar y devolver SOLO aéreos de plan (sin transfers)
 function particionarVuelos(vuelosNorm) {
 
@@ -2227,10 +2246,7 @@ function particionarVuelos(vuelosNorm) {
   
   const vueltaLegsAll = aereos
     .filter(l => !!l.fechaVuelta)
-    .map(l => ({
-      ...l,
-      numero: getNumeroVueloPorSentido(l.numero, 'vuelta')
-    }));
+    .map(prepararTramoAereoDeVuelta);
 
 
   /*
