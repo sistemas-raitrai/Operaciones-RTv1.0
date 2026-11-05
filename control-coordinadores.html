@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control de coordinadores · RaiTrai</title>
+<link rel="icon" href="IMG/logo-raitrai.png">
+  <style>
+    :root{
+      --bg:#f6f6f6;
+      --card:#ffffff;
+      --ink:#121826;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --brand:#0ea5a4;
+      --brand2:#111827;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+      --good:#22c55e;
+      --shadow: 0 10px 25px rgba(0,0,0,.08);
+      --radius: 16px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--ink);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    .rt-topbar{
+      position:fixed;
+      top:0; left:0; right:0;
+      height:72px;
+      background:rgba(255,255,255,.92);
+      backdrop-filter: blur(8px);
+      border-bottom:1px solid var(--line);
+      z-index:50;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:0 12px;
+    }
+    .rt-topbar-inner{
+      width:min(1100px, 100%);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width: 210px;
+    }
+    .brand img{
+      height:38px;
+      width:auto;
+      display:block;
+    }
+    .brand .title{
+      display:flex;
+      flex-direction:column;
+      line-height:1.05;
+    }
+    .brand .title b{ font-size:14px; letter-spacing:.2px; }
+    .brand .title span{ font-size:12px; color:var(--muted); }
+
+    .userbox{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      justify-content:flex-end;
+      min-width: 210px;
+    }
+    .pill{
+      font-size:12px;
+      color:var(--muted);
+      background:#fff;
+      border:1px solid var(--line);
+      padding:7px 10px;
+      border-radius:999px;
+      max-width: 46vw;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    .btn{
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--ink);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:700;
+      font-size:13px;
+      transition:.15s transform, .15s background, .15s border;
+      user-select:none;
+    }
+    .btn:hover{ transform: translateY(-1px); }
+    .btn.primary{
+      background:var(--brand);
+      border-color:var(--brand);
+      color:#fff;
+    }
+    .btn.danger{
+      background:#fff;
+      border-color:#fecaca;
+      color:#b91c1c;
+    }
+    .btn.small{ padding:8px 10px; border-radius:10px; font-size:12px; }
+    .btn.ghost{ background:transparent; }
+
+    .wrap{
+      width:min(1100px, 100%);
+      margin:0 auto;
+      padding: 92px 12px 18px;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow: var(--shadow);
+      padding:14px;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap:14px;
+      align-items:start;
+    }
+    @media (max-width: 940px){
+      .grid{ grid-template-columns: 1fr; }
+      .brand{ min-width: 0; }
+      .userbox{ min-width: 0; }
+    }
+
+    .pagehead{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:12px;
+    }
+    .pagehead h1{
+      margin:0;
+      font-size:18px;
+      letter-spacing:.2px;
+    }
+    .pagehead p{
+      margin:4px 0 0;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width: 180px;
+      flex:1;
+    }
+    label{ font-size:12px; color:var(--muted); }
+    input, select, textarea{
+      width:100%;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      font-size:14px;
+      outline:none;
+      background:#fff;
+    }
+    textarea{ min-height: 90px; resize: vertical; }
+
+    .toolbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:10px;
+    }
+
+    .list{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:12px;
+      margin-top:12px;
+    }
+    @media (max-width: 620px){
+      .list{ grid-template-columns: 1fr; }
+    }
+
+    .item{
+      border:1px solid var(--line);
+      border-radius:14px;
+      overflow:hidden;
+      background:#fff;
+      display:flex;
+      flex-direction:column;
+    }
+    .item .top{
+      display:flex;
+      gap:10px;
+      padding:10px;
+      align-items:flex-start;
+    }
+    .thumb{
+      width:78px;
+      height:78px;
+      border-radius:12px;
+      background:#f3f4f6;
+      border:1px solid var(--line);
+      flex:0 0 auto;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .thumb img{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+    }
+    .meta{
+      min-width:0;
+      flex:1;
+    }
+    .meta b{
+      display:block;
+      font-size:14px;
+      margin-bottom:4px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .meta .desc{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.2;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient: vertical;
+      overflow:hidden;
+    }
+
+    .badges{
+      margin-top:8px;
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .badge{
+      font-size:11px;
+      padding:5px 8px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      color:var(--muted);
+      background:#fff;
+      font-weight:700;
+    }
+    .badge.good{ border-color:#bbf7d0; color:#166534; }
+    .badge.warn{ border-color:#fde68a; color:#92400e; }
+    .badge.bad{ border-color:#fecaca; color:#991b1b; }
+
+    .item .bottom{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px;
+      border-top:1px solid var(--line);
+      background:#fafafa;
+      flex-wrap:wrap;
+    }
+
+    .qty{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-weight:900;
+    }
+    .qty span{
+      font-size:16px;
+      min-width: 60px;
+      text-align:center;
+      display:inline-block;
+    }
+    .mini{
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+    }
+
+    .loginWrap{
+      width:min(520px, 100%);
+      margin: 92px auto 0;
+      padding: 0 12px 18px;
+    }
+    .loginCard{
+      padding:16px;
+    }
+    .loginCard h2{ margin:0; font-size:18px; }
+    .loginCard p{ margin:6px 0 0; color:var(--muted); font-size:13px; }
+    .loginCard .row{ margin-top:12px; }
+    .hint{
+      margin-top:10px;
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.45);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:14px;
+      z-index:80;
+    }
+    .modal{
+      width:min(900px, 100%);
+      background:#fff;
+      border-radius:18px;
+      border:1px solid var(--line);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .modalHead{
+      padding:12px 14px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      background:#fafafa;
+      flex-wrap:wrap;
+    }
+    .modalHead b{ font-size:14px; }
+    .modalBody{
+      padding:12px 14px;
+      max-height: 74vh;
+      overflow:auto;
+    }
+    .table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:13px;
+    }
+    .table th, .table td{
+      padding:10px 8px;
+      border-bottom:1px solid var(--line);
+      text-align:left;
+      vertical-align:top;
+    }
+    .table th{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:900;
+      background:#fcfcfd;
+      position:sticky;
+      top:0;
+      z-index:1;
+    }
+
+    .toast{
+      position:fixed;
+      left:50%;
+      transform:translateX(-50%);
+      bottom:16px;
+      background:#111827;
+      color:#fff;
+      padding:10px 12px;
+      border-radius:12px;
+      font-size:13px;
+      box-shadow: var(--shadow);
+      display:none;
+      z-index:90;
+      max-width: 92vw;
+      text-align:center;
+    }
+
+    .hide{ display:none !important; }
+    .muted{ color:var(--muted); }
+    .sep{ height:1px; background:var(--line); margin:12px 0; }
+  </style>
+  <style>
+    #guiaImpresion { max-width: 760px; width: 95%; }
+    #guiaImpresion table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    #guiaImpresion :is(td,th) { border: 1px solid #bbb; padding: .4rem; }
+    @media print {
+      body > :not(#guiaImpresion) { display: none !important; }
+      #guiaImpresion { position: static; width: 100%; max-width: none; max-height: none; border: 0; overflow: visible; }
+      #guiaImpresion button, #guiaImpresion::backdrop { display: none; }
+    }
+  </style>
+<style>
+.aviso { padding:10px 12px; border-radius:8px; border:1px solid #cbd5e1; }
+.aviso.info { background:#f1f5f9; color:#334155; }
+.aviso.exito { background:#ecfdf5; border-color:#86efac; color:#166534; }
+.aviso.alerta { background:#fffbeb; border-color:#fcd34d; color:#92400e; }
+.aviso.error { background:#fef2f2; border-color:#fca5a5; color:#991b1b; }
+#bdAccionModal {max-height:90dvh; overflow:auto;}
+#guiaLista > .card {padding:16px;}
+#guiaLista button {margin:3px;}
+dialog::backdrop {background:rgba(15,23,42,.45);}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><strong>RAITRAI · CONTROL DE COORDINADORES</strong></div>
+  <div class="userbox"><span id="userPill">No autenticado</span>
+  <button id="btnLogout" class="btn hide" type="button">Salir</button></div>
+</header>
+<main class="wrap" style="max-width:1000px">
+  <section id="loginView" class="card">
+    <h1>Control de coordinadores</h1>
+    <label class="field">Email<input id="loginEmail" type="email" autocomplete="username"></label>
+    <label class="field">Contraseña<input id="loginPass" type="password" autocomplete="current-password"></label>
+    <button id="btnLogin" type="button" class="btn primary">Ingresar</button>
+    <p id="lblEstado" role="status"></p>
+  </section>
+  <section id="appView" class="card hide">
+    <h1>Stock de coordinadores</h1>
+    <p>Prepara entregas, registra firmas y controla las devoluciones del equipamiento.</p>
+    <div class="row">
+      <a class="btn" href="./control-stock.html">Ir a Bodega</a>
+      <button id="guiaCargar" type="button" class="btn">Actualizar</button>
+      <button id="guiaNueva" type="button" class="btn primary">Nueva entrega</button>
+    </div>
+    <p id="guiaEstado" class="aviso info" role="status" aria-live="polite"></p>
+    <div id="guiaLista"></div>
+  </section>
+</main>
+  <dialog id="bdAccionModal" class="modal" aria-labelledby="bdAccionTitulo"
+          style="width:min(540px,calc(100% - 28px));padding:0;">
+    <form id="bdAccionForm">
+      <div class="modalHead">
+        <b id="bdAccionTitulo"></b>
+      </div>
+  
+      <div class="modalBody">
+        <p id="bdAccionContexto" class="mini muted"></p>
+        <div id="bdAccionCampos" style="display:grid;gap:12px;"></div>
+        <p id="bdAccionEstado" role="status" aria-live="polite"></p>
+  
+        <div class="row" style="justify-content:flex-end;">
+          <button id="bdAccionCancelar" type="button" class="btn">Cancelar</button>
+          <button id="bdAccionGuardar" type="submit" class="btn primary">
+            Guardar
+          </button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="guiaImpresion" aria-label="Anexo de entrega"></dialog>
+<script type="module" src="./control-coordinadores.js"></script>
+</body>
+</html>
