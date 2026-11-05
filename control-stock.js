@@ -2897,11 +2897,17 @@ const guiaStock = id => doc(guiaCol('bodega_guia_stock'), id);
 const guiaEntregas = guiaCol('bodega_guia_entregas');
 const guiaFirmas = guiaCol('bodega_guia_firmas');
 const guiaMov = guiaCol('bodega_guia_movimientos');
-const guiaPuedeBorrar = () => auth.currentUser?.email === 'sistemas@raitrai.cl' &&
-  auth.currentUser.emailVerified;
+function guiaPuedeBorrar() {
+  const usuario = auth.currentUser || state.user;
+  const correo = String(usuario?.email || '').trim().toLowerCase();
+
+  return correo === 'sistemas@raitrai.cl';
+}
 
 async function guiaBorrarEntrega(ref) {
-  if (!guiaPuedeBorrar()) throw new Error('Se requiere la cuenta de Sistemas con correo verificado.');
+  if (!guiaPuedeBorrar()) {
+    throw new Error('Solo sistemas@raitrai.cl puede borrar entregas de prueba.');
+  }
   if (!confirm('¿Borrar esta entrega de prueba? Se eliminarán la firma y los adjuntos. Si se confirmó la entrega, se reintegrarán las unidades que aún no se devolvieron.')) return;
 
   const uid = auth.currentUser.uid;
