@@ -416,9 +416,16 @@
 #guiaLista button {margin:3px;}
 dialog::backdrop {background:rgba(15,23,42,.45);}
 </style>
-</head>
+<style>
+#coordTarjetas{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}
+.coord-agenda{padding:0 14px 14px;font-size:12px;white-space:pre-line}
+.coord-agenda h3{font-size:14px;margin:10px 0 4px}
+.meta{overflow-wrap:anywhere}.meta b{white-space:normal}
+#coordAno{max-width:180px}.dato-mayuscula{text-transform:uppercase}
+button:disabled{opacity:.55;cursor:wait}.thumb{width:95px;height:110px}
+</style></head>
 <body>
-<header class="topbar">
+<header class="rt-topbar">
   <div class="brand"><strong>RAITRAI · CONTROL DE COORDINADORES</strong></div>
   <div class="userbox"><span id="userPill">No autenticado</span>
   <button id="btnLogout" class="btn hide" type="button">Salir</button></div>
@@ -432,7 +439,15 @@ dialog::backdrop {background:rgba(15,23,42,.45);}
     <p id="lblEstado" role="status"></p>
   </section>
   <section id="appView" class="card hide">
-    <h1>Stock de coordinadores</h1>
+    <h1>Control de Coordinadores</h1>
+    <div class="row"><label class="field">Año operativo<select id="coordAno"></select></label>
+    <label class="field">Buscar coordinador<input id="coordBuscar" type="search" placeholder="Nombre, RUT, correo o teléfono"></label></div>
+    <p id="coordPeriodo" class="mini"></p><p id="coordCarga" role="status"></p>
+    <p id="coordCantidad"></p><div id="coordTarjetas" class="list"></div>
+    <p class="aviso info">Contratos: se habilitarán cuando se incorpore el formato de contrato.</p>
+    <h2 id="seccionEntregas">Equipamiento, entregas y anexos</h2>
+    <p id="coordFiltroEntrega">Todas las entregas del año seleccionado</p>
+    <button id="coordVerTodas" class="btn" type="button">Ver todas las entregas del año</button>
     <p>Prepara entregas, registra firmas y controla las devoluciones del equipamiento.</p>
     <div class="row">
       <a class="btn" href="./control-stock.html">Ir a Bodega</a>
