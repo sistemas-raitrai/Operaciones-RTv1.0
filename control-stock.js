@@ -2906,7 +2906,7 @@ function guiaPuedeBorrar() {
 
 async function guiaBorrarEntrega(ref) {
   if (!guiaPuedeBorrar()) {
-    throw new Error('Solo sistemas@raitrai.cl puede borrar entregas de prueba.');
+    throw new Error('Solo sistemas@raitrai.cl puede borrar.');
   }
   if (!confirm('¿Borrar esta entrega de prueba? Se eliminarán la firma y los adjuntos. Si se confirmó la entrega, se reintegrarán las unidades que aún no se devolvieron.')) return;
 
@@ -3055,7 +3055,7 @@ async function guiaActualizar() {
       if (confirm(`¿Confirmar la entrega física a ${enMayusculas(e.coordinador)}?`)) await guiaMover(d.ref);
     }));
     if (pendientes.length) fila.append(guiaBoton('Registrar devolución', () => guiaDevolver(d.ref, e)));
-    if (guiaPuedeBorrar()) fila.append(guiaBoton('Borrar entrega de prueba', () => guiaBorrarEntrega(d.ref)));
+    if (guiaPuedeBorrar()) fila.append(guiaBoton('Borrar', () => guiaBorrarEntrega(d.ref)));
     panel.append(fila);
   }
   $('guiaEstado').textContent = `${visibles} entregas registradas.`;
