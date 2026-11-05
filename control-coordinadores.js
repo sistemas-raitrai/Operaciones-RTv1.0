@@ -13,6 +13,8 @@ import {
   ref as sRef,
   uploadBytesResumable,
   getBlob,
+  uploadBytes,
+  getDownloadURL,
   listAll,
   deleteObject
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-storage.js';
@@ -278,9 +280,10 @@ const guiaBoton = (titulo, fn) => {
 };
 
 async function guiaActualizar() {
+  const anoConsulta = controlAno;
   const [stock, entregas] = await Promise.all([getDocs(guiaCol('bodega_guia_stock')), getDocs(guiaEntregas)]);
   const panel = $('guiaLista');
-  if (!panel || !state.user) return;
+  if (!panel || !state.user || anoConsulta !== controlAno) return;
   panel.replaceChildren();
   const inventario = guiaTexto('details', '');
   inventario.append(guiaTexto('summary', 'Disponible para entregar'));
@@ -294,6 +297,9 @@ async function guiaActualizar() {
   const orden = entregas.docs.sort((a,b) => (b.data().creado?.seconds || 0) - (a.data().creado?.seconds || 0));
   for (const d of orden) {
     const e = d.data();
+    if (controlPersona && e.coordinadorId !== controlPersona) continue;
+    const anosEntrega = e.anoViaje ? [Number(e.anoViaje)] : (e.viajes || []).map(v=>anoDeFecha(v.inicio));
+    if (!anosEntrega.includes(controlAno)) continue;
     if (e.estado === 'eliminando') {
       if (guiaPuedeBorrar()) {
         const pendiente = guiaTexto('div', `${enMayusculas(e.coordinador)} · Limpieza pendiente`);
@@ -353,40 +359,33 @@ async function guiaActualizar() {
 }
 
 async function guiaDatosViajes(ano) {
-  const [personas, texto, numero, conjuntos] = await Promise.all([
+  const [personas, resumen, respuesta] = await Promise.all([
     getDocs(guiaCol('coordinadores')),
-    getDocs(query(guiaCol('grupos'),where('anoViaje','==',String(ano)))),
-    getDocs(query(guiaCol('grupos'),where('anoViaje','==',ano))),
-    getDocs(collectionGroup(db,'conjuntos'))
+    getDocs(query(guiaCol('coordinacion_grupos_resumen'),where('anoViaje','in',[Number(ano),String(ano)]))),
+    coordPost('cargarConjuntosCoordinadores', {anoViaje:Number(ano)})
   ]);
-  const asignados = new Map();
-  for (const d of conjuntos.docs) {
-    const padre = d.ref.parent.parent;
-    if (padre?.parent.id !== 'coordinadores') continue;
-    const s = d.data();
-    if (s.anoViaje && Number(s.anoViaje) !== ano) continue;
-    for (const gid of Array.isArray(s.viajes) ? s.viajes : []) {
-      const clave = String(gid);
-      if (!asignados.has(clave)) asignados.set(clave,[]);
-      asignados.get(clave).push(padre.id);
+  const porGrupo = new Map();
+  for (const conjunto of respuesta.conjuntos || []) {
+    const cid = conjunto.owner === '_borradores' ? conjunto.coordinadorId : conjunto.owner;
+    if (!cid || cid === '_borradores') continue;
+    for (const gid of conjunto.viajes || []) {
+      if (!porGrupo.has(String(gid))) porGrupo.set(String(gid),new Map());
+      const mapa = porGrupo.get(String(gid));
+      mapa.set(cid, {confirmado:!!conjunto.confirmado, estado:conjunto.estadoCoord || 'pendiente'});
     }
   }
-  const viajes = [...new Map([...texto.docs,...numero.docs].map(d=>[d.id,d])).values()].map(d=>{
-    const g = d.data();
-    return {id:d.id,nombre:String(g.aliasGrupo || [g.colegio,g.curso].filter(Boolean).join(' ') || d.id),
-      destino:String(g.destino || g.destinoPrincipal || ''), inicio:guiaFecha(g.fechaInicio), fin:guiaFecha(g.fechaFin),
-      coords:[...(Array.isArray(g.coordinadorIds)?g.coordinadorIds:[g.coordinadorId]),...(asignados.get(d.id)||[])].map(String)};
-  });
-  return {personas:personas.docs,viajes};
+  const viajes = resumen.docs.map(d => {
+    const g = d.data(), asignados = porGrupo.get(d.id) || new Map();
+    return {id:d.id,ano:Number(ano),numeroNegocio:g.numeroNegocio || '',
+      nombre:U(g.aliasGrupo || [g.colegio,g.curso].filter(Boolean).join(' ') || d.id),
+      destino:U(g.destino || g.destinoPrincipal),inicio:guiaFecha(g.fechaInicio),fin:guiaFecha(g.fechaFin),
+      coords:[...asignados.keys()],asignados};
+  }).sort((a,b)=>a.inicio.localeCompare(b.inicio));
+  return {personas:personas.docs.filter(p=>p.id !== '_borradores'),viajes};
 }
 
 async function guiaNuevaEntrega() {
-  const hoy = guiaFecha(new Date());
-  const anoActual = Number(hoy.slice(0,4)) - (Number(hoy.slice(5,7))<3 ? 1 : 0);
-  const entrada = prompt('Año operativo de los viajes', String(anoActual));
-  if (entrada === null) return;
-  const ano = Number(entrada);
-  if (!Number.isInteger(ano) || ano<2000 || ano>2100) throw new Error('Año inválido.');
+  const ano = controlAno;
   const [{personas,viajes}, inventario] = await Promise.all([
     guiaDatosViajes(ano),getDocs(guiaCol('bodega_guia_stock'))
   ]);
@@ -428,7 +427,7 @@ async function guiaNuevaEntrega() {
       const plazo = resumenViajes.map(v=>v.fin).sort().at(-1);
       const entrega = doc(guiaEntregas);
       const firma = activarFirma.checked ? doc(guiaFirmas,crypto.randomUUID().replaceAll('-','')) : null;
-      const anexo = {folio:entrega.id,coordinador:U(persona.data().nombre) || persona.id,viajes:resumenViajes,plazo,lineas};
+      const anexo = {anoViaje:ano,folio:entrega.id,coordinador:U(persona.data().nombre) || persona.id,viajes:resumenViajes,plazo,lineas};
       await runTransaction(db, async tx => {
         if (firma) tx.set(firma,{...anexo,firma:'',vence:new Date(Date.now()+7*86400000)});
         tx.set(entrega,{...anexo,coordinadorId:persona.id,firmaId:firma?.id || '',estado:'preparada',creado:serverTimestamp(),por:state.user.uid});
@@ -501,6 +500,11 @@ async function guiaNuevaEntrega() {
   raiz.append(listaViajes,sugerencia,contenedorLineas,guiaBoton('Agregar artículo',agregar),etiquetaFirma);
   sugerir();
   agregar();
+  if (controlPersona) {
+    const sel = raiz.querySelector('select');
+    sel.value = controlPersona;
+    sel.dispatchEvent(new Event('change'));
+  }
 }
 
 async function guiaMover(ref, devoluciones = null) {
@@ -741,7 +745,10 @@ async function actualizarCoordinadores() {
     return;
   }
   cargandoGuias = true;
-  try { await guiaActualizar(); }
+  try {
+    try { await cargarControl(); } catch(error) { console.error('[CONTROL] Viajes',error); }
+    await guiaActualizar();
+  }
   catch (error) { guiaAviso(error.message, 'error'); }
   finally {
     cargandoGuias = false;
@@ -757,10 +764,142 @@ function programarActualizacion() {
   actualizacion = setTimeout(() => void actualizarCoordinadores(), 100);
 }
 
+// Ficha administrativa compartida con Gestionar coordinadores.
+function anoDeFecha(fecha) {
+  const f = String(fecha || '');
+  return /^\d{4}-\d{2}-\d{2}/.test(f) ? Number(f.slice(0,4)) - (Number(f.slice(5,7)) < 3 ? 1 : 0) : null;
+}
+let controlAno = anoDeFecha(guiaFecha(new Date()));
+let controlCatalogo = [], controlViajes = [], controlPersona = '';
+let detenerPersonas = null, versionControl = 0;
+async function coordPost(nombre, datos) {
+  if (!auth.currentUser) throw new Error('Inicia sesión.');
+  const token = await auth.currentUser.getIdToken();
+  const resp = await fetch('https://southamerica-west1-sist-op-rt.cloudfunctions.net/' + nombre, {
+    method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(datos)
+  });
+  const data = await resp.json();
+  if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudieron cargar las asignaciones.');
+  return data;
+}
+async function cargarControl() {
+  const version = ++versionControl, ano = controlAno;
+  $('coordPeriodo').textContent = `Desde 01/03/${ano} hasta antes del 01/03/${ano+1}`;
+  $('coordCarga').textContent = 'Cargando viajes de '+ano+' y '+(ano+1)+'…';
+  try {
+    const temporadas = await Promise.all([guiaDatosViajes(ano),guiaDatosViajes(ano+1)]);
+    if (version !== versionControl || !state.user) return;
+    controlViajes = temporadas.flatMap(t=>t.viajes);
+    $('coordCarga').textContent = '';
+    renderControl();
+  } catch (error) {
+    if (version !== versionControl) return;
+    controlViajes = [];
+    $('coordCarga').textContent = 'No se pudieron cargar los viajes: '+error.message+' Pulsa Actualizar para reintentar.';
+    renderControl();
+    throw error;
+  }
+}
+function renderControl() {
+  const panel = $('coordTarjetas');
+  if (!panel || !state.user) return;
+  const texto = guiaNorm($('coordBuscar').value);
+  const lista = controlCatalogo.filter(c=>guiaNorm([c.nombre,c.rut,c.correo,c.telefono].join(' ')).includes(texto))
+    .sort((a,b)=>U(a.nombre).localeCompare(U(b.nombre),'es'));
+  panel.replaceChildren();
+  $('coordCantidad').textContent = lista.length+' coordinadores';
+  for (const c of lista) {
+    const tarjeta = guiaTexto('article',''); tarjeta.className='item';
+    const top = guiaTexto('div',''); top.className='top';
+    const foto = guiaTexto('div',''); foto.className='thumb';
+    if (/^https:\/\//i.test(c.fotoURL || '')) {
+      const img = new Image(); img.src=c.fotoURL; img.alt=U(c.nombre); img.loading='lazy';
+      img.onerror=()=>foto.replaceChildren(guiaTexto('span','Sin foto')); foto.append(img);
+    } else foto.textContent='Sin foto';
+    const meta=guiaTexto('div',''); meta.className='meta';
+    meta.append(guiaTexto('b',U(c.nombre)),guiaTexto('div','RUT: '+(U(c.rut)||'—')),
+      guiaTexto('div',U(c.correo)||'Sin correo'),guiaTexto('div',U(c.telefono)||'Sin teléfono'),
+      guiaTexto('div','Talla de polera: '+(U(c.tallaPolera)||'Sin informar')));
+    top.append(foto,meta);tarjeta.append(top);
+    const agenda=guiaTexto('div','');agenda.className='coord-agenda';
+    for (const ano of [controlAno,controlAno+1]) {
+      agenda.append(guiaTexto('h3','Viajes '+ano));
+      const viajes=controlViajes.filter(v=>v.ano===ano && v.coords.includes(c.id));
+      if (!viajes.length) agenda.append(guiaTexto('p',$('coordCarga').textContent ? 'Viajes sin verificar.' : 'Sin viajes asignados registrados.'));
+      for (const v of viajes) {
+        const estado=v.asignados.get(c.id);
+        agenda.append(guiaTexto('p',`${v.nombre} · ID ${v.id} · NEGOCIO ${v.numeroNegocio || '—'} · ${v.destino}\n${v.inicio || 'Sin fecha'} a ${v.fin || 'Sin fecha'} · ${estado.confirmado ? 'CONFIRMADO' : 'PLANIFICADO'} · ${U(estado.estado)}`));
+      }
+    }
+    tarjeta.append(agenda);
+    const acciones=guiaTexto('div','');acciones.className='bottom';
+    acciones.append(guiaBoton('Editar datos',()=>editarControl(c)),guiaBoton('Cargar foto',()=>fotoControl(c)),
+      guiaBoton('Entregas y anexos',async()=>{controlPersona=c.id;actualizarFiltroPersona();await guiaActualizar();$('seccionEntregas').scrollIntoView({behavior:'smooth'});}),
+      guiaBoton('Preparar entrega',async()=>{controlPersona=c.id;actualizarFiltroPersona();await guiaNuevaEntrega();}));
+    tarjeta.append(acciones);panel.append(tarjeta);
+  }
+}
+function editarControl(c) {
+  const campos = [
+    {nombre:'nombre',etiqueta:'Nombre',requerido:true}, {nombre:'rut',etiqueta:'RUT'},
+    {nombre:'fechaNacimiento',etiqueta:'Fecha de nacimiento',tipo:'date'},
+    {nombre:'telefono',etiqueta:'Teléfono',tipo:'tel'}, {nombre:'correo',etiqueta:'Correo',tipo:'email'},
+    {nombre:'datosTransferir',etiqueta:'Datos para transferir',multilinea:true},
+    {nombre:'sexo',etiqueta:'Dato para conteos de hoteles',opciones:[['sin_informar','Sin informar'],['hombre','Hombre'],['mujer','Mujer']]},
+    {nombre:'tallaPolera',etiqueta:'Talla de polera (puedes escribir cualquier talla)'},
+    {nombre:'notas',etiqueta:'Información adicional',multilinea:true}
+  ].map(f=>({...f,valor:f.nombre==='sexo' ? c.sexo || 'sin_informar' : c[f.nombre] || ''}));
+  abrirAccionBodega({titulo:'Editar coordinador',contexto:U(c.nombre),campos,
+    guardar:async datos=>{
+      if (!datos.nombre) throw new Error('Nombre obligatorio.');
+      const cambios={...datos,nombre:U(datos.nombre),rut:U(datos.rut).replace(/\s/g,''),
+        correo:datos.correo.toLowerCase(),fechaNacimiento:datos.fechaNacimiento || null,actualizadoAt:serverTimestamp()};
+      await runTransaction(db,async tx=>{
+        const ref=doc(db,'coordinadores',c.id), snap=await tx.get(ref);
+        if (!snap.exists()) throw new Error('El coordinador ya no existe.');
+        // Evita sobrescribir modificaciones hechas en otra pantalla mientras se editaba.
+        for (const f of campos) if (JSON.stringify(snap.data()[f.nombre] ?? '') !== JSON.stringify(c[f.nombre] ?? ''))
+          throw new Error('Los datos cambiaron en otra pantalla. Cancela y vuelve a abrir la ficha.');
+        tx.update(ref,cambios);
+      });
+      return 'Datos guardados en el registro compartido.';
+    }});
+}
+function fotoControl(c) {
+  const input=document.createElement('input');input.type='file';input.accept='image/jpeg,image/png,image/webp';
+  input.onchange=async()=>{
+    const file=input.files[0];if (!file) return;
+    if (file.size>5*1024*1024 || !['image/jpeg','image/png','image/webp'].includes(file.type)) return guiaAviso('Usa JPG, PNG o WEBP de hasta 5 MB.','error');
+    try {
+      guiaAviso('Subiendo foto…');
+      const fotoPath='coordinadores-fotos/'+c.id+'/perfil', ref=sRef(storage,fotoPath);
+      await uploadBytes(ref,file,{contentType:file.type});
+      const url=await getDownloadURL(ref);
+      await updateDoc(doc(db,'coordinadores',c.id),{fotoPath,fotoURL:url+(url.includes('?')?'&':'?')+'v='+Date.now(),actualizadoAt:serverTimestamp()});
+      guiaAviso('Foto actualizada.','exito');
+    } catch(error) {guiaAviso('No se pudo guardar la foto: '+error.message,'error');}
+  }; input.click();
+}
+function actualizarFiltroPersona() {
+  const c=controlCatalogo.find(c=>c.id===controlPersona);
+  $('coordFiltroEntrega').textContent=c ? 'Entregas de '+U(c.nombre) : 'Todas las entregas del año seleccionado';
+}
+function iniciarControlUI() {
+  for(let ano=2025;ano<=Math.max(controlAno+3,2030);ano++) $('coordAno').add(new Option(String(ano),String(ano)));
+  $('coordAno').value=String(controlAno);
+  $('coordAno').onchange=()=>{
+    controlAno=Number($('coordAno').value);controlPersona='';controlViajes=[];
+    actualizarFiltroPersona();renderControl();void actualizarCoordinadores();
+  };
+  $('coordBuscar').oninput=renderControl;
+  $('coordVerTodas').onclick=()=>{controlPersona='';actualizarFiltroPersona();void guiaActualizar().catch(e=>guiaAviso(e.message,'error'));};
+}
+
 const guiaToken = location.hash.match(/^#firmar-guia=([a-f0-9]{32})$/)?.[1];
 if (guiaToken) {
   void guiaAbrirFirma(guiaToken);
 } else {
+  iniciarControlUI();
   $('btnLogin').onclick = async () => {
     const email = $('loginEmail').value.trim();
     const clave = $('loginPass').value;
@@ -783,6 +922,8 @@ if (guiaToken) {
   onAuthStateChanged(auth, usuario => {
     detenerStock?.();
     detenerEntregas?.();
+    detenerPersonas?.();
+    versionControl++;
     clearTimeout(actualizacion);
     state.user = usuario || null;
     $('userPill').textContent = usuario?.email || 'No autenticado';
@@ -791,9 +932,15 @@ if (guiaToken) {
     $('appView').classList.toggle('hide', !usuario);
     if (!usuario) {
       $('guiaLista').replaceChildren();
+      $('coordTarjetas').replaceChildren();
+      controlCatalogo = [];
       return;
     }
     guiaAviso('Cargando stock y entregas…');
+    detenerPersonas = onSnapshot(guiaCol('coordinadores'), snap => {
+      controlCatalogo = snap.docs.filter(d=>d.id !== '_borradores').map(d=>({id:d.id,...d.data()}));
+      renderControl();
+    }, error=>guiaAviso(error.message,'error'));
     detenerStock = onSnapshot(guiaCol('bodega_guia_stock'),programarActualizacion,
       error => guiaAviso(error.message,'error'));
     detenerEntregas = onSnapshot(guiaEntregas,programarActualizacion,
