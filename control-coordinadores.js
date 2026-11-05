@@ -1,4 +1,4 @@
-// Control de Coordinadores · v5 · Modo prueba · Requiere controlCoordinadoresApi (backend incluido).
+// Control de Coordinadores · v6 · Modo prueba · Requiere controlCoordinadoresApi (backend incluido).
 import {app,db} from './firebase-init.js';
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {collection,query,where,getDocs,onSnapshot,doc,getDoc} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
@@ -42,7 +42,7 @@ function render(){if(!state.user||!$('cards'))return;$('period').textContent=`Pe
  $('cards').replaceChildren();$('count').textContent=`${visibles.length} coordinadores${all||state.travelError||state.loading?' del catálogo':' del año seleccionado'}`;
  for(const c of visibles){const card=node('article',{class:'person'}),photo=node('div',{class:'thumb'});if(/^https:\/\//i.test(c.fotoURL||'')){const img=node('img',{src:c.fotoURL,alt:U(c.nombre),loading:'lazy'});img.onerror=()=>photo.replaceChildren(text('span','Sin foto'));photo.append(img);}else photo.append(text('span','Sin foto'));const info=node('div',{class:'person-info'},text('strong',U(c.nombre)),text('div','RUT: '+(U(c.rut)||'—')));
   const email=T(c.correo).toLowerCase();info.append(node('div',{},email?node('a',{href:'mailto:'+email,text:email}):'Sin correo'));
-  let telefono=T(c.telefono),digits=telefono.replace(/\D/g,'');if(digits.length===9)digits='56'+digits;info.append(node('div',{},digits?node('a',{href:'https://wa.me/'+digits,target:'_blank',rel:'noopener noreferrer',text:telefono||digits}):'Sin teléfono'),text('div','Talla de polera: '+(U(c.tallaPolera)||'Sin informar')),text('div','Ciudad: '+(U(c.ciudadResidencia)||'Sin informar')));
+  let telefono=T(c.telefono),digits=telefono.replace(/\D/g,'');if(digits.length===9)digits='56'+digits;info.append(node('div',{},digits?node('a',{href:'https://wa.me/'+digits,target:'_blank',rel:'noopener noreferrer',text:telefono||digits}):'Sin teléfono'),text('div','Talla de polera: '+(U(c.tallaPolera)||'Sin informar')),text('div','Ciudad: '+(U(c.ciudadResidencia)||'Sin informar')),text('div','Celular: '+(U(c.celularMarcaModelo)||'Sin informar')));
   card.append(node('div',{class:'person-top'},photo,info));const agenda=node('div',{class:'agenda'},text('h3','Viajes '+state.ano));const gs=state.viajes.filter(g=>g.asignaciones.has(c.id));if(state.loading)agenda.append(text('p','Cargando viajes…','mini'));else if(state.travelError)agenda.append(text('p','Viajes sin verificar.','mini'));else if(!gs.length)agenda.append(text('p','Sin viajes asignados registrados.','mini'));else gs.forEach(g=>agenda.append(tripNode(g,g.asignaciones.get(c.id))));
   const docs=c.documentosControl||{},faltan=['antecedentes','inhabilidad','primerosAuxilios'].filter(k=>vigente(docs[k]).cls!=='ok').length;agenda.append(text('span',faltan?`${faltan} certificados por revisar`:'Certificados vigentes','pill '+(faltan?'warn':'ok')));card.append(agenda,node('div',{class:'actions'},button('Editar datos',()=>editPerson(c),'small'),button('Preparar entrega',()=>prepare(c),'small primary'),button('Documentos y anexos',()=>documents(c),'small'),button('Ver viajes anteriores',()=>pastTrips(c),'small')));$('cards').append(card);
  }if(!visibles.length&&!state.loading)$('cards').append(text('p','No hay coordinadores para este filtro. Puedes activar «Mostrar todo el catálogo».','notice'));}
@@ -52,7 +52,7 @@ const TALLAS_POLERA=['XS','S','M','L','XL','XXL'];
 function bancoFormulario(c){
  const raw=T(c.datosTransferir),guardado={banco:U(c.banco),tipoCuenta:U(c.tipoCuenta),numeroCuenta:T(c.numeroCuenta)};
  const unido=`BANCO: ${guardado.banco} | TIPO DE CUENTA: ${guardado.tipoCuenta} | NUMERO DE CUENTA: ${guardado.numeroCuenta}`;
- if(raw&&U(raw)===U(unido))return {...guardado,pendiente:false};
+ if(!raw||U(raw)===U(unido))return {...guardado,pendiente:false};
  const m=/^BANCO:\s*([^|\n]+?)\s*\|\s*TIPO DE CUENTA:\s*([^|\n]+?)\s*\|\s*N[ÚU]MERO DE CUENTA:\s*([^|\n]+?)\s*$/i.exec(raw);
  if(m)return {banco:U(m[1]),tipoCuenta:U(m[2]),numeroCuenta:T(m[3]),pendiente:false};
  return {banco:'',tipoCuenta:'',numeroCuenta:'',pendiente:!!raw};
@@ -61,6 +61,7 @@ const PERSON_FIELDS=[
  ['nombre','Nombre','text'],['rut','RUT','text'],['fechaNacimiento','Fecha de nacimiento','date'],
  ['telefono','Teléfono','tel'],['correo','Correo','email'],
  ['direccion','Dirección','text'],['ciudadResidencia','Ciudad de residencia','text'],
+ ['celularMarcaModelo','Marca y modelo del celular','text'],
  ['tallaPolera','Talla de polera','talla'],['sexo','Dato para conteos de hoteles','sexo'],
  ['notas','Información adicional','textarea']
 ];
