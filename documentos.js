@@ -2246,7 +2246,19 @@ function particionarVuelos(vuelosNorm) {
   
   const vueltaLegsAll = aereos
     .filter(l => !!l.fechaVuelta)
-    .map(prepararTramoAereoDeVuelta);
+    .map(prepararTramoAereoDeVuelta)
+    .sort((a, b) => {
+      const ordenPorFecha = a.fechaVuelta.localeCompare(b.fechaVuelta);
+  
+      if (ordenPorFecha !== 0) {
+        return ordenPorFecha;
+      }
+  
+      // Si salen el mismo día, va primero el que despega antes.
+      // Los vuelos sin hora informada quedan al final de ese día.
+      return (a.salidaVuelta || '99:99')
+        .localeCompare(b.salidaVuelta || '99:99');
+    });
 
 
   /*
