@@ -947,12 +947,7 @@ async function guardarCondicionesHotelFinanzas(
   } = contexto;
 
   const formulario = event.currentTarget;
-
-  const boton = $(
-    'button[type="submit"]',
-    formulario
-  );
-
+  const boton = $('button[type="submit"]', formulario);
   const errorNodo = $('[data-error]', formulario);
 
   if (boton.disabled) return;
@@ -982,9 +977,7 @@ async function guardarCondicionesHotelFinanzas(
     const motivo = valor('motivo');
 
     if (!motivo) {
-      throw new Error(
-        'Indique el motivo de la modificación.'
-      );
+      throw new Error('Indique el motivo de la modificación.');
     }
 
     const codigoMoneda = valor('moneda');
@@ -993,9 +986,7 @@ async function guardarCondicionesHotelFinanzas(
       codigoMoneda &&
       !['CLP', 'USD', 'BRL', 'ARS'].includes(codigoMoneda)
     ) {
-      throw new Error(
-        'La moneda seleccionada no es válida.'
-      );
+      throw new Error('La moneda seleccionada no es válida.');
     }
 
     let condiciones;
@@ -1009,13 +1000,9 @@ async function guardarCondicionesHotelFinanzas(
 
       if (
         !codigoMoneda &&
-        Object.values(tarifasPorPension).some(
-          n => n !== null
-        )
+        Object.values(tarifasPorPension).some(n => n !== null)
       ) {
-        throw new Error(
-          'Seleccione la moneda de las tarifas.'
-        );
+        throw new Error('Seleccione la moneda de las tarifas.');
       }
 
       condiciones = {
@@ -1029,13 +1016,20 @@ async function guardarCondicionesHotelFinanzas(
         tipoTarifa: 'pax_noche',
         tarifasPorPension,
         reglaPersonas: Object.fromEntries([
-          ...['estudiantes','adultos','coordinadores','conductores'].map(k => [k, dialogo.querySelector(`[name="regla-${k}"]`).checked]),
+          ...['estudiantes', 'adultos', 'coordinadores', 'conductores']
+            .map(categoria => [
+              categoria,
+              dialogo.querySelector(`[name="regla-${categoria}"]`).checked
+            ]),
           ['liberadosPorAsignacion', opcional('regla-liberados') ?? 0]
         ]),
         observaciones: valor('detalle')
       };
     } else if (!formulario.elements.namedItem('acuerdoExcepcional').checked) {
-      condiciones = {versionEsquema: 2, usarReglaHotel: true};
+      condiciones = {
+        versionEsquema: 2,
+        usarReglaHotel: true
+      };
     } else {
       const modalidad = valor('modalidad');
       const personas = opcional('personasCobradas');
@@ -1045,31 +1039,19 @@ async function guardarCondicionesHotelFinanzas(
       const descuentos = opcional('descuentos') ?? 0;
       const detalle = valor('detalle');
 
-      if (
-        personas !== null &&
-        !Number.isInteger(personas)
-      ) {
-        throw new Error(
-          'Las personas cobradas deben ser un número entero.'
-        );
+      if (personas !== null && !Number.isInteger(personas)) {
+        throw new Error('Las personas cobradas deben ser un número entero.');
       }
 
       if (!['pax_noche', 'total'].includes(modalidad)) {
-        throw new Error(
-          'La modalidad no es válida.'
-        );
+        throw new Error('La modalidad no es válida.');
       }
 
       if (modalidad === 'total' && total === null) {
-        throw new Error(
-          'Ingrese el total acordado.'
-        );
+        throw new Error('Ingrese el total acordado.');
       }
 
-      if (
-        modalidad === 'total' &&
-        (adicionales > 0 || descuentos > 0)
-      ) {
+      if (modalidad === 'total' && (adicionales > 0 || descuentos > 0)) {
         throw new Error(
           'El total acordado debe incluir los ajustes. ' +
           'Deje adicionales y descuentos en cero.'
@@ -1085,9 +1067,7 @@ async function guardarCondicionesHotelFinanzas(
         ) &&
         !detalle
       ) {
-        throw new Error(
-          'Describa el acuerdo particular.'
-        );
+        throw new Error('Describa el acuerdo particular.');
       }
 
       condiciones = {
@@ -1097,58 +1077,29 @@ async function guardarCondicionesHotelFinanzas(
         modalidad,
         moneda: codigoMoneda,
         personasCobradas: personas,
-
-        tarifaParticular:
-          modalidad === 'pax_noche' ? tarifa : null,
-
-        totalAcordado:
-          modalidad === 'total' ? total : null,
-
+        tarifaParticular: modalidad === 'pax_noche' ? tarifa : null,
+        totalAcordado: modalidad === 'total' ? total : null,
         adicionales,
         descuentos,
         detalle
       };
     }
 
-    if (condiciones.reglaPersonas && !Number.isInteger(condiciones.reglaPersonas.liberadosPorAsignacion)) {
+    if (
+      condiciones.reglaPersonas &&
+      !Number.isInteger(condiciones.reglaPersonas.liberadosPorAsignacion)
+    ) {
       throw new Error('Los liberados deben ser un número entero.');
     }
+
     boton.disabled = true;
 
-    const historialRef = doc(
-      collection(db, COLECCIONES.HISTORIAL)
-    );
-
+    const historialRef = doc(collection(db, COLECCIONES.HISTORIAL));
     const email = state.usuario?.email || '';
 
     await runTransaction(db, async tx => {
       const snap = await tx.get(ref);
-
-      const vigente = snap.exists()
-        ? snap.data()
-        : null;
-
-      /*
-       * Si alguien cambió las condiciones mientras
-       * el editor estaba abierto, volver a cargarlas.
-       */
-      const antesComparable = tipo === 'general'
-        ? datosLeidos
-        : datosLeidos?.finanzas || null;
-
-      const vigenteComparable = tipo === 'general'
-        ? vigente
-        : vigente?.finanzas || null;
-
-      if (
-        JSON.stringify(antesComparable) !==
-        JSON.stringify(vigenteComparable)
-      ) {
-        throw new Error(
-          'Las condiciones cambiaron mientras editaba. ' +
-          'Cierre y vuelva a abrir el editor.'
-        );
-      }
+      const vigente = snap.exists() ? snap.data() : null;
 
       if (
         tipo !== 'general' &&
@@ -1156,18 +1107,17 @@ async function guardarCondicionesHotelFinanzas(
           !vigente ||
           String(vigente.hotelId) !== String(hotelId) ||
           Number(vigente.anoViaje || 2025) !== ano ||
-          String(vigente.grupoId) !==
-            String(datosLeidos.grupoId) ||
-          String(vigente.checkIn || '') !==
-            String(datosLeidos.checkIn || '') ||
-          String(vigente.checkOut || '') !==
-            String(datosLeidos.checkOut || '')
+          String(vigente.grupoId) !== String(datosLeidos.grupoId) ||
+          String(vigente.checkIn || '') !== String(datosLeidos.checkIn || '') ||
+          String(vigente.checkOut || '') !== String(datosLeidos.checkOut || '')
         )
       ) {
-        throw new Error(
-          'La asignación cambió. Vuelva a abrir el editor.'
-        );
+        throw new Error('La asignación cambió. Vuelva a abrir el editor.');
       }
+
+      const antes = tipo === 'general'
+        ? vigente
+        : vigente?.finanzas || null;
 
       const despues = {
         ...condiciones,
@@ -1184,27 +1134,25 @@ async function guardarCondicionesHotelFinanzas(
         });
       }
 
+      const proveedor = state.proveedor;
+      const costoHotel = state.costosAno.find(costo =>
+        costo.hotelId === hotelId &&
+        norm(costo.destinoFinanciero) === norm(proveedor?.destinoFinanciero)
+      );
+
       tx.set(historialRef, {
         anoViaje: ano,
-
-        proveedorId:
-          state.costosAno.find(o=>o.hotelId===hotelId&&norm(o.destinoFinanciero)===norm(state.proveedor?.destinoFinanciero))?.proveedorId || state.proveedor?.proveedorId || '',
-
+        proveedorId: costoHotel?.proveedorId || proveedor?.proveedorId || '',
         proveedorNombre:
-          state.costosAno.find(o=>o.hotelId===hotelId&&norm(o.destinoFinanciero)===norm(state.proveedor?.destinoFinanciero))?.proveedorNombre || state.proveedor?.proveedorNombre || '',
-
-        destinoFinanciero:
-          state.proveedor?.destinoFinanciero || '',
-
+          costoHotel?.proveedorNombre || proveedor?.proveedorNombre || '',
+        destinoFinanciero: proveedor?.destinoFinanciero || '',
         hotelId,
         fuentePath: ref.path,
-
         accion: tipo === 'general'
           ? 'EDICION_TARIFA_HOTEL'
           : 'EDICION_ACUERDO_HOTEL',
-
         motivo,
-        antes: vigenteComparable,
+        antes,
         despues,
         usuarioEmail: email,
         creadoAt: serverTimestamp()
@@ -1228,10 +1176,7 @@ async function guardarCondicionesHotelFinanzas(
   );
 
   try {
-    state.historial = await consultarHistorial(
-      state.proveedor.proveedorId
-    );
-
+    state.historial = await consultarHistorial(state.proveedor.proveedorId);
     renderHistorial();
   } catch (error) {
     console.error(error);
