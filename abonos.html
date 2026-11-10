@@ -2119,6 +2119,49 @@
       overflow-wrap: anywhere;
     }
     
+    #abonoModal .form-section .bank-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+      align-items: start;
+    }
+    
+    #abonoModal .abonos-aplicacion,
+    #abonoModal #abCoberturaPax {
+      grid-column: 1 / -1;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    
+    #abonoModal .abonos-aplicacion {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+      align-items: start;
+      gap: .75rem;
+      padding: .85rem;
+      border: 1px solid #d4dce5;
+      border-radius: 8px;
+    }
+    
+    #abonoModal .abonos-aplicacion > p,
+    #abonoModal #abFinResumen {
+      grid-column: 1 / -1;
+      margin: 0;
+    }
+    
+    #abonoModal #abFinTCWrap[hidden],
+    #abonoModal #abCoberturaCampos[hidden] {
+      display: none;
+    }
+    
+    #abonoModal .payment-footer {
+      grid-template-columns: minmax(0, 1fr);
+      align-items: start;
+    }
+    
+    #abonoModal .payment-file {
+      max-width: none;
+    }
+
+    
   </style>
 </head>
 
@@ -2669,7 +2712,7 @@
               />
             </div>
 
-            <fieldset style="grid-column:1 / -1;">
+            <fieldset class="abonos-aplicacion">
               <legend>Aplicación del abono a la deuda</legend>
             
               <p>
@@ -2711,37 +2754,20 @@
                 </select>
               </div>
             
-              <div class="field">
-                <label id="abFinTCLabel" for="abFinTC">
-                  Tipo de cambio
-                </label>
-            
+              <div class="field" id="abFinTCWrap" hidden>
+                <label for="abFinTCSentido">Cómo quieres ingresar el tipo de cambio</label>
+                <select id="abFinTCSentido" class="input">
+                  <option value="PAGO_A_DEUDA">1 unidad de pago en moneda de deuda</option>
+                  <option value="DEUDA_A_PAGO">1 unidad de deuda en moneda de pago</option>
+                </select>
+              
+                <label id="abFinTCLabel" for="abFinTC">Tipo de cambio</label>
                 <input
                   id="abFinTC"
                   class="input"
                   type="number"
                   min="0"
                   step="any"
-                />
-            
-                <small>
-                  Se multiplica el monto enviado por este TC.
-                  Ejemplo: 1 USD = 5 BRL.
-                </small>
-              </div>
-            
-              <div class="field">
-                <label for="abFinAplicado">
-                  Monto aplicado en la moneda de la deuda
-                </label>
-            
-                <input
-                  id="abFinAplicado"
-                  class="input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  readonly
                 />
               </div>
             
