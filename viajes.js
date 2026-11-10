@@ -2207,154 +2207,411 @@ async function upsertHorarios(v, vueloId, publicar, prevPublicar){
 
 // ======= Exportar a Excel =======
 function exportToExcel(){
-  // Hoja 1: Resumen de viajes/trayectos (sin duplicar PAX por transfers)
-  const resumen = vuelos.map(v => {
-    const isAereo = (v.tipoTransporte || 'aereo') === 'aereo';
-    const exclude = !!v.excludeFromTotals;
+  if (typeof XLSX === 'undefined'){
+    alert('No se ha cargado la librería de Excel. Recarga la página.');
+    return;
+  }
 
-    let totA=0, totE=0, totC=0, totX=0;
-    if (!exclude){
-      (v.grupos || []).forEach(gObj => {
-        const g = grupos.find(x => x.id === gObj.id) || {};
-        totA += parseInt(g.adultos || 0, 10);
-        totE += parseInt(g.estudiantes || 0, 10);
-        totC += normalizarCantidadCoordinadores(g.cantidadCoordinadores);
-      });
-    }
-    (v.paxExtras || []).forEach(x => { totX += parseInt(x.cantidad || 0, 10); });
+  const texto = value => String(value ?? '').trim();
+  const upper = value => texto(value).toUpperCase();
+  const cantidad = value => Number(value) || 0;
 
-    let detallesTramos = '';
-    if (isAereo && v.tipoVuelo === 'regular' && v.tramos && v.tramos.length){
-      detallesTramos = v.tramos.map((t,i) => {
-        const tipo = (t.tipoTramo || '').toLowerCase();
-        const p = [];
-    
-        if (tipo === 'ida' || tipo === 'ida+vuelta'){
-          if (toISO(t.fechaIda)){
-            const arrI = markPlusOne(t.vueloIdaHora, t.arriboIdaHora);
-            p.push(`IDA:${t.fechaIda}${t.vueloIdaHora ? ' ' + t.vueloIdaHora : ''}${arrI ? ' → ARR:' + arrI : ''} | PRES:${t.presentacionIdaHora || '-'}`);
-          }
-        }
-        if (tipo === 'vuelta' || tipo === 'ida+vuelta'){
-          if (toISO(t.fechaVuelta)){
-            const arrV = markPlusOne(t.vueloVueltaHora, t.arriboVueltaHora);
-            p.push(`REGRESO:${t.fechaVuelta}${t.vueloVueltaHora ? ' ' + t.vueloVueltaHora : ''}${arrV ? ' → ARR:' + arrV : ''} | PRES:${t.presentacionVueltaHora || '-'}`);
-          }
-        }
-    
-        const lado = p.join(' · ');
-        return `${i+1}) ${toUpper(t.aerolinea)} ${toUpper(t.numero)}: ${toUpper(t.origen)}→${toUpper(t.destino)} ${lado ? '['+lado+']' : ''}`;
-      }).join('\n');
-    }
+  const gruposPorId = new Map(
+    grupos.map(g => [texto(g.id), g])
+  );
 
+  const viajesPorId = new Map(
+    vuelos.map(v => [texto(v.id), v])
+  );
+
+  // Exporta el año operativo seleccionado.
+  const viajesExportar = vuelos.filter(v =>
+    String(obtenerAnoVuelo(v)) === String(anoFiltroViajes)
+  );
+
+  function nombreServicio(v){
+    if (!v) return '';
+
+    const tramos = Array.isArray(v.tramos) ? v.tramos : [];
+    const primero = tramos[0] || {};
+    const ultimo = tramos[tramos.length - 1] || {};
+
+    const proveedor = v.proveedor || primero.aerolinea || '';
+    const numero = v.numero || primero.numero || '';
+    const origen = v.origen || primero.origen || '';
+    const destino = v.destino || ultimo.destino || '';
+
+    return [
+      upper(proveedor),
+      upper(numero),
+      [upper(origen), upper(destino)].filter(Boolean).join(' → ')
+    ].filter(Boolean).join(' · ');
+  }
+
+  function gruposDelServicio(v){
+    const asignaciones = new Map();
+
+    (Array.isArray(v.grupos) ? v.grupos : []).forEach(item => {
+      const id = texto(item.id);
+      if (id) asignaciones.set(id, { ...item, id });
+    });
+
+    (Array.isArray(v.grupoIds) ? v.grupoIds : []).forEach(value => {
+      const id = texto(value);
+
+      if (id && !asignaciones.has(id)){
+        asignaciones.set(id, { id });
+      }
+    });
+
+    return [...asignaciones.values()];
+  }
+
+  function datosGrupo(asignacion){
+    const id = texto(asignacion.id);
+    const g = gruposPorId.get(id) || {};
+
+    const adultos = cantidad(g.adultos);
+    const estudiantes = cantidad(g.estudiantes);
+    const coordinadores =
+      normalizarCantidadCoordinadores(g.cantidadCoordinadores);
 
     return {
-      Transporte: (v.tipoTransporte || 'aereo').toUpperCase(),
-      Es_Transfer: v.isTransfer ? 'Sí' : 'No',
-      Aerolínea_Empresa: v.proveedor || (v.tramos?.[0]?.aerolinea || ''),
-      Numero:     v.numero    || (v.tramos?.[0]?.numero    || ''),
-      TipoVuelo:  isAereo ? (v.tipoVuelo || '') : '',
-      Origen:     v.origen    || (v.tramos?.[0]?.origen    || ''),
-      Destino:    v.destino   || (v.tramos?.[0]?.destino   || ''),
-      Fecha_Ida:  v.fechaIda  || (v.tramos?.[0]?.fechaIda  || ''),
-      Fecha_Vuelta: v.fechaVuelta || (v.tramos?.[0]?.fechaVuelta || ''),
-      Presentacion_Ida:    isAereo ? (v.presentacionIdaHora || '') : '',
-      Vuelo_Ida:           isAereo ? (v.vueloIdaHora || '') : '',
-      Presentacion_Vuelta: isAereo ? (v.presentacionVueltaHora || '') : '',
-      Vuelo_Vuelta:        isAereo ? (v.vueloVueltaHora || '') : '',
-      Hora_Ida_Bus:        isAereo ? '' : (v.idaHora || ''),
-      Hora_Vuelta_Bus:     isAereo ? '' : (v.vueltaHora || ''),
-      Transfer_Leg:        v.isTransfer ? (v.transferLeg || '') : '',
-      Related_Vuelo:       v.isTransfer ? (v.relatedVueloId || '') : '',
-      Tramos:    detallesTramos,
-      Total_Adultos:       totA,
-      Total_Estudiantes:   totE,
-      Total_Coordinadores: totC,
-      Total_Pax_Extra:     totX,
-      Total_Pax:           totA + totE + totC + totX
+      Grupo_ID: id,
+      Numero_Negocio: texto(g.numeroNegocio),
+      Identificador: texto(g.identificador),
+      Nombre_Grupo: texto(g.nombreGrupo || g.aliasGrupo),
+      Colegio: texto(g.colegio),
+      Curso: texto(g.curso),
+      Adultos: adultos,
+      Estudiantes: estudiantes,
+      Coordinadores: coordinadores,
+      PAX_Grupo: adultos + estudiantes + coordinadores,
+      Estado_Asignacion: texto(asignacion.status),
+      Records: Array.isArray(asignacion.reservas)
+        ? asignacion.reservas.join(', ')
+        : '',
+      Cambiado_Por: texto(asignacion.changedBy)
     };
-  });
+  }
 
-  // Hoja 2: Detalle por grupo (incluye transfers)
-  const detalle = [];
-  vuelos.forEach(v => {
-    const isTransfer = !!v.isTransfer;
-    const gids = Array.isArray(v.grupoIds) ? v.grupoIds : (v.grupos || []).map(x => x.id);
+  function numeroPorSentido(numero, sentido){
+    const partes = texto(numero)
+      .split(/\/+/)
+      .map(x => x.trim())
+      .filter(Boolean);
 
-    // Detalle de grupos inline (aéreos) — respeta excludeFromTotals solo en totales, no en detalle
-    (v.grupos || []).forEach(gObj => {
-      const g = grupos.find(x => x.id === gObj.id) || {};
-      detalle.push({
-        Transporte: (v.tipoTransporte || 'aereo').toUpperCase(),
-        Es_Transfer: isTransfer ? 'Sí' : 'No',
-        Fecha_Ida: v.fechaIda,
-        Numero: v.numero || (v.tramos?.[0]?.numero || ''),
-        Grupo_Numero: g.numeroNegocio,
-        Grupo_Identificador: g.identificador,
-        Grupo_Nombre: g.nombreGrupo,
-        Adultos: Number(g.adultos) || 0,
-        Estudiantes: Number(g.estudiantes) || 0,
-        Coordinadores: normalizarCantidadCoordinadores(
-          g.cantidadCoordinadores
-        ),
-        Total:
-          (Number(g.adultos) || 0) +
-          (Number(g.estudiantes) || 0) +
-          normalizarCantidadCoordinadores(g.cantidadCoordinadores),
-        Estado: gObj.status,
-        Records: (Array.isArray(gObj.reservas) ? gObj.reservas.join(', ') : ''),
-        Cambiado_Por: gObj.changedBy || '',
-        Related_Vuelo: isTransfer ? (v.relatedVueloId || '') : ''
-      });
-    });
+    if (partes.length < 2) return partes[0] || '';
 
-    // Detalle de grupoIds (transfers)
-    if (isTransfer && gids.length){
-      gids.forEach(gId => {
-        const g = grupos.find(x => x.id === gId);
-        detalle.push({
-          Transporte: (v.tipoTransporte || 'aereo').toUpperCase(),
-          Es_Transfer: 'Sí',
-          Fecha_Ida: v.fechaIda,
-          Numero: v.numero || '',
-          Grupo_Numero: g?.numeroNegocio || gId,
-          Grupo_Identificador: g?.identificador || '',
-          Grupo_Nombre: g?.nombreGrupo || '',
-          Adultos: '-', Estudiantes: '-', Coordinadores: '-',
-          Total: '-', Estado: '-', Records: '',
-          Cambiado_Por: '',
-          Related_Vuelo: v.relatedVueloId || ''
+    return sentido === 'VUELTA' ? partes[1] : partes[0];
+  }
+
+  // Genera una fila por sentido y por tramo.
+  function filasServicio(v){
+    const aereo = (v.tipoTransporte || 'aereo') === 'aereo';
+    const transfer = !!v.isTransfer;
+
+    const baseRelacionado = transfer
+      ? viajesPorId.get(texto(v.relatedVueloId))
+      : null;
+
+    const comun = {
+      Servicio_ID: texto(v.id),
+      Servicio: transfer
+        ? (aereo ? 'TRASLADO AÉREO' : 'TRANSFER TERRESTRE')
+        : (aereo ? 'VUELO' : 'TERRESTRE'),
+      Transporte: aereo ? 'AÉREO' : 'TERRESTRE',
+      Tipo_Vuelo: aereo ? upper(v.tipoVuelo) : '',
+      Es_Transfer: transfer ? 'Sí' : 'No',
+      Viaje_Principal: nombreServicio(baseRelacionado),
+      Viaje_Principal_ID: transfer ? texto(v.relatedVueloId) : '',
+      Excluido_Total_General:
+        (transfer || v.excludeFromTotals) ? 'Sí' : 'No'
+    };
+
+    const resultado = [];
+
+    function agregarLados(datos, numeroTramo, tipoTramo){
+      const tipo = texto(tipoTramo).toLowerCase();
+      const soloVuelta = tipo === 'vuelta';
+
+      const tieneIda = !!(
+        datos.fechaIda ||
+        datos.presentacionIdaHora ||
+        datos.vueloIdaHora ||
+        datos.arriboIdaHora ||
+        datos.idaHora
+      );
+
+      const tieneVuelta = !!(
+        datos.fechaVuelta ||
+        datos.presentacionVueltaHora ||
+        datos.vueloVueltaHora ||
+        datos.arriboVueltaHora ||
+        datos.vueltaHora
+      );
+
+      const permiteIda = tipo !== 'vuelta';
+      const permiteVuelta = tipo !== 'ida';
+
+      const ambosSentidos =
+        tipo === 'ida+vuelta' ||
+        (!tipo && tieneIda && tieneVuelta);
+
+      function agregar(sentido){
+        const vuelta = sentido === 'VUELTA';
+
+        // Solo se invierte el recorrido cuando el servicio es ida y vuelta.
+        // En "solo vuelta" se conserva el origen/destino registrado.
+        const invertir = vuelta && ambosSentidos && !soloVuelta;
+
+        const origen = invertir ? datos.destino : datos.origen;
+        const destino = invertir ? datos.origen : datos.destino;
+
+        const presentacion = vuelta
+          ? datos.presentacionVueltaHora
+          : datos.presentacionIdaHora;
+
+        const salida = vuelta
+          ? datos.vueloVueltaHora
+          : datos.vueloIdaHora;
+
+        const arribo = vuelta
+          ? datos.arriboVueltaHora
+          : datos.arriboIdaHora;
+
+        const horaTerrestre = vuelta
+          ? datos.vueltaHora
+          : datos.idaHora;
+
+        resultado.push({
+          ...comun,
+          Sentido: sentido,
+          Tramo: numeroTramo,
+          Empresa_Aerolinea: upper(
+            datos.aerolinea || datos.proveedor || v.proveedor
+          ),
+          Numero: numeroPorSentido(
+            datos.numero || v.numero,
+            sentido
+          ),
+          Origen: upper(origen),
+          Destino: upper(destino),
+          Fecha: texto(vuelta ? datos.fechaVuelta : datos.fechaIda),
+          Presentacion_Aerea: aereo ? texto(presentacion) : '',
+          Salida_Vuelo: aereo ? texto(salida) : '',
+          Arribo_Vuelo: aereo && arribo
+            ? markPlusOne(salida || '', arribo)
+            : '',
+          Presentacion_Terrestre: aereo ? '' : texto(horaTerrestre)
         });
-      });
+      }
+
+      if (permiteIda && tieneIda) agregar('IDA');
+      if (permiteVuelta && tieneVuelta) agregar('VUELTA');
+
+      // Conserva también los servicios aún sin fecha ni horario.
+      if (
+        !(permiteIda && tieneIda) &&
+        !(permiteVuelta && tieneVuelta)
+      ){
+        agregar(soloVuelta ? 'VUELTA' : 'IDA');
+      }
     }
 
-    (v.paxExtras || []).forEach(x => {
-      detalle.push({
-        Transporte: (v.tipoTransporte || 'aereo').toUpperCase(),
-        Es_Transfer: isTransfer ? 'Sí' : 'No',
-        Fecha_Ida: v.fechaIda,
-        Numero: v.numero || (v.tramos?.[0]?.numero || ''),
-        Grupo_Numero: '-',
-        Grupo_Identificador: '-',
-        Grupo_Nombre: x.nombre,
-        Adultos: '-',
-        Estudiantes: '-',
-        Coordinadores: '-',
-        Total: x.cantidad,
-        Estado: x.status,
-        Cambiado_Por: x.changedBy || '',
-        Records: Array.isArray(x.records) ? x.records.join(', ') : '',
-        Related_Vuelo: isTransfer ? (v.relatedVueloId || '') : ''
+    const tramos = Array.isArray(v.tramos) ? v.tramos : [];
+
+    if (aereo && v.tipoVuelo === 'regular' && tramos.length){
+      tramos.forEach((tramo, index) => {
+        agregarLados(tramo, index + 1, tramo.tipoTramo);
+      });
+    } else {
+      agregarLados(v, 1, transfer ? v.transferLeg : '');
+    }
+
+    return resultado;
+  }
+
+  const porViaje = [];
+  const porGrupo = [];
+
+  viajesExportar.forEach(v => {
+    const asignaciones = gruposDelServicio(v);
+    const datosGrupos = asignaciones.map(datosGrupo);
+    const servicios = filasServicio(v);
+    const extras = Array.isArray(v.paxExtras) ? v.paxExtras : [];
+
+    const paxGrupos = datosGrupos.reduce(
+      (total, g) => total + g.PAX_Grupo,
+      0
+    );
+
+    const paxExtras = extras.reduce(
+      (total, x) => total + cantidad(x.cantidad),
+      0
+    );
+
+    const listaGrupos = datosGrupos.map(g =>
+      [
+        g.Grupo_ID,
+        g.Numero_Negocio
+          ? `NEGOCIO ${g.Numero_Negocio}`
+          : '',
+        g.Nombre_Grupo || g.Colegio || g.Identificador
+      ].filter(Boolean).join(' · ')
+    ).join('\n');
+
+    servicios.forEach(servicio => {
+      const resumenServicio = {
+        ...servicio,
+        Grupos_Asignados: listaGrupos,
+        Cantidad_Grupos: datosGrupos.length,
+        PAX_Grupos_Servicio: paxGrupos,
+        PAX_Extras_Servicio: paxExtras,
+        PAX_Servicio: paxGrupos + paxExtras
+      };
+
+      if (datosGrupos.length){
+        datosGrupos.forEach(g => {
+          porViaje.push({
+            ...resumenServicio,
+            ...g
+          });
+
+          porGrupo.push({
+            ...g,
+            ...servicio
+          });
+        });
+      } else {
+        porViaje.push({
+          ...resumenServicio,
+          Grupo_ID: '',
+          Nombre_Grupo: 'SIN GRUPOS ASIGNADOS'
+        });
+      }
+
+      // Mantiene los pasajeros extra del export anterior.
+      extras.forEach(x => {
+        const extra = {
+          Grupo_ID: '',
+          Numero_Negocio: '',
+          Identificador: '',
+          Nombre_Grupo: texto(x.nombre),
+          Colegio: '',
+          Curso: '',
+          Adultos: '',
+          Estudiantes: '',
+          Coordinadores: '',
+          PAX_Grupo: cantidad(x.cantidad),
+          Estado_Asignacion: texto(x.status),
+          Records: Array.isArray(x.records)
+            ? x.records.join(', ')
+            : '',
+          Cambiado_Por: texto(x.changedBy),
+          Tipo_Registro: 'PASAJERO EXTRA'
+        };
+
+        porViaje.push({
+          ...resumenServicio,
+          ...extra
+        });
+
+        porGrupo.push({
+          ...extra,
+          ...servicio
+        });
       });
     });
   });
 
+  function compararFechaHora(a, b){
+    const fechaA = toISO(a.Fecha) || '9999-12-31';
+    const fechaB = toISO(b.Fecha) || '9999-12-31';
+
+    const horaA =
+      a.Presentacion_Aerea ||
+      a.Presentacion_Terrestre ||
+      a.Salida_Vuelo ||
+      '99:99';
+
+    const horaB =
+      b.Presentacion_Aerea ||
+      b.Presentacion_Terrestre ||
+      b.Salida_Vuelo ||
+      '99:99';
+
+    return fechaA.localeCompare(fechaB) ||
+      horaA.localeCompare(horaB);
+  }
+
+  // Mantiene juntos los grupos de cada servicio.
+  porViaje.sort((a, b) =>
+    compararFechaHora(a, b) ||
+    texto(a.Servicio_ID).localeCompare(texto(b.Servicio_ID)) ||
+    cantidad(a.Tramo) - cantidad(b.Tramo) ||
+    texto(a.Grupo_ID).localeCompare(
+      texto(b.Grupo_ID), 'es', { numeric: true }
+    )
+  );
+
+  // Mantiene juntos todos los servicios de cada grupo.
+  porGrupo.sort((a, b) =>
+    texto(a.Grupo_ID).localeCompare(
+      texto(b.Grupo_ID), 'es', { numeric: true }
+    ) ||
+    texto(a.Nombre_Grupo).localeCompare(texto(b.Nombre_Grupo), 'es') ||
+    compararFechaHora(a, b) ||
+    texto(a.Servicio_ID).localeCompare(texto(b.Servicio_ID)) ||
+    cantidad(a.Tramo) - cantidad(b.Tramo)
+  );
+
+  if (!porViaje.length){
+    alert('No hay viajes para exportar en el año seleccionado.');
+    return;
+  }
+
   const wb = XLSX.utils.book_new();
-  const ws1 = XLSX.utils.json_to_sheet(resumen);
-  const ws2 = XLSX.utils.json_to_sheet(detalle);
-  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen_Viajes');
-  XLSX.utils.book_append_sheet(wb, ws2, 'Detalle_Grupos');
-  XLSX.writeFile(wb, 'planificacion_viajes.xlsx');
+
+  function agregarHoja(nombre, filas){
+    // Permite generar la hoja aunque todavía no tenga grupos.
+    const datos = filas.length
+      ? filas
+      : [{ Observacion: 'SIN GRUPOS ASIGNADOS' }];
+
+    const ws = XLSX.utils.json_to_sheet(datos);
+    const columnas = Object.keys(datos[0]);
+
+    ws['!cols'] = columnas.map(nombreColumna => {
+      if (nombreColumna === 'Grupos_Asignados') return { wch: 65 };
+      if (nombreColumna === 'Viaje_Principal') return { wch: 55 };
+
+      if ([
+        'Nombre_Grupo', 'Colegio', 'Origen', 'Destino',
+        'Empresa_Aerolinea', 'Records'
+      ].includes(nombreColumna)){
+        return { wch: 30 };
+      }
+
+      if (nombreColumna.endsWith('_ID')) return { wch: 25 };
+
+      return {
+        wch: Math.max(14, Math.min(27, nombreColumna.length + 2))
+      };
+    });
+
+    if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] };
+
+    XLSX.utils.book_append_sheet(wb, ws, nombre);
+  }
+
+  agregarHoja('Viajes_y_Grupos', porViaje);
+  agregarHoja('Grupos_y_Viajes', porGrupo);
+
+  XLSX.writeFile(
+    wb,
+    `planificacion_viajes_${anoFiltroViajes}.xlsx`
+  );
 }
 
 // ======= Cierre de modales al clickear backdrop =======
