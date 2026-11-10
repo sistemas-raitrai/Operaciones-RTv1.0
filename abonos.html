@@ -2069,6 +2069,55 @@
         grid-template-columns: 1fr;
       }
     }
+
+    .abonos-tabla-scroll {
+      max-height: min(65vh, 640px);
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+    
+    #tblAbonos thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #e2e8f0;
+    }
+    
+    #tblAbonos th[data-abono-orden] {
+      padding: 0;
+    }
+    
+    #tblAbonos .abonos-orden-btn {
+      display: flex;
+      align-items: center;
+      justify-content: inherit;
+      gap: 6px;
+      width: 100%;
+      padding: 8px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: inherit;
+      cursor: pointer;
+    }
+    
+    #tblAbonos .abonos-orden-btn:focus-visible {
+      outline: 2px solid #0284c7;
+      outline-offset: -2px;
+    }
+    
+    #tblAbonos .abonos-orden-indicador {
+      color: #475569;
+    }
+    
+    #tblAbonos tbody td.abonos-servicio-asunto {
+      min-width: 220px;
+      max-width: 360px;
+      text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
     
   </style>
 </head>
