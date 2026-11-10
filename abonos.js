@@ -5708,19 +5708,166 @@ function formatearVersionAbono(version) {
     : `Modificado ${cantidadCambios} veces`;
 }
 
-function renderAbonos() {
-  const listaFiltrada =
-    abonosFiltrados();
+let ordenTablaAbonos = {
+  columna: null,
+  direccion: 1
+};
 
-  const listaVisible =
-    aplicarLimiteAbonos(
-      listaFiltrada
+const comparadorTextoAbonos = new Intl.Collator('es-CL', {
+  numeric: true,
+  sensitivity: 'base'
+});
+
+function obtenerFechaOrdenAbono(valor) {
+  if (!valor) return null;
+
+  const milisegundos = typeof valor.toMillis === 'function'
+    ? valor.toMillis()
+    : valor instanceof Date
+      ? valor.getTime()
+      : Date.parse(valor);
+
+  return Number.isFinite(milisegundos) ? milisegundos : null;
+}
+
+function obtenerNumeroOrdenAbono(valor) {
+  if (valor === null || valor === undefined || String(valor).trim() === '') {
+    return null;
+  }
+
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero : null;
+}
+
+const COLUMNAS_ORDEN_ABONOS = [
+  abono => abono.idRegistro,
+  abono => obtenerFechaOrdenAbono(abono.fechaPago || abono.fecha),
+  abono => abono.tipo,
+  abono => abono.tipo === 'hotel' ? abono.hotelNombre : abono.proveedorNombre,
+  abono => [abono.servicioNombre, abono.nota].filter(Boolean).join(' · '),
+  abono => abono.destino,
+  abono => obtenerNumeroOrdenAbono(abono.ano),
+  abono => abono.moneda || 'CLP',
+  abono => obtenerNumeroOrdenAbono(abono.monto),
+  abono => abono.formaPago,
+  abono => abono.referencia,
+  abono => obtenerArchivosAbono(abono).length,
+  abono => abono.estadoFactura || (
+    abono.facturaNoAplica
+      ? 'NO_APLICA'
+      : abono.pendienteFactura
+        ? 'PENDIENTE'
+        : 'COMPLETA'
+  ),
+  abono => {
+    const estado = normalizarEstadoEjecucion(
+      abono.estadoSolicitudPago || 'NO_SOLICITADO'
     );
 
-  const tbody =
-    el('tblAbonos')
-      .querySelector('tbody');
+    const etiquetas = {
+      NO_SOLICITADO: 'No solicitada',
+      SOLICITADO: 'Pendiente exportar',
+      EXPORTADO: 'Exportada',
+      FINALIZADO: 'Finalizada',
+      ANULADO: 'Anulada'
+    };
 
+    return etiquetas[estado] || estado;
+  },
+  abono => abono.createdByEmail,
+  abono => obtenerFechaOrdenAbono(abono.createdAt || abono.fechaRegistro),
+  abono => abono.updatedByEmail,
+  abono => obtenerFechaOrdenAbono(abono.updatedAt),
+  abono => abono.estado || 'REGISTRADO',
+  abono => obtenerNumeroOrdenAbono(abono.version || 1)
+];
+
+function ordenarAbonosParaTabla(lista) {
+  const { columna, direccion } = ordenTablaAbonos;
+  if (columna === null) return lista;
+
+  const obtenerValor = COLUMNAS_ORDEN_ABONOS[columna];
+
+  return lista
+    .map(abono => ({ abono, valor: obtenerValor(abono) }))
+    .sort((a, b) => {
+      const faltaA = a.valor == null || a.valor === '';
+      const faltaB = b.valor == null || b.valor === '';
+
+      if (faltaA || faltaB) {
+        return Number(faltaA) - Number(faltaB);
+      }
+
+      const comparacion =
+        typeof a.valor === 'number' && typeof b.valor === 'number'
+          ? a.valor - b.valor
+          : comparadorTextoAbonos.compare(String(a.valor), String(b.valor));
+
+      return comparacion * direccion;
+    })
+    .map(fila => fila.abono);
+}
+
+function prepararOrdenTablaAbonos(tabla) {
+  const encabezados = tabla.tHead?.rows[0]?.cells;
+
+  // El último encabezado corresponde a Acciones.
+  if (encabezados?.length !== COLUMNAS_ORDEN_ABONOS.length + 1) return;
+
+  COLUMNAS_ORDEN_ABONOS.forEach((_, columna) => {
+    const encabezado = encabezados[columna];
+    let boton = encabezado.querySelector('.abonos-orden-btn');
+
+    if (!boton) {
+      const titulo = encabezado.textContent.trim();
+      boton = document.createElement('button');
+      boton.type = 'button';
+      boton.className = 'abonos-orden-btn';
+      boton.textContent = titulo;
+
+      const indicador = document.createElement('span');
+      indicador.className = 'abonos-orden-indicador';
+      indicador.setAttribute('aria-hidden', 'true');
+      boton.append(' ', indicador);
+
+      boton.addEventListener('click', () => {
+        const mismaColumna = ordenTablaAbonos.columna === columna;
+
+        ordenTablaAbonos = {
+          columna,
+          direccion: mismaColumna ? -ordenTablaAbonos.direccion : 1
+        };
+
+        renderAbonos();
+      });
+
+      encabezado.dataset.abonoOrden = String(columna);
+      encabezado.replaceChildren(boton);
+    }
+
+    const activa = ordenTablaAbonos.columna === columna;
+    const ascendente = ordenTablaAbonos.direccion === 1;
+    const indicador = boton.querySelector('.abonos-orden-indicador');
+
+    indicador.textContent = activa ? (ascendente ? '↑' : '↓') : '↕';
+
+    if (activa) {
+      encabezado.setAttribute('aria-sort', ascendente ? 'ascending' : 'descending');
+    } else {
+      encabezado.removeAttribute('aria-sort');
+    }
+  });
+}
+
+function renderAbonos() {
+  const listaFiltrada = abonosFiltrados();
+  const listaOrdenada = ordenarAbonosParaTabla(listaFiltrada);
+  const listaVisible = aplicarLimiteAbonos(listaOrdenada);
+
+  const tabla = el('tblAbonos');
+  prepararOrdenTablaAbonos(tabla);
+
+  const tbody = tabla.querySelector('tbody');
   tbody.innerHTML = '';
 
   for (const abono of listaVisible) {
@@ -5933,7 +6080,10 @@ function renderAbonos() {
         ${escapeHTML(proveedorHotel)}
       </td>
 
-      <td title="${escapeHTML(servicioAsunto)}">
+      <td
+        class="abonos-servicio-asunto"
+        title="${escapeHTML(servicioAsunto)}"
+      >
         ${escapeHTML(servicioAsunto || '—')}
       </td>
 
