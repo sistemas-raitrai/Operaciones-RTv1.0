@@ -1609,35 +1609,64 @@ function redondearAplicacionAbono(valor) {
   ) / 100;
 }
 
+function obtenerTipoCambioAplicacionAbono() {
+  const ingresado = numeroAplicacionAbono(el('abFinTC').value);
+
+  if (ingresado === null || ingresado <= 0) {
+    return null;
+  }
+
+  const sentido = el('abFinTCSentido').value;
+
+  const factor = sentido === 'DEUDA_A_PAGO'
+    ? 1 / ingresado
+    : ingresado;
+
+  return Number.isFinite(factor) && factor > 0
+    ? factor
+    : null;
+}
+
 function actualizarAplicacionAbono() {
   actualizarFormularioCoberturaPax();
-  const enviada = monedaAplicacionAbono(
-    el('abMoneda').value
-  );
 
-  const deuda = monedaAplicacionAbono(
-    el('abFinMoneda').value
-  );
-
+  const enviada = monedaAplicacionAbono(el('abMoneda').value);
+  const deuda = monedaAplicacionAbono(el('abFinMoneda').value);
   const modo = el('abFinModo').value;
 
-  const monto = numeroAplicacionAbono(
-    el('abMonto').value
+  const monto = numeroAplicacionAbono(el('abMonto').value);
+  const factor = obtenerTipoCambioAplicacionAbono();
+
+  const monedasDistintas = Boolean(
+    enviada && deuda && enviada !== deuda
   );
 
-  const tc = numeroAplicacionAbono(
-    el('abFinTC').value
-  );
+  const usaTipoCambio = modo === 'TC' && monedasDistintas;
 
-  el('abFinTC').disabled = modo !== 'TC';
+  const sentidoInverso =
+    el('abFinTCSentido').value === 'DEUDA_A_PAGO';
 
-  el('abFinAplicado').readOnly =
-    modo !== 'MANUAL';
+  const opcionesSentido = el('abFinTCSentido').options;
 
-  el('abFinTCLabel').textContent =
-    enviada && deuda
-      ? `Tipo de cambio: 1 ${enviada} = ¿cuántos ${deuda}?`
-      : 'Tipo de cambio';
+  opcionesSentido[0].textContent = enviada && deuda
+    ? `1 ${enviada} = cuántos ${deuda}`
+    : '1 unidad del pago en moneda de la deuda';
+
+  opcionesSentido[1].textContent = enviada && deuda
+    ? `1 ${deuda} = cuántos ${enviada}`
+    : '1 unidad de la deuda en moneda del pago';
+
+  el('abFinTCWrap').hidden = !usaTipoCambio;
+  el('abFinTC').disabled = !usaTipoCambio;
+  el('abFinTCSentido').disabled = !usaTipoCambio;
+
+  el('abFinTCLabel').textContent = usaTipoCambio
+    ? `1 ${sentidoInverso ? deuda : enviada} = ¿cuántos ${
+        sentidoInverso ? enviada : deuda
+      }?`
+    : 'Tipo de cambio';
+
+  el('abFinAplicado').readOnly = modo !== 'MANUAL';
 
   let aplicado = null;
   let mensaje = 'Aplicación pendiente de completar.';
@@ -1646,21 +1675,17 @@ function actualizarAplicacionAbono() {
     if (enviada && enviada === deuda && monto !== null) {
       aplicado = monto;
     } else {
-      mensaje =
-        'Para aplicar el mismo monto, ambas monedas deben coincidir.';
+      mensaje = 'La moneda del pago y la moneda de la deuda deben coincidir.';
     }
   }
 
   if (modo === 'TC') {
-    if (
-      enviada &&
-      deuda &&
-      enviada !== deuda &&
-      monto !== null &&
-      tc !== null &&
-      tc > 0
-    ) {
-      const calculado = monto * tc;
+    mensaje = 'Ingresa el tipo de cambio para calcular el monto aplicado.';
+
+    if (!monedasDistintas) {
+      mensaje = 'El tipo de cambio requiere dos monedas distintas.';
+    } else if (monto !== null && factor !== null) {
+      const calculado = monto * factor;
 
       if (Number.isFinite(calculado)) {
         aplicado = redondearAplicacionAbono(calculado);
@@ -1669,12 +1694,9 @@ function actualizarAplicacionAbono() {
   }
 
   if (modo === 'MANUAL') {
-    aplicado = numeroAplicacionAbono(
-      el('abFinAplicado').value
-    );
+    aplicado = numeroAplicacionAbono(el('abFinAplicado').value);
   } else {
-    el('abFinAplicado').value =
-      aplicado === null ? '' : aplicado;
+    el('abFinAplicado').value = aplicado ?? '';
   }
 
   if (
@@ -1685,8 +1707,14 @@ function actualizarAplicacionAbono() {
     aplicado !== null
   ) {
     mensaje =
-      `Enviado: ${enviada} ${fmtNumero(monto)}. ` +
-      `Aplicado: ${deuda} ${fmtNumero(aplicado)}.`;
+      `Pago: ${enviada} ${fmtNumero(monto)}. ` +
+      `Aplicado a la deuda: ${deuda} ${fmtNumero(aplicado)}.`;
+  }
+
+  if (modo === 'MANUAL' && monedasDistintas) {
+    mensaje +=
+      ' Para guardar con monedas distintas, selecciona ' +
+      'Calcular mediante tipo de cambio.';
   }
 
   el('abFinResumen').textContent = mensaje;
@@ -1701,40 +1729,47 @@ function prepararEventosAplicacionAbono() {
 
   selector.dataset.eventosAplicacion = '1';
 
-  [
-    'abMoneda',
-    'abMonto',
-    'abFinMoneda',
-    'abFinModo',
-    'abFinTC',
-    'abFinAplicado'
-  ].forEach(id => {
-    const nodo = el(id);
+  for (const id of ['abMoneda', 'abFinMoneda']) {
+    el(id).addEventListener('change', () => {
+      const enviada = monedaAplicacionAbono(el('abMoneda').value);
+      const deuda = monedaAplicacionAbono(el('abFinMoneda').value);
 
-    nodo.addEventListener(
-      'input',
-      actualizarAplicacionAbono
-    );
+      if (!enviada || !deuda) {
+        selector.value = 'PENDIENTE';
+      } else {
+        selector.value = enviada === deuda
+          ? 'MISMA_MONEDA'
+          : 'TC';
+      }
 
-    nodo.addEventListener(
-      'change',
-      actualizarAplicacionAbono
-    );
+      el('abFinTC').value = '';
+      actualizarAplicacionAbono();
+    });
+  }
+
+  el('abFinTCSentido').addEventListener('change', () => {
+    el('abFinTC').value = '';
+    actualizarAplicacionAbono();
   });
+
+  selector.addEventListener('change', actualizarAplicacionAbono);
+
+  for (const id of ['abMonto', 'abFinTC', 'abFinAplicado']) {
+    el(id).addEventListener('input', actualizarAplicacionAbono);
+    el(id).addEventListener('change', actualizarAplicacionAbono);
+  }
 }
 
 function cargarAplicacionAbono(abono = null) {
   cargarFormularioCoberturaPax(abono);
   prepararEventosAplicacionAbono();
 
-  /*
-   * Solo cargamos una aplicación explícita.
-   * Los pagos antiguos sin estos datos quedan pendientes.
-   */
-  const f = abono?.aplicacionFinanciera || {};
+  const aplicacion = abono?.aplicacionFinanciera || {};
+
+  el('abFinMoneda').disabled = false;
 
   el('abFinMoneda').value =
-    monedaAplicacionAbono(f.monedaDeuda);
+    monedaAplicacionAbono(aplicacion.monedaDeuda);
 
   const modos = [
     'PENDIENTE',
@@ -1743,19 +1778,26 @@ function cargarAplicacionAbono(abono = null) {
     'MANUAL'
   ];
 
-  el('abFinModo').value =
-    modos.includes(f.modo)
-      ? f.modo
-      : 'PENDIENTE';
+  el('abFinModo').value = modos.includes(aplicacion.modo)
+    ? aplicacion.modo
+    : 'PENDIENTE';
 
-  el('abFinTC').value =
-    f.tipoCambio ?? '';
+  // Las aplicaciones antiguas guardan el TC en sentido pago → deuda.
+  const tieneEntradaOriginal =
+    numeroAplicacionAbono(aplicacion.tipoCambioIngresado) > 0;
 
-  el('abFinAplicado').value =
-    f.montoAplicado ?? '';
+  el('abFinTCSentido').value =
+    tieneEntradaOriginal &&
+    aplicacion.sentidoTipoCambio === 'DEUDA_A_PAGO'
+      ? 'DEUDA_A_PAGO'
+      : 'PAGO_A_DEUDA';
 
-  el('abFinDetalle').value =
-    f.detalle || '';
+  el('abFinTC').value = tieneEntradaOriginal
+    ? aplicacion.tipoCambioIngresado
+    : aplicacion.tipoCambio ?? '';
+
+  el('abFinAplicado').value = aplicacion.montoAplicado ?? '';
+  el('abFinDetalle').value = aplicacion.detalle || '';
 
   actualizarAplicacionAbono();
 }
@@ -1764,59 +1806,38 @@ function obtenerAplicacionFinancieraAbono() {
   actualizarAplicacionAbono();
 
   const modo = el('abFinModo').value;
-
-  const monedaEnviada = monedaAplicacionAbono(
-    el('abMoneda').value
-  );
-
-  const monedaDeuda = monedaAplicacionAbono(
-    el('abFinMoneda').value
-  );
-
-  const montoEnviado = numeroAplicacionAbono(
-    el('abMonto').value
-  );
-
-  const tipoCambio = numeroAplicacionAbono(
-    el('abFinTC').value
-  );
-
-  const montoAplicado = numeroAplicacionAbono(
-    el('abFinAplicado').value
-  );
-
+  const monedaEnviada = monedaAplicacionAbono(el('abMoneda').value);
+  const monedaDeuda = monedaAplicacionAbono(el('abFinMoneda').value);
+  const montoEnviado = numeroAplicacionAbono(el('abMonto').value);
+  const tipoCambio = obtenerTipoCambioAplicacionAbono();
+  const montoAplicado = numeroAplicacionAbono(el('abFinAplicado').value);
   const detalle = el('abFinDetalle').value.trim();
 
+  if (!['PENDIENTE', 'MISMA_MONEDA', 'TC', 'MANUAL'].includes(modo)) {
+    throw new Error('Selecciona una forma de aplicación válida.');
+  }
+
   if (
-    ![
-      'PENDIENTE',
-      'MISMA_MONEDA',
-      'TC',
-      'MANUAL'
-    ].includes(modo)
+    monedaEnviada &&
+    monedaDeuda &&
+    monedaEnviada !== monedaDeuda &&
+    modo === 'MANUAL'
   ) {
     throw new Error(
-      'Selecciona una forma de aplicación válida.'
+      'Cuando las monedas son distintas, debes ingresar un tipo de cambio.'
     );
   }
 
   if (modo !== 'PENDIENTE') {
     if (!monedaEnviada || !monedaDeuda) {
-      throw new Error(
-        'Define la moneda enviada y la moneda de la deuda.'
-      );
+      throw new Error('Define la moneda del pago y la moneda de la deuda.');
     }
 
     if (montoEnviado === null) {
-      throw new Error(
-        'El monto enviado no es válido.'
-      );
+      throw new Error('El monto del pago no es válido.');
     }
 
-    if (
-      modo === 'MISMA_MONEDA' &&
-      monedaEnviada !== monedaDeuda
-    ) {
+    if (modo === 'MISMA_MONEDA' && monedaEnviada !== monedaDeuda) {
       throw new Error(
         'Las monedas deben coincidir para aplicar el mismo monto.'
       );
@@ -1824,66 +1845,51 @@ function obtenerAplicacionFinancieraAbono() {
 
     if (modo === 'TC') {
       if (monedaEnviada === monedaDeuda) {
-        throw new Error(
-          'Si ambas monedas coinciden, selecciona mismo monto y misma moneda.'
-        );
+        throw new Error('Selecciona Mismo monto y misma moneda.');
       }
 
-      if (tipoCambio === null || tipoCambio <= 0) {
-        throw new Error(
-          'Ingresa un tipo de cambio mayor que cero.'
-        );
+      if (tipoCambio === null) {
+        throw new Error('Ingresa un tipo de cambio válido mayor que cero.');
       }
     }
 
     if (montoAplicado === null) {
-      throw new Error(
-        'El monto aplicado no es válido.'
-      );
+      throw new Error('El monto aplicado no es válido.');
     }
 
     if (modo === 'MANUAL' && !detalle) {
-      throw new Error(
-        'Explica el monto reconocido por el proveedor.'
-      );
+      throw new Error('Explica el monto reconocido por el proveedor.');
     }
   }
 
   return {
     versionEsquema: 1,
     modo,
-
     monedaDeuda: monedaDeuda || null,
 
-    tipoCambio:
-      modo === 'MISMA_MONEDA'
-        ? 1
-        : modo === 'TC'
-          ? tipoCambio
-          : null,
+    tipoCambio: modo === 'MISMA_MONEDA'
+      ? 1
+      : modo === 'TC'
+        ? tipoCambio
+        : null,
 
-    montoAplicado:
-      modo === 'PENDIENTE'
-        ? null
-        : redondearAplicacionAbono(montoAplicado),
+    sentidoTipoCambio: modo === 'TC'
+      ? el('abFinTCSentido').value
+      : null,
 
-    /*
-     * Guarda a qué pago corresponde esta conversión.
-     * Servirá para detectar revisiones desactualizadas.
-     */
+    tipoCambioIngresado: modo === 'TC'
+      ? numeroAplicacionAbono(el('abFinTC').value)
+      : null,
+
+    montoAplicado: modo === 'PENDIENTE'
+      ? null
+      : redondearAplicacionAbono(montoAplicado),
+
     monedaEnviadaBase: monedaEnviada || null,
     montoEnviadoBase: montoEnviado,
-
     detalle,
-
-    estado:
-      modo === 'PENDIENTE'
-        ? 'PENDIENTE'
-        : 'CONFIGURADO',
-
-    actualizadoPor:
-      auth.currentUser?.email || '',
-
+    estado: modo === 'PENDIENTE' ? 'PENDIENTE' : 'CONFIGURADO',
+    actualizadoPor: auth.currentUser?.email || '',
     actualizadoAt: serverTimestamp()
   };
 }
