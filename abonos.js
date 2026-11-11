@@ -555,30 +555,55 @@ function pintarArchivosFormulario() {
     });
 }
 
-function actualizarEstadoFacturaPorDocumentos() {
-  const tieneDocumentoTributario = [
-    ...ARCHIVOS_ACTUALES,
-    ...ARCHIVOS_NUEVOS_CONFIG.map(
-      item => ({
-        tipoDocumento:
-          item.tipoDocumento
-      })
-    )
-  ].some(archivo =>
+function tieneDocumentoTributarioAbono(archivos = []) {
+  return archivos.some(archivo =>
     ['FACTURA', 'BOLETA'].includes(
       normalizarTipoDocumento(
-        archivo.tipoDocumento
+        archivo.tipoDocumento || archivo.tipo
       )
     )
   );
+}
 
-  if (
-    tieneDocumentoTributario &&
-    !el('abFacturaNoAplica')?.checked
-  ) {
-    el('abPendienteFactura').checked =
-      false;
+function obtenerEstadoFacturaAbono(abono = {}) {
+  const noAplica =
+    abono.estadoFactura === 'NO_APLICA' ||
+    (!abono.estadoFactura && abono.facturaNoAplica);
+
+  if (noAplica) {
+    return 'NO_APLICA';
   }
+
+  return tieneDocumentoTributarioAbono(obtenerArchivosAbono(abono))
+    ? 'COMPLETA'
+    : 'PENDIENTE';
+}
+
+function etiquetaEstadoFacturaAbono(abono) {
+  const etiquetas = {
+    PENDIENTE: 'Pendiente',
+    COMPLETA: 'Recibida',
+    NO_APLICA: 'No aplica'
+  };
+
+  return etiquetas[obtenerEstadoFacturaAbono(abono)];
+}
+
+function actualizarEstadoFacturaPorDocumentos() {
+  const selector = el('abEstadoFactura');
+
+  if (!selector || selector.value === 'NO_APLICA') {
+    return;
+  }
+
+  const archivos = [
+    ...ARCHIVOS_ACTUALES,
+    ...ARCHIVOS_NUEVOS_CONFIG
+  ];
+
+  selector.value = tieneDocumentoTributarioAbono(archivos)
+    ? 'COMPLETA'
+    : 'PENDIENTE';
 }
 
 function normalizarNombreHotel(nombre = '') {
@@ -1525,21 +1550,27 @@ function validarFormulario() {
 }
 
 function obtenerEstadoFacturaFormulario() {
-  if (
-    el('abFacturaNoAplica')
-      ?.checked
-  ) {
-    return 'NO_APLICA';
+  const estado = el('abEstadoFactura').value;
+
+  if (!['PENDIENTE', 'COMPLETA', 'NO_APLICA'].includes(estado)) {
+    throw new Error('Selecciona un estado de factura válido.');
   }
 
+  const archivos = [
+    ...ARCHIVOS_ACTUALES,
+    ...ARCHIVOS_NUEVOS_CONFIG
+  ];
+
   if (
-    el('abPendienteFactura')
-      ?.checked
+    estado === 'COMPLETA' &&
+    !tieneDocumentoTributarioAbono(archivos)
   ) {
-    return 'PENDIENTE';
+    throw new Error(
+      'Adjunta una factura o boleta para marcarla como recibida.'
+    );
   }
 
-  return 'COMPLETA';
+  return estado;
 }
 
 function prepararFormularioCoberturaPax() {
@@ -4245,15 +4276,7 @@ async function confirmarPagoEjecutado() {
     let archivos =
       obtenerArchivosAbono(actual);
 
-    let estadoFactura =
-      actual.estadoFactura ||
-      (
-        actual.facturaNoAplica
-          ? 'NO_APLICA'
-          : actual.pendienteFactura
-            ? 'PENDIENTE'
-            : 'COMPLETA'
-      );
+    let estadoFactura = obtenerEstadoFacturaAbono(actual);
 
     let documentoAdjuntado =
       null;
@@ -4279,15 +4302,12 @@ async function confirmarPagoEjecutado() {
         ];
 
       if (
-        ['FACTURA', 'BOLETA']
-          .includes(
-            normalizarTipoDocumento(
-              tipoDocumento
-            )
-          )
+        estadoFactura !== 'NO_APLICA' &&
+        ['FACTURA', 'BOLETA'].includes(
+          normalizarTipoDocumento(tipoDocumento)
+        )
       ) {
-        estadoFactura =
-          'COMPLETA';
+        estadoFactura = 'COMPLETA';
       }
     }
 
@@ -4989,11 +5009,7 @@ function limpiarFormulario() {
   
   el('abMotivoCambio').value = '';
   el('abComprobantes').value = '';
-  el('abPendienteFactura').checked =
-    false;
-  
-  el('abFacturaNoAplica').checked =
-    false;
+  el('abEstadoFactura').value = 'PENDIENTE';
   
   pintarArchivosFormulario();
 
@@ -5262,21 +5278,7 @@ function iniciarEdicion(abono) {
   
   el('abComprobantes').value = '';
   
-  const estadoFactura =
-    abono.estadoFactura ||
-    (
-      abono.facturaNoAplica
-        ? 'NO_APLICA'
-        : abono.pendienteFactura
-          ? 'PENDIENTE'
-          : 'COMPLETA'
-    );
-  
-  el('abPendienteFactura').checked =
-    estadoFactura === 'PENDIENTE';
-  
-  el('abFacturaNoAplica').checked =
-    estadoFactura === 'NO_APLICA';
+  el('abEstadoFactura').value = obtenerEstadoFacturaAbono(abono);
   
   pintarArchivosFormulario();
   
@@ -5820,13 +5822,7 @@ const COLUMNAS_ORDEN_ABONOS = [
   abono => abono.formaPago,
   abono => abono.referencia,
   abono => obtenerArchivosAbono(abono).length,
-  abono => abono.estadoFactura || (
-    abono.facturaNoAplica
-      ? 'NO_APLICA'
-      : abono.pendienteFactura
-        ? 'PENDIENTE'
-        : 'COMPLETA'
-  ),
+  abono => etiquetaEstadoFacturaAbono(abono),
   abono => {
     const estado = normalizarEstadoEjecucion(
       abono.estadoSolicitudPago || 'NO_SOLICITADO'
@@ -6045,19 +6041,11 @@ function renderAbonos() {
         `
         : '—';
 
-    const estadoFactura =
-      abono.estadoFactura ||
-      (
-        abono.facturaNoAplica
-          ? 'NO_APLICA'
-          : abono.pendienteFactura
-            ? 'PENDIENTE'
-            : 'COMPLETA'
-      );
+    const estadoFactura = obtenerEstadoFacturaAbono(abono);
     
     let facturaHTML = `
       <span class="badge-finanzas completo">
-        COMPLETA
+        RECIBIDA
       </span>
     `;
     
@@ -6445,15 +6433,7 @@ function exportarAbonosExcel() {
           })
           .join(' | '),
       
-      'Estado factura':
-        abono.estadoFactura ||
-        (
-          abono.facturaNoAplica
-            ? 'NO_APLICA'
-            : abono.pendienteFactura
-              ? 'PENDIENTE'
-              : 'COMPLETA'
-        ),
+      'Estado factura': etiquetaEstadoFacturaAbono(abono),
       
       'Estado solicitud de pago':
         abono.estadoSolicitudPago ||
@@ -6722,28 +6702,6 @@ function conectarEventos() {
         guardarAbono({
           solicitarDespues: true
         });
-      }
-    );
-
-  el('abPendienteFactura')
-    ?.addEventListener(
-      'change',
-      event => {
-        if (event.target.checked) {
-          el('abFacturaNoAplica').checked =
-            false;
-        }
-      }
-    );
-  
-  el('abFacturaNoAplica')
-    ?.addEventListener(
-      'change',
-      event => {
-        if (event.target.checked) {
-          el('abPendienteFactura').checked =
-            false;
-        }
       }
     );
   
