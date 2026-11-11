@@ -2909,29 +2909,20 @@
                 id="abArchivosLista"
                 class="archivos-lista"
               ></div>
-          
-              <div class="estado-factura-wrap">
-                <div class="checkbox-line">
-                  <input
-                    id="abPendienteFactura"
-                    type="checkbox"
-                  />
-          
-                  <label for="abPendienteFactura">
-                    Pendiente factura
-                  </label>
-                </div>
-          
-                <div class="checkbox-line no-aplica">
-                  <input
-                    id="abFacturaNoAplica"
-                    type="checkbox"
-                  />
-          
-                  <label for="abFacturaNoAplica">
-                    Factura no aplica
-                  </label>
-                </div>
+
+             <div class="field">
+                <label for="abEstadoFactura">Estado de factura</label>
+              
+                <select id="abEstadoFactura" class="input">
+                  <option value="PENDIENTE">Pendiente</option>
+                  <option value="COMPLETA">Recibida</option>
+                  <option value="NO_APLICA">No aplica</option>
+                </select>
+              
+                <small>
+                  Para marcar Recibida, adjunta un documento de tipo Factura o Boleta.
+                  El comprobante de pago se registra por separado.
+                </small>
               </div>
             </div>
           
