@@ -2716,12 +2716,12 @@
               <legend>Aplicación del abono a la deuda</legend>
             
               <p>
-                El monto y la moneda del pago se conservan.
-                Aquí se indica cuánto descuenta de la deuda.
+                Indica cuánto se descuenta de la deuda del proveedor.
+                Si pagaste en otra moneda, ingresa el tipo de cambio.
               </p>
             
               <div class="field">
-                <label for="abFinMoneda">Moneda de la deuda</label>
+                <label for="abFinMoneda">Moneda de la deuda del proveedor</label>
             
                 <select id="abFinMoneda" class="input">
                   <option value="">Pendiente de definir</option>
@@ -2755,13 +2755,24 @@
               </div>
             
               <div class="field" id="abFinTCWrap" hidden>
-                <label for="abFinTCSentido">Cómo quieres ingresar el tipo de cambio</label>
+                <label for="abFinTCSentido">
+                  Cómo quieres ingresar el tipo de cambio
+                </label>
+            
                 <select id="abFinTCSentido" class="input">
-                  <option value="PAGO_A_DEUDA">1 unidad de pago en moneda de deuda</option>
-                  <option value="DEUDA_A_PAGO">1 unidad de deuda en moneda de pago</option>
+                  <option value="PAGO_A_DEUDA">
+                    1 unidad del pago en moneda de la deuda
+                  </option>
+            
+                  <option value="DEUDA_A_PAGO">
+                    1 unidad de la deuda en moneda del pago
+                  </option>
                 </select>
-              
-                <label id="abFinTCLabel" for="abFinTC">Tipo de cambio</label>
+            
+                <label id="abFinTCLabel" for="abFinTC">
+                  Tipo de cambio
+                </label>
+            
                 <input
                   id="abFinTC"
                   class="input"
@@ -2770,12 +2781,12 @@
                   step="any"
                 />
               </div>
-
+            
               <div class="field">
                 <label for="abFinAplicado">
                   Monto aplicado en la moneda de la deuda
                 </label>
-
+            
                 <input
                   id="abFinAplicado"
                   class="input"
@@ -2805,7 +2816,6 @@
                 aria-live="polite"
               ></div>
             </fieldset>
-
             <div class="field">
               <label for="abFormaPago">
                 Forma de pago
