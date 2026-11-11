@@ -889,8 +889,8 @@ function construirCatalogoHoteles() {
         hotelId: hotel.id || asg.hotelId || '',
         hotelKey,
         nombre: normalizarNombreHotel(nombre),
-        moneda: monedaAplicacionAbono(
-          servicio.moneda || servicio.MONEDA
+        moneda: normalizarMoneda(
+          hotel.moneda || asg.moneda || 'CLP'
         )
       });
     }
@@ -1156,10 +1156,8 @@ function obtenerResultadosBusqueda(texto = '') {
         hotelKey: '',
         hotelNombre: '',
 
-        moneda: normalizarMoneda(
-          servicio.moneda ||
-          servicio.MONEDA ||
-          'CLP'
+        moneda: monedaAplicacionAbono(
+          servicio.moneda || servicio.MONEDA
         )
       }))
       .sort((a, b) => {
