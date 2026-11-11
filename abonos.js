@@ -864,10 +864,8 @@ function construirCatalogoHoteles() {
         hotelId: hotel.id || asg.hotelId || '',
         hotelKey,
         nombre: normalizarNombreHotel(nombre),
-        moneda: normalizarMoneda(
-          hotel.moneda ||
-          asg.moneda ||
-          'CLP'
+        moneda: monedaAplicacionAbono(
+          servicio.moneda || servicio.MONEDA
         )
       });
     }
@@ -1046,6 +1044,10 @@ function poblarDestinosFormulario({
 
 function limpiarSeleccionEntidad() {
   ENTIDAD_SELECCIONADA = null;
+
+  if (!abonoEditandoId) {
+    establecerMonedaAbonoNuevo('');
+  }
 
   el('abBuscarEntidad').value = '';
   el('abResultadosBusqueda').innerHTML = '';
@@ -1268,60 +1270,110 @@ function pintarResultadosBusqueda(resultados = []) {
 }
 
 function seleccionarEntidad(resultado) {
-  ENTIDAD_SELECCIONADA = {
-    ...resultado
-  };
+  ENTIDAD_SELECCIONADA = { ...resultado };
 
   el('abResultadosBusqueda').classList.add('hidden');
 
-  el('abBuscarEntidad').value =
-    resultado.tipo === 'actividad'
-      ? `${resultado.servicioNombre} — ${resultado.proveedorNombre}`
-      : resultado.hotelNombre;
+  el('abBuscarEntidad').value = resultado.tipo === 'actividad'
+    ? `${resultado.servicioNombre} — ${resultado.proveedorNombre}`
+    : resultado.hotelNombre;
 
-  el('selTipo').textContent =
-    resultado.tipo === 'actividad'
-      ? 'ACTIVIDAD'
-      : 'HOTEL';
+  el('selTipo').textContent = resultado.tipo === 'actividad'
+    ? 'ACTIVIDAD'
+    : 'HOTEL';
 
-  el('selProveedorHotel').textContent =
-    resultado.tipo === 'actividad'
-      ? resultado.proveedorNombre
-      : resultado.hotelNombre;
+  el('selProveedorHotel').textContent = resultado.tipo === 'actividad'
+    ? resultado.proveedorNombre
+    : resultado.hotelNombre;
 
-  el('selServicio').textContent =
-    resultado.tipo === 'actividad'
-      ? resultado.servicioNombre
-      : 'ALOJAMIENTO';
+  el('selServicio').textContent = resultado.tipo === 'actividad'
+    ? resultado.servicioNombre
+    : 'ALOJAMIENTO';
 
   el('selDestino').textContent =
-    resultado.destino ||
-    el('abDestino').value ||
-    '—';
+    resultado.destino || el('abDestino').value || '—';
 
-  el('selMoneda').textContent =
-    resultado.moneda ||
-    'CLP';
-
-  el('abMoneda').value =
-    normalizarMoneda(resultado.moneda || 'CLP');
-
-  /*
-   * Para actividades, proponemos su moneda configurada.
-   * Para hoteles la moneda se selecciona por ahora:
-   * su catálogo actual todavía puede usar CLP por defecto.
-   */
-  if (
-    !abonoEditandoId &&
-    resultado.tipo === 'actividad'
-  ) {
-    el('abFinMoneda').value =
-      monedaAplicacionAbono(resultado.moneda);
-  }
-  
-  actualizarAplicacionAbono();
-
+  el('selMoneda').textContent = resultado.moneda || 'Por configurar';
   el('abSeleccionWrap').classList.remove('hidden');
+
+  if (abonoEditandoId) {
+    return;
+  }
+
+  if (resultado.tipo === 'hotel') {
+    establecerMonedaAbonoNuevo('');
+    cargarMonedaHotelAbonoNuevo(ENTIDAD_SELECCIONADA);
+  } else {
+    establecerMonedaAbonoNuevo(resultado.moneda);
+  }
+}
+
+function establecerMonedaAbonoNuevo(moneda) {
+  const codigo = monedaAplicacionAbono(moneda);
+
+  el('abFinMoneda').value = codigo;
+  el('abFinMoneda').disabled = Boolean(codigo);
+
+  if (codigo) {
+    el('abMoneda').value = codigo;
+  }
+
+  el('abFinModo').value = codigo
+    ? 'MISMA_MONEDA'
+    : 'PENDIENTE';
+
+  el('abFinTC').value = '';
+  el('abFinTCSentido').value = 'PAGO_A_DEUDA';
+  el('abFinDetalle').value = '';
+
+  actualizarAplicacionAbono();
+}
+
+async function cargarMonedaHotelAbonoNuevo(seleccion) {
+  const ano = String(el('abAno').value);
+  const hotelId = seleccion.hotelId;
+
+  seleccion.cargandoMoneda = true;
+  seleccion.errorMoneda = false;
+  el('selMoneda').textContent = 'Consultando tarifa…';
+
+  const sigueSeleccionado = () =>
+    ENTIDAD_SELECCIONADA === seleccion &&
+    !abonoEditandoId &&
+    String(el('abAno').value) === ano;
+
+  try {
+    if (!hotelId || !ano) {
+      throw new Error('Falta identificar el hotel o el año.');
+    }
+
+    const snap = await getDoc(
+      doc(db, 'FinanzasHotelesTarifas', `${ano}__hotel__${hotelId}`)
+    );
+
+    if (!sigueSeleccionado()) return;
+
+    const moneda = monedaAplicacionAbono(snap.data()?.moneda);
+
+    seleccion.moneda = moneda;
+    el('selMoneda').textContent = moneda || 'Por configurar';
+
+    establecerMonedaAbonoNuevo(moneda);
+  } catch (error) {
+    if (!sigueSeleccionado()) return;
+
+    seleccion.errorMoneda = true;
+    el('selMoneda').textContent = 'Error al consultar';
+
+    console.error('Error consultando la moneda del hotel:', error);
+
+    setEstadoFormulario(
+      'No se pudo consultar la moneda del hotel. Vuelve a seleccionarlo.',
+      true
+    );
+  } finally {
+    seleccion.cargandoMoneda = false;
+  }
 }
 
 function cambiarTipoFormulario() {
@@ -1803,6 +1855,16 @@ function cargarAplicacionAbono(abono = null) {
 }
 
 function obtenerAplicacionFinancieraAbono() {
+  if (!abonoEditandoId && ENTIDAD_SELECCIONADA?.cargandoMoneda) {
+    throw new Error('Espera a que se cargue la moneda del hotel.');
+  }
+
+  if (!abonoEditandoId && ENTIDAD_SELECCIONADA?.errorMoneda) {
+    throw new Error(
+      'Vuelve a seleccionar el hotel para consultar su moneda.'
+    );
+  }
+
   actualizarAplicacionAbono();
 
   const modo = el('abFinModo').value;
