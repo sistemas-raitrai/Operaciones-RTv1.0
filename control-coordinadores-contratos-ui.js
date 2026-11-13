@@ -17,7 +17,7 @@ export function instalarContratos(h){
    a.append(text('p',label+': '+estado+(d.emision?' · Emisión: '+fechaCompleta(d.emision):'')+(d.vence?' · Vence / renovar: '+fechaCompleta(d.vence):''),'mini'));
   }
   if(s.pendientes.length)a.append(text('p','Pendientes al generar esta copia: '+s.pendientes.join(' · '),'notice warn'));
-  a.append(text('h3','POR LA EMPRESA'),text('p','Carlos Flores Maragaño'),text('p','Firma: __________________________________'),text('h3','EL/LA COORDINADOR(A)'),text('p',s.persona.nombre));
+  a.append(text('h3','POR LA EMPRESA'),text('p','Carlos Flores Maragaño'),s.firmaEmpresaSnapshot?node('img',{src:s.firmaEmpresaSnapshot,alt:'Firma de Carlos Flores Maragaño',class:'signimg'}):text('p','Firma: __________________________________'),text('h3','EL/LA COORDINADOR(A)'),text('p',s.persona.nombre));
   if(r.firma)a.append(node('img',{src:r.firma,alt:'Firma del coordinador(a)',class:'signimg'}),text('p','Firmado el '+fechaCompleta(r.firmadoEn)+' · '+hora(r.firmadoEn),'mini'));
   else a.append(text('p','Firma: __________________________________'));
   a.append(text('p','Identificador del contenido: '+r.hash,'mini'));
@@ -56,7 +56,7 @@ export function instalarContratos(h){
  }
 
  function crearContrato(c,alGuardar){
-  requireOperator();if(state.loading||state.travelError)throw new Error('Actualiza los viajes antes de crear el contrato.');
+  requireOperator();void actualizarModo();if(state.loading||state.travelError)throw new Error('Actualiza los viajes antes de crear el contrato.');
   const viajes=state.viajes.filter(g=>g.asignaciones.has(c.id));if(!viajes.length)throw new Error('Sin viajes asignados en el año seleccionado.');
   const d=modal('Crear contrato · '+c.nombre),form=node('form'),rid=uuid();
   const grupo=field('Viaje del contrato',{required:true,options:[['','Selecciona un viaje'],...viajes.map(g=>[g.id,tripTitle(g)+' · '+fecha(g.fechaInicio)+' a '+fecha(g.fechaFin)])]});
@@ -78,13 +78,14 @@ export function instalarContratos(h){
      const item=node('div',{class:'delivery'},text('h3',x.viaje.nombre),text('p',x.viaje.destino+' · '+fechaCompleta(x.viaje.inicio)+' a '+fechaCompleta(x.viaje.fin)),text('p',(estados[x.estado]||x.estado)+(x.modoPrueba?' · MODO PRUEBA':''),'pill'),button(x.sustitutoActual?'Ver PDF vigente e historial':'Ver contrato / imprimir',()=>verContrato(x.id)));
      if(x.estado==='pendiente'&&!x.sustitutoActual)item.append(button('Generar / renovar enlace de firma',async()=>{if(!confirm('Se invalidará el enlace anterior. ¿Generar uno nuevo por 7 días?'))return;const r=await api('contractRenew',{contratoId:x.id,coordinadorId:c.id});await copy(enlace(r.token));toast('Enlace nuevo copiado.');}));
      item.append(button(x.sustitutoActual?'Reemplazar PDF vigente':'Adjuntar contrato sustituto',()=>sustituirContrato(latest(c.id)||c,x,cargar)));
+     if(puedeBorrar())item.append(button('Borrar contrato',()=>borrarContrato(latest(c.id)||c,x,cargar),'danger'));
      list.append(item);
     }
     status.textContent=r.filas.length?r.filas.length+' contratos registrados.':'Sin contratos registrados.';
    }catch(e){status.textContent=e.message;}
   }
   box.append(node('div',{class:'row'},button('Crear contrato',()=>crearContrato(latest(c.id)||c,cargar),'primary'),button('Actualizar contratos',cargar),button('Ver requisitos',async()=>{const r=await api('contractCheck',{coordinadorId:c.id});status.textContent=(r.bloqueoActivo?'Control documental activo. ':'Modo prueba, sin bloqueo. ')+(r.faltantes.length?r.faltantes.join(' · '):'Carnet y certificados obligatorios vigentes.');})),text('p','Anexo 1 · Equipamiento: entregas y firma independientes. Anexo 2 · Manual: pendiente de incorporar, con firma independiente.','mini'),status,list);
-  queueMicrotask(cargar);return box;
+  queueMicrotask(cargar);void actualizarModo();return box;
  }
 
  async function firmarContrato(token){
@@ -92,14 +93,66 @@ export function instalarContratos(h){
   try{
    const r=await api('contractPublicGet',{token},uuid(),true),a=documentoNode(r);panel.append(a,botonesAdjuntos(r.documento,{token},true));
    if(r.estado==='firmado'){panel.append(button('Imprimir contrato firmado',()=>imprimir(a)));status.textContent='Este contrato ya está firmado.';return;}
-   const canvas=node('canvas',{width:640,height:220,class:'signature'}),ctx=canvas.getContext('2d');ctx.lineWidth=3;ctx.lineCap='round';let pointer=null,trazos=0,requestId=uuid();
-   const point=e=>{const z=canvas.getBoundingClientRect();return [(e.clientX-z.left)*640/z.width,(e.clientY-z.top)*220/z.height];};
-   canvas.onpointerdown=e=>{if(pointer!==null)return;pointer=e.pointerId;canvas.setPointerCapture(pointer);ctx.beginPath();ctx.moveTo(...point(e));};canvas.onpointermove=e=>{if(pointer!==e.pointerId)return;ctx.lineTo(...point(e));ctx.stroke();trazos++;};canvas.onpointerup=canvas.onpointercancel=()=>pointer=null;
+   const firma=capturaFirma(),requestId=uuid();
    const acepta=node('input',{type:'checkbox'});
-   panel.append(text('h2','Firma del coordinador(a)'),text('p','Revisa el contrato y el carnet antes de firmar. Los anexos se firman por separado.'),canvas,node('p',{},node('label',{},acepta,' He revisado el contrato y la identificación mostrada, incluidos los pendientes indicados, y acepto su contenido. Esta firma corresponde únicamente al contrato.')),node('div',{class:'row'},button('Limpiar firma',()=>{ctx.clearRect(0,0,640,220);trazos=0;}),button('Firmar contrato',async()=>{
-    try{if(!acepta.checked||!trazos)throw new Error('Dibuja tu firma y marca la aceptación.');await api('contractPublicSign',{token,hash:r.hash,firma:canvas.toDataURL('image/png'),acepto:true},requestId,true);await firmarContrato(token);}catch(e){status.textContent=e.message;}
+   panel.append(text('h2','Firma del coordinador(a)'),text('p','Revisa el contrato y el carnet antes de firmar. Los anexos se firman por separado.'),firma.element,node('p',{},node('label',{},acepta,' He revisado el contrato y la identificación mostrada, incluidos los pendientes indicados, y acepto su contenido. Esta firma corresponde únicamente al contrato.')),node('div',{class:'row'},button('Firmar contrato',async()=>{
+    try{if(!acepta.checked||!firma.value())throw new Error('Dibuja tu firma y marca la aceptación.');await api('contractPublicSign',{token,hash:r.hash,firma:firma.value(),acepto:true},requestId,true);await firmarContrato(token);}catch(e){status.textContent=e.message;}
    },'primary')));status.textContent='El enlace permite firmar una sola vez.';
   }catch(e){status.textContent=e.message;}
  }
- return {panelContratos,firmarContrato};
+ let modeConfig=null;
+ const email=()=>T(state.user?.email).toLowerCase();
+ const puedeBorrar=()=>['sistemas@raitrai.cl','administracion@raitrai.cl'].includes(email());
+ async function actualizarModo(){
+  const label=document.getElementById('modeLabel'),toggle=document.getElementById('modeToggle'),notice=document.getElementById('modeNotice');
+  if(!state.user){modeConfig=null;if(label)label.hidden=true;if(toggle)toggle.hidden=true;if(notice)notice.hidden=true;return;}
+  const uid=state.user.uid;
+  try{
+   const r=await api('contractConfigGet');if(state.user?.uid!==uid)return;
+   modeConfig=r;
+   if(label){label.hidden=false;label.textContent=r.modoPrueba?'Modo prueba activo':'Modo definitivo';label.className='pill '+(r.modoPrueba?'warn':'ok');}
+   if(notice){notice.hidden=false;notice.className='notice '+(r.modoPrueba?'warn':'good');notice.textContent=r.modoPrueba?'Modo prueba activo: los contratos pueden generarse y firmarse sin completar los documentos obligatorios. Las firmas y registros se guardan realmente.':'Modo definitivo: se exige carnet, antecedentes e inhabilidad vigentes para generar y firmar contratos. Primeros auxilios es opcional. Los anexos se firman por separado.';}
+   if(toggle){toggle.hidden=email()!=='sistemas@raitrai.cl';toggle.textContent=r.modoPrueba?'Salir del modo prueba':'Activar modo prueba';toggle.onclick=()=>cambiarModo().catch(e=>toast(e.message));}
+  }catch(e){if(state.user?.uid!==uid)return;modeConfig=null;if(notice)notice.hidden=true;if(label){label.hidden=false;label.textContent='Modo sin verificar';label.className='pill warn';}if(toggle)toggle.hidden=true;}
+ }
+ async function cambiarModo(){
+  requireOperator();if(email()!=='sistemas@raitrai.cl')throw new Error('Solo Sistemas puede cambiar el modo prueba.');
+  await actualizarModo();if(!modeConfig)throw new Error('No se pudo consultar el modo actual.');
+  const actual={...modeConfig},nuevo=!actual.modoPrueba,d=modal(nuevo?'Activar modo prueba':'Salir del modo prueba',{wide:false}),form=node('form'),rid=uuid(),motivo=field('Motivo del cambio',{multiline:true,required:true,maxLength:2000});
+  form.append(text('p',nuevo?'Se permitirán contratos sin completar el control documental. Los datos y firmas se guardarán realmente.':'Se exigirá carnet, antecedentes e inhabilidad vigentes. Los contratos ya creados conservarán su contenido y su marca de prueba.','notice warn'),motivo.wrap);
+  formSave(d,form,async()=>{await api('contractConfigSet',{modoPrueba:nuevo,revisionEsperada:actual.revision,motivo:T(motivo.input.value)},rid);await actualizarModo();},nuevo?'Activar modo prueba':'Salir del modo prueba');d._body.append(form);
+ }
+ setInterval(()=>{if(state.user)void actualizarModo();},60000);
+ function borrarContrato(c,x,alGuardar){
+  requireOperator();if(!puedeBorrar())throw new Error('Solo Sistemas y Administración pueden borrar contratos.');
+  const d=modal('Borrar contrato · '+c.nombre,{wide:false}),form=node('form'),rid=uuid(),motivo=field('Motivo del borrado',{multiline:true,required:true,maxLength:2000});
+  form.append(text('p',x.viaje.nombre+' · Folio '+x.id),text('p','Se retirará este contrato de la lista y se invalidará su enlace. Podrás generar otro. Se conservará el registro de auditoría. No se borrarán entregas ni firmas de equipamiento.','notice warn'),motivo.wrap);
+  formSave(d,form,async()=>{await api('contractDelete',{contratoId:x.id,coordinadorId:c.id,motivo:T(motivo.input.value)},rid);await alGuardar();},'Borrar contrato');d._body.append(form);
+ }
+ function capturaFirma(){
+  let guardada='',trazosGuardados=[];
+  const area=node('div',{class:'firma-captura'}),preview=node('div',{class:'firma-preview'}),estado=text('p','Todavía no dibujaste tu firma.','mini');
+  function actualizar(){preview.replaceChildren();if(guardada)preview.append(node('img',{src:guardada,alt:'Vista previa de tu firma'}));estado.textContent=guardada?'Firma preparada. Revisa la aceptación antes de confirmar.':'Todavía no dibujaste tu firma.';}
+  function abrir(){
+   const d=modal('Dibuja tu firma');d.classList.add('firma-dialog');d._body.classList.add('firma-editor-body');
+   const canvas=node('canvas',{class:'firma-canvas'}),ctx=canvas.getContext('2d');
+   let trazos=trazosGuardados.map(s=>s.map(p=>[...p])),actual=null,pointer=null;
+   const pintar=()=>{
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#162033';ctx.fillStyle='#162033';ctx.lineWidth=Math.max(2,canvas.width/260);ctx.lineCap='round';ctx.lineJoin='round';
+    for(const trazo of trazos){if(!trazo.length)continue;ctx.beginPath();ctx.moveTo(trazo[0][0]*canvas.width,trazo[0][1]*canvas.height);for(const p of trazo.slice(1))ctx.lineTo(p[0]*canvas.width,p[1]*canvas.height);if(trazo.length===1){ctx.lineTo(trazo[0][0]*canvas.width+1,trazo[0][1]*canvas.height+1);}ctx.stroke();}
+   };
+   const ajustar=()=>{const r=canvas.getBoundingClientRect();if(r.width<=0||r.height<=0)return;const ratio=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.round(r.width*ratio);canvas.height=Math.round(r.height*ratio);pintar();};
+   const punto=e=>{const r=canvas.getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))];};
+   canvas.onpointerdown=e=>{if(pointer!==null)return;e.preventDefault();pointer=e.pointerId;canvas.setPointerCapture(pointer);actual=[punto(e)];trazos.push(actual);pintar();};
+   canvas.onpointermove=e=>{if(pointer!==e.pointerId)return;e.preventDefault();actual.push(punto(e));pintar();};canvas.onpointerup=canvas.onpointercancel=()=>{pointer=null;actual=null;};
+   const limpiar=button('Limpiar firma',()=>{trazos=[];pointer=null;actual=null;pintar();});
+   const usar=button('Usar esta firma',()=>{if(trazos.reduce((n,t)=>n+t.length,0)<3)throw new Error('Dibuja tu firma antes de continuar.');const data=canvas.toDataURL('image/png');if(data.length>330000)throw new Error('La firma es demasiado grande. Limpia e inténtalo de nuevo.');guardada=data;trazosGuardados=trazos.map(s=>s.map(p=>[...p]));actualizar();d.close();},'primary');
+   d._body.append(text('p','Firma con el dedo o el mouse. Puedes girar el celular; el dibujo se conserva.','mini'),canvas,node('div',{class:'row firma-controles'},limpiar,usar));
+   let observer;if(typeof ResizeObserver!=='undefined'){observer=new ResizeObserver(ajustar);observer.observe(canvas);}window.addEventListener('resize',ajustar);d._cleanup=()=>{observer?.disconnect();window.removeEventListener('resize',ajustar);};requestAnimationFrame(ajustar);
+  }
+  area.append(preview,button('Abrir panel para dibujar firma',abrir,'primary firma-abrir'),estado);actualizar();
+  return {element:area,value:()=>guardada};
+ }
+
+ return {panelContratos,firmarContrato,capturaFirma,actualizarModo};
 }
