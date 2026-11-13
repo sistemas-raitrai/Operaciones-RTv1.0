@@ -3,6 +3,7 @@ export function instalarContratos(h){
  const {api,node,text,button,modal,field,formSave,requireOperator,state,latest,tripTitle,fecha,hora,today,uuid,copy,toast,fileData,showFile}=h;
  // Solo para consultar adjuntos de contratos antiguos, sin modificar su contenido firmado.
  const labels={manual:'Manual (adjunto histórico)',confirmacion:'Confirmación (adjunto histórico)',itinerario:'Itinerario (adjunto histórico)',equipamiento:'Equipamiento (adjunto histórico)'};
+ const tipos={principal:'Coordinador principal',asistente:'Asistente de coordinación',no_aplica:'No aplica'};
  const T=v=>String(v??'').trim();
  function enlace(token){const u=new URL('./control-coordinadores.html',location.href);u.hash='firmar-contrato='+token;return u.href;}
  function fechaCompleta(f){if(!f)return 'Sin fecha';const d=/^\d{4}-\d{2}-\d{2}$/.test(String(f))?String(f):new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date(f));return fecha(d)+' '+d.slice(0,4);}
@@ -11,13 +12,13 @@ export function instalarContratos(h){
   if(s.modoPrueba)a.append(text('p','MODO PRUEBA · Contrato generado con controles documentales sin bloqueo.','notice warn'));
   a.append(text('p','Folio '+r.id+' · '+fechaCompleta(s.fechaContrato),'mini'));
   for(const [titulo,contenido]of s.secciones){a.append(text(titulo.startsWith('CONTRATO')?'h1':'h3',titulo));const contenidoFechas=contenido.replace(/\b\d{4}-\d{2}-\d{2}\b/g,fechaCompleta);a.append(text('p',contenidoFechas,'contrato-parrafo'));}
-  a.append(text('h3','DOCUMENTACIÓN DEL COORDINADOR(A)'));
+  a.append(text('h3',s.tipoContrato==='asistente'?'DOCUMENTACIÓN DEL/DE LA ASISTENTE':'DOCUMENTACIÓN DEL COORDINADOR(A)'));
   for(const [k,label]of [['antecedentes','Certificado de antecedentes'],['inhabilidad','Certificado de inhabilidad para trabajar con menores'],['primerosAuxilios','Certificado de primeros auxilios (opcional)']]){
    const d=s.certificados[k],estado=d.vigente?'vigente al generar el contrato':d.presente?'vigencia pendiente o vencida':'sin archivo registrado';
    a.append(text('p',label+': '+estado+(d.emision?' · Emisión: '+fechaCompleta(d.emision):'')+(d.vence?' · Vence / renovar: '+fechaCompleta(d.vence):''),'mini'));
   }
   if(s.pendientes.length)a.append(text('p','Pendientes al generar esta copia: '+s.pendientes.join(' · '),'notice warn'));
-  a.append(text('h3','POR LA EMPRESA'),text('p','Carlos Flores Maragaño'),s.firmaEmpresaSnapshot?node('img',{src:s.firmaEmpresaSnapshot,alt:'Firma de Carlos Flores Maragaño',class:'signimg'}):text('p','Firma: __________________________________'),text('h3','EL/LA COORDINADOR(A)'),text('p',s.persona.nombre));
+  a.append(text('h3','POR LA EMPRESA'),text('p','Carlos Flores Maragaño'),s.firmaEmpresaSnapshot?node('img',{src:s.firmaEmpresaSnapshot,alt:'Firma de Carlos Flores Maragaño',class:'signimg'}):text('p','Firma: __________________________________'),text('h3',s.tipoContrato==='asistente'?'EL/LA ASISTENTE DE COORDINACIÓN':'EL/LA COORDINADOR(A)'),text('p',s.persona.nombre));
   if(r.firma)a.append(node('img',{src:r.firma,alt:'Firma del coordinador(a)',class:'signimg'}),text('p','Firmado el '+fechaCompleta(r.firmadoEn)+' · '+hora(r.firmadoEn),'mini'));
   else a.append(text('p','Firma: __________________________________'));
   a.append(text('p','Identificador del contenido: '+r.hash,'mini'));
@@ -34,6 +35,9 @@ export function instalarContratos(h){
  }
  async function verContrato(id){
   requireOperator();const r=await api('contractRead',{contratoId:id}),d=modal('Contrato · '+r.documento.persona.nombre);
+  if(r.tipoContrato==='no_aplica'){
+   d._body.append(text('h3','Contrato NO APLICA'),text('p',r.documento.viaje.nombre+' · '+r.documento.viaje.destino),text('p','Motivo: '+r.motivoNoAplica,'notice'),text('p','Registrado por '+r.registradoPor+' · '+fechaCompleta(r.registradoEn)+' · '+hora(r.registradoEn),'mini'),text('p','No se generó contrato ni firma. Los anexos de equipamiento y manual son independientes.'));return;
+  }
   const a=documentoNode(r);
   if(r.sustitutoActual){
    const v=r.sustitutoActual;
@@ -60,25 +64,35 @@ export function instalarContratos(h){
   const viajes=state.viajes.filter(g=>g.asignaciones.has(c.id));if(!viajes.length)throw new Error('Sin viajes asignados en el año seleccionado.');
   const d=modal('Crear contrato · '+c.nombre),form=node('form'),rid=uuid();
   const grupo=field('Viaje del contrato',{required:true,options:[['','Selecciona un viaje'],...viajes.map(g=>[g.id,tripTitle(g)+' · '+fecha(g.fechaInicio)+' a '+fecha(g.fechaFin)])]});
-  form.append(grupo.wrap,text('p','Se genera un contrato por viaje. La tarifa se obtiene en el servidor: Brasil / Bariloche $73.000; Sur de Chile / Sur de Chile–Bariloche / Norte de Chile $78.000 brutos diarios. El extra de $20.000 conserva la condición indicada en el contrato; no se suma automáticamente.','notice'));
-  form.append(text('p','Se incorporan los datos y el carnet de la ficha. El Anexo 1 de equipamiento se gestiona y firma desde sus entregas. El Anexo 2 del manual tendrá su propia firma cuando se incorpore. El contrato se firma por separado, sin cargar esos documentos ni Confirmación o Itinerario.','notice'));
+  const tipo=field('Modalidad para este viaje',{required:true,options:[['principal','Coordinador principal'],['asistente','Asistente de coordinación'],['no_aplica','No aplica']]},'principal');
+  const motivo=field('Motivo de No aplica',{multiline:true,maxLength:2000});
+  const explicacion=text('p','','notice'),anexos=text('p','El Anexo 1 de equipamiento y el Anexo 2 del manual se mantienen independientes, también si eliges No aplica. No se cargan Confirmación ni Itinerario.','notice');
+  function actualizar(){
+   const no=tipo.input.value==='no_aplica';motivo.wrap.hidden=!no;motivo.input.required=no;
+   explicacion.textContent=no?'Registra que el contrato No aplica a esta persona para este viaje. Debes indicar el motivo. No se genera documento, enlace ni firma; tampoco se exigen carnet o certificados para registrar esta decisión.':tipo.input.value==='asistente'?'Asistente: $36.500 brutos diarios en Brasil o Bariloche solo; $39.000 en Sur de Chile y sus variantes, Sur de Chile–Bariloche o Norte de Chile. El contrato contiene las funciones y condiciones de asistencia. El extra de $20.000 conserva la condición del regreso después de medianoche.':'Principal: $73.000 brutos diarios en Brasil o Bariloche solo; $78.000 en Sur de Chile y sus variantes, Sur de Chile–Bariloche o Norte de Chile. Se completan los datos y el carnet de la ficha. El extra de $20.000 conserva la condición del regreso después de medianoche.';
+  }
+  tipo.input.onchange=actualizar;actualizar();
+  form.append(grupo.wrap,tipo.wrap,motivo.wrap,explicacion,anexos,text('p','La elección afecta solo a este coordinador y viaje. Si ya hay un registro, Sistemas o Administración debe borrarlo antes de cambiarlo.','mini'));
   formSave(d,form,async()=>{
-   const r=await api('contractCreate',{coordinadorId:c.id,grupoId:grupo.input.value,fechaContrato:today()},rid);
-   await alGuardar();queueMicrotask(()=>{const aviso=modal('Contrato creado',{wide:false});aviso._body.append(text('p','Contrato generado. El enlace de firma dura 7 días.'),button('Copiar enlace de firma',async()=>{await copy(enlace(r.token));toast('Enlace de contrato copiado.');}),button('Ver contrato',()=>verContrato(r.contratoId)));});
-  },'Generar contrato');d._body.append(form);
+   const r=await api('contractCreate',{coordinadorId:c.id,grupoId:grupo.input.value,tipoContrato:tipo.input.value,motivoNoAplica:tipo.input.value==='no_aplica'?T(motivo.input.value):'',fechaContrato:today()},rid);
+   await alGuardar();
+   if(r.noAplica){toast('Contrato No aplica registrado.');return;}
+   queueMicrotask(()=>{const aviso=modal('Contrato creado',{wide:false});aviso._body.append(text('p',(r.tipoContrato==='asistente'?'Contrato de asistente':'Contrato de coordinador principal')+' generado. El enlace de firma dura 7 días.'),button('Copiar enlace de firma',async()=>{await copy(enlace(r.token));toast('Enlace de contrato copiado.');}),button('Ver contrato',()=>verContrato(r.contratoId)));});
+  },'Guardar selección');d._body.append(form);
  }
  function panelContratos(c){
   const box=node('div',{class:'doccard'},text('h3','Contratos por viaje')),list=node('div'),status=text('p','','mini');
-  const estados={pendiente:'PENDIENTE DE FIRMA POR ENLACE',firmado:'FIRMADO POR ENLACE',adjuntado:'ADJUNTADO · SIN FIRMA REGISTRADA',firmado_externo:'FIRMADO FUERA DEL SISTEMA'};
+  const estados={no_aplica:'CONTRATO NO APLICA',pendiente:'PENDIENTE DE FIRMA POR ENLACE',firmado:'FIRMADO POR ENLACE',adjuntado:'ADJUNTADO · SIN FIRMA REGISTRADA',firmado_externo:'FIRMADO FUERA DEL SISTEMA'};
   async function cargar(){
    try{
     status.textContent='Cargando contratos…';const r=await api('contractList',{coordinadorId:c.id});if(!box.isConnected)return;
     list.replaceChildren();
     for(const x of r.filas){
-     const item=node('div',{class:'delivery'},text('h3',x.viaje.nombre),text('p',x.viaje.destino+' · '+fechaCompleta(x.viaje.inicio)+' a '+fechaCompleta(x.viaje.fin)),text('p',(estados[x.estado]||x.estado)+(x.modoPrueba?' · MODO PRUEBA':''),'pill'),button(x.sustitutoActual?'Ver PDF vigente e historial':'Ver contrato / imprimir',()=>verContrato(x.id)));
+     const item=node('div',{class:'delivery'},text('h3',x.viaje.nombre),text('p',x.viaje.destino+' · '+fechaCompleta(x.viaje.inicio)+' a '+fechaCompleta(x.viaje.fin)),text('p',(estados[x.estado]||x.estado)+(x.estado!=='no_aplica'&&x.modoPrueba?' · MODO PRUEBA':''),'pill'),button(x.estado==='no_aplica'?'Ver registro No aplica':x.sustitutoActual?'Ver PDF vigente e historial':'Ver contrato / imprimir',()=>verContrato(x.id)));
+     item.append(text('p',tipos[x.tipoContrato||'principal']||'Coordinador principal','mini'));if(x.estado==='no_aplica')item.append(text('p','Motivo: '+x.motivoNoAplica,'mini'));
      if(x.estado==='pendiente'&&!x.sustitutoActual)item.append(button('Generar / renovar enlace de firma',async()=>{if(!confirm('Se invalidará el enlace anterior. ¿Generar uno nuevo por 7 días?'))return;const r=await api('contractRenew',{contratoId:x.id,coordinadorId:c.id});await copy(enlace(r.token));toast('Enlace nuevo copiado.');}));
-     item.append(button(x.sustitutoActual?'Reemplazar PDF vigente':'Adjuntar contrato sustituto',()=>sustituirContrato(latest(c.id)||c,x,cargar)));
-     if(puedeBorrar())item.append(button('Borrar contrato',()=>borrarContrato(latest(c.id)||c,x,cargar),'danger'));
+     if(x.estado!=='no_aplica')item.append(button(x.sustitutoActual?'Reemplazar PDF vigente':'Adjuntar contrato sustituto',()=>sustituirContrato(latest(c.id)||c,x,cargar)));
+     if(puedeBorrar())item.append(button(x.estado==='no_aplica'?'Borrar registro No aplica':'Borrar contrato',()=>borrarContrato(latest(c.id)||c,x,cargar),'danger'));
      list.append(item);
     }
     status.textContent=r.filas.length?r.filas.length+' contratos registrados.':'Sin contratos registrados.';
@@ -95,7 +109,7 @@ export function instalarContratos(h){
    if(r.estado==='firmado'){panel.append(button('Imprimir contrato firmado',()=>imprimir(a)));status.textContent='Este contrato ya está firmado.';return;}
    const firma=capturaFirma(),requestId=uuid();
    const acepta=node('input',{type:'checkbox'});
-   panel.append(text('h2','Firma del coordinador(a)'),text('p','Revisa el contrato y el carnet antes de firmar. Los anexos se firman por separado.'),firma.element,node('p',{},node('label',{},acepta,' He revisado el contrato y la identificación mostrada, incluidos los pendientes indicados, y acepto su contenido. Esta firma corresponde únicamente al contrato.')),node('div',{class:'row'},button('Firmar contrato',async()=>{
+   panel.append(text('h2',r.documento.tipoContrato==='asistente'?'Firma del/de la asistente de coordinación':'Firma del coordinador(a)'),text('p','Revisa el contrato y el carnet antes de firmar. Los anexos se firman por separado.'),firma.element,node('p',{},node('label',{},acepta,' He revisado el contrato y la identificación mostrada, incluidos los pendientes indicados, y acepto su contenido. Esta firma corresponde únicamente al contrato.')),node('div',{class:'row'},button('Firmar contrato',async()=>{
     try{if(!acepta.checked||!firma.value())throw new Error('Dibuja tu firma y marca la aceptación.');await api('contractPublicSign',{token,hash:r.hash,firma:firma.value(),acepto:true},requestId,true);await firmarContrato(token);}catch(e){status.textContent=e.message;}
    },'primary')));status.textContent='El enlace permite firmar una sola vez.';
   }catch(e){status.textContent=e.message;}
@@ -125,9 +139,9 @@ export function instalarContratos(h){
  setInterval(()=>{if(state.user)void actualizarModo();},60000);
  function borrarContrato(c,x,alGuardar){
   requireOperator();if(!puedeBorrar())throw new Error('Solo Sistemas y Administración pueden borrar contratos.');
-  const d=modal('Borrar contrato · '+c.nombre,{wide:false}),form=node('form'),rid=uuid(),motivo=field('Motivo del borrado',{multiline:true,required:true,maxLength:2000});
+  const d=modal((x.estado==='no_aplica'?'Borrar registro No aplica · ':'Borrar contrato · ')+c.nombre,{wide:false}),form=node('form'),rid=uuid(),motivo=field('Motivo del borrado',{multiline:true,required:true,maxLength:2000});
   form.append(text('p',x.viaje.nombre+' · Folio '+x.id),text('p','Se retirará este contrato de la lista y se invalidará su enlace. Podrás generar otro. Se conservará el registro de auditoría. No se borrarán entregas ni firmas de equipamiento.','notice warn'),motivo.wrap);
-  formSave(d,form,async()=>{await api('contractDelete',{contratoId:x.id,coordinadorId:c.id,motivo:T(motivo.input.value)},rid);await alGuardar();},'Borrar contrato');d._body.append(form);
+  formSave(d,form,async()=>{await api('contractDelete',{contratoId:x.id,coordinadorId:c.id,motivo:T(motivo.input.value)},rid);await alGuardar();},x.estado==='no_aplica'?'Borrar registro No aplica':'Borrar contrato');d._body.append(form);
  }
  function capturaFirma(){
   let guardada='',trazosGuardados=[];
