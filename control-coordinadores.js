@@ -1,5 +1,5 @@
-// Control de Coordinadores · v9 · Modo prueba · Requiere controlCoordinadoresApi (backend incluido).
-import {instalarContratos} from './control-coordinadores-contratos-ui.js?v=20261113-v9';
+// Control de Coordinadores · v10 · Modo prueba · Requiere controlCoordinadoresApi (backend incluido).
+import {instalarContratos} from './control-coordinadores-contratos-ui.js?v=20261113-v10';
 import {app,db} from './firebase-init.js';
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {collection,query,where,getDocs,onSnapshot,doc,getDoc} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
