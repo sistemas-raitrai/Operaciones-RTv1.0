@@ -1,6 +1,6 @@
 // Nuevo archivo, junto a control-coordinadores.js y firebase-init.js.
 export function instalarContratos(h){
- const {api,node,text,button,modal,field,formSave,requireOperator,state,latest,tripTitle,fecha,hora,today,uuid,copy,toast,fileData,showFile}=h;
+ const {api,node,text,button,modal,field,formSave,requireOperator,state,latest,tripTitle,fecha,hora,today,uuid,copy,toast,fileData,showFile,descargarWord}=h;
  // Solo para consultar adjuntos de contratos antiguos, sin modificar su contenido firmado.
  const labels={manual:'Manual (adjunto histórico)',confirmacion:'Confirmación (adjunto histórico)',itinerario:'Itinerario (adjunto histórico)',equipamiento:'Equipamiento (adjunto histórico)'};
  const tipos={principal:'Coordinador principal',asistente:'Asistente de coordinación',no_aplica:'No aplica'};
@@ -61,23 +61,25 @@ export function instalarContratos(h){
 
  function crearContrato(c,alGuardar){
   requireOperator();void actualizarModo();if(state.loading||state.travelError)throw new Error('Actualiza los viajes antes de crear el contrato.');
-  const viajes=state.viajes.filter(g=>g.asignaciones.has(c.id));if(!viajes.length)throw new Error('Sin viajes asignados en el año seleccionado.');
+  const viajes=[...state.viajes.filter(g=>g.asignaciones.has(c.id)).map(g=>({...g,contextKey:'grupo:'+g.id})),...(state.asignaciones||[]).filter(a=>a.coordinadorId===c.id&&a.activo!==false&&!a.archivada&&Number(a.anoViaje)===state.ano).map(a=>({id:a.id,contextKey:'operativa:'+a.id,nombre:({coordinador_general:'Coordinador general',asistente_general:'Asistente de coordinación general',monitor:'Monitor de entretenimiento'})[a.funcion],destino:a.destino,fechaInicio:a.inicio,fechaFin:a.fin,asignacionId:a.id}))];if(!viajes.length)throw new Error('Sin grupos o asignaciones operativas activas en el año seleccionado.');
   const d=modal('Crear contrato · '+c.nombre),form=node('form'),rid=uuid();
-  const grupo=field('Viaje del contrato',{required:true,options:[['','Selecciona un viaje'],...viajes.map(g=>[g.id,tripTitle(g)+' · '+fecha(g.fechaInicio)+' a '+fecha(g.fechaFin)])]});
+  const grupo=field('Viaje o asignación operativa',{required:true,options:[['','Selecciona un viaje'],...viajes.map(g=>[g.contextKey,tripTitle(g)+' · '+fecha(g.fechaInicio)+' a '+fecha(g.fechaFin)])]});
   const tipo=field('Modalidad para este viaje',{required:true,options:[['principal','Coordinador principal'],['asistente','Asistente de coordinación'],['no_aplica','No aplica']]},'principal');
+  let opcionesServidor=[];
   const motivo=field('Motivo de No aplica',{multiline:true,maxLength:2000});
   const explicacion=text('p','','notice'),anexos=text('p','El Anexo 1 de equipamiento y el Anexo 2 del manual se mantienen independientes, también si eliges No aplica. No se cargan Confirmación ni Itinerario.','notice');
   function actualizar(){
    const no=tipo.input.value==='no_aplica';motivo.wrap.hidden=!no;motivo.input.required=no;
-   explicacion.textContent=no?'Registra que el contrato No aplica a esta persona para este viaje. Debes indicar el motivo. No se genera documento, enlace ni firma; tampoco se exigen carnet o certificados para registrar esta decisión.':tipo.input.value==='asistente'?'Asistente: $36.500 brutos diarios en Brasil o Bariloche solo; $39.000 en Sur de Chile y sus variantes, Sur de Chile–Bariloche o Norte de Chile. El contrato contiene las funciones y condiciones de asistencia. El extra de $20.000 conserva la condición del regreso después de medianoche.':'Principal: $73.000 brutos diarios en Brasil o Bariloche solo; $78.000 en Sur de Chile y sus variantes, Sur de Chile–Bariloche o Norte de Chile. Se completan los datos y el carnet de la ficha. El extra de $20.000 conserva la condición del regreso después de medianoche.';
+   explicacion.textContent=no?'Registra que el contrato No aplica a esta persona para este viaje. Debes indicar el motivo. No se genera documento, enlace ni firma; tampoco se exigen carnet o certificados para registrar esta decisión.':tipo.input.value&& !['principal','asistente'].includes(tipo.input.value)?'La plantilla y la tarifa de esta función se obtienen del backend. Revisa la vista previa antes de enviar a firmar.':tipo.input.value==='asistente'?'Asistente: $36.500 brutos diarios en Brasil o Bariloche solo; $39.000 en Sur de Chile y sus variantes, Sur de Chile–Bariloche o Norte de Chile. El contrato contiene las funciones y condiciones de asistencia. El extra de $20.000 conserva la condición del regreso después de medianoche.':'Principal: $73.000 brutos diarios en Brasil o Bariloche solo; $78.000 en Sur de Chile y sus variantes, Sur de Chile–Bariloche o Norte de Chile. Se completan los datos y el carnet de la ficha. El extra de $20.000 conserva la condición del regreso después de medianoche.';
   }
+  grupo.input.onchange=async()=>{const key=grupo.input.value,ref=viajes.find(g=>g.contextKey===key);if(!ref)return;try{const r=await api('contractOptions',{coordinadorId:c.id,...(ref.asignacionId?{asignacionId:ref.asignacionId}:{grupoId:ref.id})});if(grupo.input.value!==key)return;opcionesServidor=r.opciones;tipo.input.replaceChildren(new Option('Selecciona modalidad',''));for(const o of r.opciones){const n=new Option(o.nombre+(o.disponible?'':' · formato pendiente'),o.id);n.disabled=!o.disponible;tipo.input.add(n);}tipo.input.value=ref.asignacionId?'':'principal';actualizar();if(ref.asignacionId&&r.opciones.some(o=>!o.disponible))explicacion.textContent='El contrato de esta función se incorporará cuando entregues su texto y tarifa. Por ahora puedes registrar No aplica solo si corresponde a la decisión de Gerencia.';}catch(e){d._status.textContent=e.message;}};
   tipo.input.onchange=actualizar;actualizar();
-  form.append(grupo.wrap,tipo.wrap,motivo.wrap,explicacion,anexos,text('p','La elección afecta solo a este coordinador y viaje. Si ya hay un registro, Sistemas o Administración debe borrarlo antes de cambiarlo.','mini'));
+  form.append(grupo.wrap,tipo.wrap,motivo.wrap,explicacion,anexos,text('p','La elección afecta solo a este coordinador y viaje. Si ya hay un registro, debes borrarlo con operador activo y clave antes de cambiarlo.','mini'));
   formSave(d,form,async()=>{
-   const r=await api('contractCreate',{coordinadorId:c.id,grupoId:grupo.input.value,tipoContrato:tipo.input.value,motivoNoAplica:tipo.input.value==='no_aplica'?T(motivo.input.value):'',fechaContrato:today()},rid);
+   const seleccion=viajes.find(g=>g.contextKey===grupo.input.value);if(!seleccion)throw new Error('Selecciona un viaje o asignación.');const r=await api('contractCreate',{coordinadorId:c.id,...(seleccion.asignacionId?{asignacionId:seleccion.asignacionId}:{grupoId:seleccion.id}),tipoContrato:tipo.input.value,motivoNoAplica:tipo.input.value==='no_aplica'?T(motivo.input.value):'',fechaContrato:today()},rid);
    await alGuardar();
    if(r.noAplica){toast('Contrato No aplica registrado.');return;}
-   queueMicrotask(()=>{const aviso=modal('Contrato creado',{wide:false});aviso._body.append(text('p',(r.tipoContrato==='asistente'?'Contrato de asistente':'Contrato de coordinador principal')+' generado. El enlace de firma dura 7 días.'),button('Copiar enlace de firma',async()=>{await copy(enlace(r.token));toast('Enlace de contrato copiado.');}),button('Ver contrato',()=>verContrato(r.contratoId)));});
+   queueMicrotask(()=>{const aviso=modal('Contrato creado',{wide:false});aviso._body.append(text('p',('Contrato · '+(opcionesServidor.find(o=>o.id===r.tipoContrato)?.nombre||tipos[r.tipoContrato]||r.tipoContrato))+' generado. El enlace de firma dura 7 días.'),button('Copiar enlace de firma',async()=>{await copy(enlace(r.token));toast('Enlace de contrato copiado.');}),button('Ver contrato',()=>verContrato(r.contratoId)));});
   },'Guardar selección');d._body.append(form);
  }
  function panelContratos(c){
@@ -90,15 +92,15 @@ export function instalarContratos(h){
     for(const x of r.filas){
      const item=node('div',{class:'delivery'},text('h3',x.viaje.nombre),text('p',x.viaje.destino+' · '+fechaCompleta(x.viaje.inicio)+' a '+fechaCompleta(x.viaje.fin)),text('p',(estados[x.estado]||x.estado)+(x.estado!=='no_aplica'&&x.modoPrueba?' · MODO PRUEBA':''),'pill'),button(x.estado==='no_aplica'?'Ver registro No aplica':x.sustitutoActual?'Ver PDF vigente e historial':'Ver contrato / imprimir',()=>verContrato(x.id)));
      item.append(text('p',tipos[x.tipoContrato||'principal']||'Coordinador principal','mini'));if(x.estado==='no_aplica')item.append(text('p','Motivo: '+x.motivoNoAplica,'mini'));
-     if(x.estado==='pendiente'&&!x.sustitutoActual)item.append(button('Generar / renovar enlace de firma',async()=>{if(!confirm('Se invalidará el enlace anterior. ¿Generar uno nuevo por 7 días?'))return;const r=await api('contractRenew',{contratoId:x.id,coordinadorId:c.id});await copy(enlace(r.token));toast('Enlace nuevo copiado.');}));
-     if(x.estado!=='no_aplica')item.append(button(x.sustitutoActual?'Reemplazar PDF vigente':'Adjuntar contrato sustituto',()=>sustituirContrato(latest(c.id)||c,x,cargar)));
+     if(x.estado==='pendiente'&&!x.sustitutoActual)item.append(button('Copiar enlace',async()=>{const r=await api('contractLink',{contratoId:x.id,coordinadorId:c.id});await copy(enlace(r.token));}),button('Renovar enlace',async()=>{if(!confirm('Se invalidará el enlace anterior. ¿Generar uno nuevo por 7 días?'))return;const r=await api('contractRenew',{contratoId:x.id,coordinadorId:c.id});await copy(enlace(r.token));toast('Enlace nuevo copiado.');}));
+     if(x.estado!=='no_aplica')item.append(button('Descargar Word sin firmas',()=>descargarWord('contrato',x.id,c.id)),button(x.sustitutoActual?'Reemplazar PDF vigente':'Adjuntar PDF firmado',()=>sustituirContrato(latest(c.id)||c,x,cargar)),button('Ver estado de firma',async()=>{const r=await api('contractRead',{contratoId:x.id});status.textContent=(estados[r.estado]||r.estado)+(r.sustitutoActual?.firmadoExterno?' · '+fechaCompleta(r.sustitutoActual.fechaFirma):r.firmadoEn?' · '+fechaCompleta(r.firmadoEn)+' · '+hora(r.firmadoEn):'');}));if(['firmado','firmado_externo'].includes(x.estado))item.append(button('Descargar PDF firmado',async()=>showFile(await api('documentSignedPDF',{tipo:'contrato',documentoId:x.id,coordinadorId:c.id}),'Contrato firmado')));
      if(puedeBorrar())item.append(button(x.estado==='no_aplica'?'Borrar registro No aplica':'Borrar contrato',()=>borrarContrato(latest(c.id)||c,x,cargar),'danger'));
      list.append(item);
     }
     status.textContent=r.filas.length?r.filas.length+' contratos registrados.':'Sin contratos registrados.';
    }catch(e){status.textContent=e.message;}
   }
-  box.append(node('div',{class:'row'},button('Crear contrato',()=>crearContrato(latest(c.id)||c,cargar),'primary'),button('Actualizar contratos',cargar),button('Ver requisitos',async()=>{const r=await api('contractCheck',{coordinadorId:c.id});status.textContent=(r.bloqueoActivo?'Control documental activo. ':'Modo prueba, sin bloqueo. ')+(r.faltantes.length?r.faltantes.join(' · '):'Carnet y certificados obligatorios vigentes.');})),text('p','Anexo 1 · Equipamiento: entregas y firma independientes. Anexo 2 · Manual: pendiente de incorporar, con firma independiente.','mini'),status,list);
+  box.append(node('div',{class:'row'},button('Crear contrato',()=>crearContrato(latest(c.id)||c,cargar),'primary'),button('Actualizar contratos',cargar),button('Ver requisitos',async()=>{const r=await api('contractCheck',{coordinadorId:c.id});status.textContent=(r.bloqueoActivo?'Control documental activo. ':'Modo prueba, sin bloqueo. ')+(r.faltantes.length?r.faltantes.join(' · '):'Carnet y certificados obligatorios vigentes.');})),text('p','Contrato y anexos se firman por separado.','mini'),status,list);
   queueMicrotask(cargar);void actualizarModo();return box;
  }
 
@@ -116,64 +118,19 @@ export function instalarContratos(h){
  }
  let modeConfig=null;
  const email=()=>T(state.user?.email).toLowerCase();
- const puedeBorrar=()=>['sistemas@raitrai.cl','administracion@raitrai.cl'].includes(email());
-  async function actualizarModo() {
-    const label = document.getElementById('modeLabel');
-    const toggle = document.getElementById('modeToggle');
-    const notice = document.getElementById('modeNotice');
-  
-    // Eliminar el aviso permanente de la pantalla.
-    if (notice) {
-      notice.hidden = true;
-      notice.textContent = '';
-    }
-  
-    if (!state.user) {
-      modeConfig = null;
-      if (label) label.hidden = true;
-      if (toggle) toggle.hidden = true;
-      return;
-    }
-  
-    const uid = state.user.uid;
-    const sistemas = email() === 'sistemas@raitrai.cl';
-  
-    try {
-      const r = await api('contractConfigGet');
-      if (state.user?.uid !== uid) return;
-  
-      modeConfig = r;
-  
-      if (label) {
-        label.hidden = !sistemas;
-        label.textContent = r.modoPrueba
-          ? 'Modo prueba activo'
-          : 'Modo definitivo';
-        label.className = 'pill ' + (r.modoPrueba ? 'warn' : 'ok');
-      }
-  
-      if (toggle) {
-        toggle.hidden = !sistemas;
-        toggle.textContent = r.modoPrueba
-          ? 'Salir del modo prueba'
-          : 'Activar modo prueba';
-        toggle.onclick = () =>
-          cambiarModo().catch(e => toast(e.message));
-      }
-    } catch (e) {
-      if (state.user?.uid !== uid) return;
-  
-      modeConfig = null;
-  
-      if (label) {
-        label.hidden = !sistemas;
-        label.textContent = 'Modo sin verificar';
-        label.className = 'pill warn';
-      }
-  
-      if (toggle) toggle.hidden = true;
-    }
-  }
+ const puedeBorrar=()=>true;
+ async function actualizarModo(){
+  const label=document.getElementById('modeLabel'),toggle=document.getElementById('modeToggle'),notice=document.getElementById('modeNotice');
+  if(!state.user){modeConfig=null;if(label)label.hidden=true;if(toggle)toggle.hidden=true;if(notice)notice.hidden=true;return;}
+  const uid=state.user.uid;
+  try{
+   const r=await api('contractConfigGet');if(state.user?.uid!==uid)return;
+   modeConfig=r;
+   if(label){label.hidden=email()!=='sistemas@raitrai.cl';label.textContent=r.modoPrueba?'Modo prueba activo':'Modo definitivo';label.className='pill '+(r.modoPrueba?'warn':'ok');}
+   if(notice){notice.hidden=true;notice.textContent='';}
+   if(toggle){toggle.hidden=email()!=='sistemas@raitrai.cl';toggle.textContent=r.modoPrueba?'Salir del modo prueba':'Activar modo prueba';toggle.onclick=()=>cambiarModo().catch(e=>toast(e.message));}
+  }catch(e){if(state.user?.uid!==uid)return;modeConfig=null;if(notice)notice.hidden=true;if(label){label.hidden=email()!=='sistemas@raitrai.cl';label.textContent='Modo sin verificar';label.className='pill warn';}if(toggle)toggle.hidden=true;}
+ }
  async function cambiarModo(){
   requireOperator();if(email()!=='sistemas@raitrai.cl')throw new Error('Solo Sistemas puede cambiar el modo prueba.');
   await actualizarModo();if(!modeConfig)throw new Error('No se pudo consultar el modo actual.');
@@ -183,10 +140,11 @@ export function instalarContratos(h){
  }
  setInterval(()=>{if(state.user)void actualizarModo();},60000);
  function borrarContrato(c,x,alGuardar){
-  requireOperator();if(!puedeBorrar())throw new Error('Solo Sistemas y Administración pueden borrar contratos.');
+  requireOperator();
   const d=modal((x.estado==='no_aplica'?'Borrar registro No aplica · ':'Borrar contrato · ')+c.nombre,{wide:false}),form=node('form'),rid=uuid(),motivo=field('Motivo del borrado',{multiline:true,required:true,maxLength:2000});
-  form.append(text('p',x.viaje.nombre+' · Folio '+x.id),text('p','Se retirará este contrato de la lista y se invalidará su enlace. Podrás generar otro. Se conservará el registro de auditoría. No se borrarán entregas ni firmas de equipamiento.','notice warn'),motivo.wrap);
-  formSave(d,form,async()=>{await api('contractDelete',{contratoId:x.id,coordinadorId:c.id,motivo:T(motivo.input.value)},rid);await alGuardar();},x.estado==='no_aplica'?'Borrar registro No aplica':'Borrar contrato');d._body.append(form);
+  const clave=field('Clave de borrado',{type:'password',required:true,autocomplete:'off'});
+  form.append(clave.wrap,text('p',x.viaje.nombre+' · Folio '+x.id),text('p','Se retirará este contrato de la lista y se invalidará su enlace. Podrás generar otro. Se conservará el registro de auditoría. No se borrarán entregas ni firmas de equipamiento.','notice warn'),motivo.wrap);
+  formSave(d,form,async()=>{await api('contractDelete',{contratoId:x.id,coordinadorId:c.id,motivo:T(motivo.input.value),claveBorrado:clave.input.value},rid);clave.input.value='';await alGuardar();},x.estado==='no_aplica'?'Borrar registro No aplica':'Borrar contrato');d._body.append(form);
  }
  function capturaFirma(){
   let guardada='',trazosGuardados=[];
