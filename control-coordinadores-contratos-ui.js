@@ -117,18 +117,63 @@ export function instalarContratos(h){
  let modeConfig=null;
  const email=()=>T(state.user?.email).toLowerCase();
  const puedeBorrar=()=>['sistemas@raitrai.cl','administracion@raitrai.cl'].includes(email());
- async function actualizarModo(){
-  const label=document.getElementById('modeLabel'),toggle=document.getElementById('modeToggle'),notice=document.getElementById('modeNotice');
-  if(!state.user){modeConfig=null;if(label)label.hidden=true;if(toggle)toggle.hidden=true;if(notice)notice.hidden=true;return;}
-  const uid=state.user.uid;
-  try{
-   const r=await api('contractConfigGet');if(state.user?.uid!==uid)return;
-   modeConfig=r;
-   if(label){label.hidden=false;label.textContent=r.modoPrueba?'Modo prueba activo':'Modo definitivo';label.className='pill '+(r.modoPrueba?'warn':'ok');}
-   if(notice){notice.hidden=false;notice.className='notice '+(r.modoPrueba?'warn':'good');notice.textContent=r.modoPrueba?'Modo prueba activo: los contratos pueden generarse y firmarse sin completar los documentos obligatorios. Las firmas y registros se guardan realmente.':'Modo definitivo: se exige carnet, antecedentes e inhabilidad vigentes para generar y firmar contratos. Primeros auxilios es opcional. Los anexos se firman por separado.';}
-   if(toggle){toggle.hidden=email()!=='sistemas@raitrai.cl';toggle.textContent=r.modoPrueba?'Salir del modo prueba':'Activar modo prueba';toggle.onclick=()=>cambiarModo().catch(e=>toast(e.message));}
-  }catch(e){if(state.user?.uid!==uid)return;modeConfig=null;if(notice)notice.hidden=true;if(label){label.hidden=false;label.textContent='Modo sin verificar';label.className='pill warn';}if(toggle)toggle.hidden=true;}
- }
+  async function actualizarModo() {
+    const label = document.getElementById('modeLabel');
+    const toggle = document.getElementById('modeToggle');
+    const notice = document.getElementById('modeNotice');
+  
+    // Eliminar el aviso permanente de la pantalla.
+    if (notice) {
+      notice.hidden = true;
+      notice.textContent = '';
+    }
+  
+    if (!state.user) {
+      modeConfig = null;
+      if (label) label.hidden = true;
+      if (toggle) toggle.hidden = true;
+      return;
+    }
+  
+    const uid = state.user.uid;
+    const sistemas = email() === 'sistemas@raitrai.cl';
+  
+    try {
+      const r = await api('contractConfigGet');
+      if (state.user?.uid !== uid) return;
+  
+      modeConfig = r;
+  
+      if (label) {
+        label.hidden = !sistemas;
+        label.textContent = r.modoPrueba
+          ? 'Modo prueba activo'
+          : 'Modo definitivo';
+        label.className = 'pill ' + (r.modoPrueba ? 'warn' : 'ok');
+      }
+  
+      if (toggle) {
+        toggle.hidden = !sistemas;
+        toggle.textContent = r.modoPrueba
+          ? 'Salir del modo prueba'
+          : 'Activar modo prueba';
+        toggle.onclick = () =>
+          cambiarModo().catch(e => toast(e.message));
+      }
+    } catch (e) {
+      if (state.user?.uid !== uid) return;
+  
+      modeConfig = null;
+  
+      if (label) {
+        label.hidden = !sistemas;
+        label.textContent = 'Modo sin verificar';
+        label.className = 'pill warn';
+      }
+  
+      if (toggle) toggle.hidden = true;
+    }
+  }
  async function cambiarModo(){
   requireOperator();if(email()!=='sistemas@raitrai.cl')throw new Error('Solo Sistemas puede cambiar el modo prueba.');
   await actualizarModo();if(!modeConfig)throw new Error('No se pudo consultar el modo actual.');
