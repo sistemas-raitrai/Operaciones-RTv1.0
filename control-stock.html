@@ -591,12 +591,12 @@
       </div>
 
       <section class="card" style="margin-top:14px">
-        <h2>Stock de guías</h2>
-        <p>Inventario independiente de Bodega.</p>
+        <h2>Entregas a coordinadores · Cajas de origen</h2>
+        <p>Identifica de qué cajas salió cada entrega. Vincula retiros anteriores sin descontarlos otra vez.</p>
         <div class="row">
           <button type="button" class="btn" id="guiaCargar">Actualizar</button>
-          <button type="button" class="btn" id="guiaEntrada">Ingresar stock</button>
-          <button type="button" class="btn primary" id="guiaNueva">Nueva entrega</button>
+          <button type="button" class="btn" id="guiaOperador">Activar operador</button>
+          <button type="button" class="btn" id="guiaReset" hidden>Reiniciar saldos independientes</button><a class="btn" href="./control-coordinadores.html">Ir a Control de Coordinadores</a>
         </div>
         <p id="guiaEstado" role="status"></p>
         <div id="guiaLista"></div>
@@ -784,7 +784,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <dialog id="guiaImpresion" aria-label="Anexo de entrega"></dialog>
-  <script type="module" src="./control-stock.js"></script>
+  <script type="module" src="./control-stock.js?v=20261116-v11"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </body>
 </html>
