@@ -2590,6 +2590,503 @@ async function sincronizarPaxReservaManual() {
   }
 }
 
+// ———————————————————————————————
+// Excel consolidado: DISCOS del proveedor ALLIANCE
+// ———————————————————————————————
+
+function esDiscoAllianceContador(actividad, proveedor) {
+  const nombreActividad =
+    normalizarActividadReserva(actividad || '');
+
+  const nombreProveedor =
+    normalizarActividadReserva(proveedor || '');
+
+  return (
+    nombreProveedor === 'alliance' &&
+    /^disco(?:\s|$)/.test(nombreActividad)
+  );
+}
+
+function configurarBotonTotalProveedorDisco(
+  destino,
+  actividad,
+  proveedor
+) {
+  const boton = document.getElementById(
+    'btnTotalProveedorDisco'
+  );
+
+  if (!boton) return;
+
+  const habilitado = esDiscoAllianceContador(
+    actividad,
+    proveedor
+  );
+
+  boton.style.display = habilitado
+    ? 'inline-block'
+    : 'none';
+
+  boton.disabled = false;
+  boton.textContent = 'Total proveedor';
+  boton.onclick = null;
+
+  if (!habilitado) return;
+
+  const ano = getAnoContadorActivo();
+
+  boton.onclick = () => {
+    exportarTotalProveedorDiscoAlliance({
+      destino,
+      ano
+    });
+  };
+}
+
+function formatearFechaExcelDiscoAlliance(fecha) {
+  const partes = String(fecha || '').split('-');
+
+  if (partes.length !== 3) return String(fecha || '');
+
+  return `${partes[2]}/${partes[1]}/${partes[0]}`;
+}
+
+function construirDatosDiscoAlliance(
+  listaGrupos,
+  servicios,
+  destino
+) {
+  // Únicamente servicios DISCO asociados a ALLIANCE.
+  const actividadesAlliance = new Set(
+    servicios
+      .filter(servicio =>
+        esDiscoAllianceContador(
+          servicio.nombre,
+          servicio.proveedor
+        )
+      )
+      .map(servicio =>
+        normalizarActividadReserva(servicio.nombre)
+      )
+  );
+
+  if (!actividadesAlliance.size) {
+    throw new Error(
+      'No se encontraron actividades DISCO de ALLIANCE ' +
+      'en el catálogo del destino y año seleccionados.'
+    );
+  }
+
+  const registros = [];
+  const idsProcesados = new Set();
+
+  listaGrupos.forEach(grupo => {
+    // Si tiene destino informado, debe coincidir.
+    // Si no lo tiene, se reconoce por las actividades
+    // del catálogo del destino.
+    const destinosGrupo =
+      obtenerValoresDestinoGrupoContador(grupo);
+
+    if (
+      destinosGrupo.length &&
+      !grupoCoincideDestinoContador(grupo, destino)
+    ) {
+      return;
+    }
+
+    // Se identifica por documento, no por número de negocio.
+    const id = String(grupo.id || '').trim();
+
+    if (!id) {
+      throw new Error(
+        'Hay un grupo sin ID. No se puede consolidar ' +
+        'el Excel sin identificar correctamente los grupos.'
+      );
+    }
+
+    if (idsProcesados.has(id)) return;
+    idsProcesados.add(id);
+
+    const porFecha = new Map();
+
+    Object.entries(grupo.itinerario || {})
+      .forEach(([fecha, actividades]) => {
+        if (
+          !/^\d{4}-\d{2}-\d{2}$/.test(fecha) ||
+          !Array.isArray(actividades)
+        ) {
+          return;
+        }
+
+        const discos = actividades.filter(item =>
+          actividadesAlliance.has(
+            normalizarActividadReserva(
+              item?.actividad || ''
+            )
+          )
+        );
+
+        if (!discos.length) return;
+
+        // Misma fórmula de pasajeros que usa el contador.
+        const adultos = discos.reduce(
+          (total, item) =>
+            total + (parseInt(item.adultos, 10) || 0),
+          0
+        );
+
+        const estudiantes = discos.reduce(
+          (total, item) =>
+            total + (parseInt(item.estudiantes, 10) || 0),
+          0
+        );
+
+        porFecha.set(fecha, {
+          adultos,
+          estudiantes,
+          pax: adultos + estudiantes
+        });
+      });
+
+    const fechas = [...porFecha.keys()].sort();
+
+    if (!fechas.length) return;
+
+    const primeraFecha = fechas[0];
+
+    registros.push({
+      id,
+      numeroNegocio: String(grupo.numeroNegocio || id),
+      nombreGrupo: String(grupo.nombreGrupo || ''),
+      primeraFecha,
+      fechas,
+      noches: fechas.length,
+      paxIngreso: porFecha.get(primeraFecha).pax,
+      porFecha
+    });
+  });
+
+  registros.sort((a, b) =>
+    a.primeraFecha.localeCompare(b.primeraFecha) ||
+    a.numeroNegocio.localeCompare(
+      b.numeroNegocio,
+      'es',
+      { numeric: true }
+    ) ||
+    a.id.localeCompare(b.id)
+  );
+
+  const fechas = [
+    ...new Set(
+      registros.flatMap(registro => registro.fechas)
+    )
+  ].sort();
+
+  // Una fila por día calendario.
+  const resumenDiario = fechas.map(fecha => {
+    const ingresos = registros.filter(
+      registro => registro.primeraFecha === fecha
+    );
+
+    const asistentes = registros.filter(
+      registro => registro.porFecha.has(fecha)
+    );
+
+    return [
+      formatearFechaExcelDiscoAlliance(fecha),
+      ingresos.length,
+      ingresos.reduce(
+        (total, registro) =>
+          total + registro.paxIngreso,
+        0
+      ),
+      asistentes.length,
+      asistentes.reduce(
+        (total, registro) =>
+          total + registro.porFecha.get(fecha).pax,
+        0
+      )
+    ];
+  });
+
+  // Se agrupan solamente los grupos que tienen
+  // exactamente las mismas fechas de asistencia.
+  const ingresosAgrupados = new Map();
+
+  registros.forEach(registro => {
+    const clave = registro.fechas.join('|');
+
+    if (!ingresosAgrupados.has(clave)) {
+      ingresosAgrupados.set(clave, {
+        primeraFecha: registro.primeraFecha,
+        fechas: registro.fechas,
+        grupos: 0,
+        paxIngreso: 0
+      });
+    }
+
+    const ingreso = ingresosAgrupados.get(clave);
+
+    ingreso.grupos += 1;
+    ingreso.paxIngreso += registro.paxIngreso;
+  });
+
+  const ingresosNoches = [
+    ...ingresosAgrupados.values()
+  ]
+    .sort((a, b) =>
+      a.primeraFecha.localeCompare(b.primeraFecha) ||
+      a.fechas.join('|').localeCompare(
+        b.fechas.join('|')
+      )
+    )
+    .map(ingreso => [
+      formatearFechaExcelDiscoAlliance(
+        ingreso.primeraFecha
+      ),
+      ingreso.grupos,
+      ingreso.paxIngreso,
+      ingreso.fechas.length,
+      ingreso.fechas
+        .map(formatearFechaExcelDiscoAlliance)
+        .join(', ')
+    ]);
+
+  // Una fila por grupo y una columna por fecha.
+  const calendarioGrupos = registros.map(registro => [
+    registro.id,
+    registro.numeroNegocio,
+    registro.nombreGrupo,
+    formatearFechaExcelDiscoAlliance(
+      registro.primeraFecha
+    ),
+    registro.paxIngreso,
+    registro.noches,
+    ...fechas.map(fecha =>
+      registro.porFecha.has(fecha)
+        ? registro.porFecha.get(fecha).pax
+        : ''
+    )
+  ]);
+
+  const totalIngresos = registros.reduce(
+    (total, registro) => total + registro.paxIngreso,
+    0
+  );
+
+  const totalesPorDia = fechas.map(fecha =>
+    registros.reduce(
+      (total, registro) =>
+        total + (registro.porFecha.get(fecha)?.pax || 0),
+      0
+    )
+  );
+
+  return {
+    registros,
+    fechas,
+    resumenDiario,
+    ingresosNoches,
+    calendarioGrupos,
+    totalIngresos,
+    totalesPorDia
+  };
+}
+
+function agregarHojaExcelDiscoAlliance(
+  libro,
+  nombre,
+  filas,
+  anchos
+) {
+  const hoja = XLSX.utils.aoa_to_sheet(filas);
+
+  hoja['!cols'] = anchos.map(ancho => ({
+    wch: ancho
+  }));
+
+  if (filas.length > 1) {
+    hoja['!autofilter'] = {
+      ref: XLSX.utils.encode_range({
+        s: { r: 0, c: 0 },
+        e: {
+          r: filas.length - 1,
+          c: filas[0].length - 1
+        }
+      })
+    };
+  }
+
+  XLSX.utils.book_append_sheet(
+    libro,
+    hoja,
+    nombre
+  );
+
+  return hoja;
+}
+
+async function exportarTotalProveedorDiscoAlliance({
+  destino,
+  ano
+}) {
+  const boton = document.getElementById(
+    'btnTotalProveedorDisco'
+  );
+
+  // Captura los grupos cargados del año antes de las
+  // consultas del catálogo.
+  const gruposExportacion = [...grupos];
+
+  try {
+    if (typeof XLSX === 'undefined') {
+      throw new Error(
+        'No se cargó la librería XLSX. ' +
+        'Recarga la página e intenta nuevamente.'
+      );
+    }
+
+    if (String(ano) !== getAnoContadorActivo()) {
+      throw new Error(
+        'Cambió el año seleccionado. ' +
+        'Cierra y vuelve a abrir la reserva.'
+      );
+    }
+
+    if (boton) {
+      boton.disabled = true;
+      boton.textContent = 'Generando Excel...';
+    }
+
+    const servicios = await cargarServiciosContador(
+      ano,
+      destino
+    );
+
+    const datos = construirDatosDiscoAlliance(
+      gruposExportacion,
+      servicios,
+      destino
+    );
+
+    if (!datos.registros.length) {
+      throw new Error(
+        'No hay grupos con actividades DISCO de ALLIANCE ' +
+        'para el destino y año seleccionados.'
+      );
+    }
+
+    const libro = XLSX.utils.book_new();
+
+    agregarHojaExcelDiscoAlliance(
+      libro,
+      'Resumen diario',
+      [
+        [
+          'Fecha',
+          'Grupos nuevos (IN)',
+          'Pasajeros nuevos (IN)',
+          'Grupos que asisten ese día',
+          'Pasajeros que asisten ese día'
+        ],
+        ...datos.resumenDiario
+      ],
+      [16, 22, 25, 30, 34]
+    );
+
+    agregarHojaExcelDiscoAlliance(
+      libro,
+      'Ingresos y noches',
+      [
+        [
+          'Primer ingreso',
+          'Grupos',
+          'Pasajeros al ingreso',
+          'Cantidad de noches',
+          'Fechas de asistencia'
+        ],
+        ...datos.ingresosNoches
+      ],
+      [18, 12, 24, 23, 85]
+    );
+
+    const filasCalendario = [
+      [
+        'ID grupo',
+        'Número de negocio',
+        'Nombre del grupo',
+        'Primer ingreso',
+        'Pasajeros al ingreso',
+        'Cantidad de noches',
+        ...datos.fechas.map(
+          formatearFechaExcelDiscoAlliance
+        )
+      ],
+      ...datos.calendarioGrupos
+    ];
+
+    const hojaCalendario =
+      agregarHojaExcelDiscoAlliance(
+        libro,
+        'Calendario grupos',
+        filasCalendario,
+        [
+          22,
+          22,
+          45,
+          18,
+          24,
+          23,
+          ...datos.fechas.map(() => 14)
+        ]
+      );
+
+    // Totales fuera del rango de autofiltro.
+    XLSX.utils.sheet_add_aoa(
+      hojaCalendario,
+      [
+        [
+          '',
+          '',
+          'TOTAL ASISTENCIA DEL DÍA',
+          '',
+          datos.totalIngresos,
+          '',
+          ...datos.totalesPorDia
+        ]
+      ],
+      { origin: -1 }
+    );
+
+    const destinoArchivo = String(destino)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .toUpperCase();
+
+    XLSX.writeFile(
+      libro,
+      `ALLIANCE_DISCO_${destinoArchivo}_${ano}.xlsx`
+    );
+  } catch (error) {
+    console.error(
+      '[CONTADOR] Excel DISCOS ALLIANCE:',
+      error
+    );
+
+    alert(
+      'No se pudo generar el Excel.\n\n' +
+      (error?.message || String(error))
+    );
+  } finally {
+    if (boton) {
+      boton.disabled = false;
+      boton.textContent = 'Total proveedor';
+    }
+  }
+}
+
 async function abrirModalReserva(event) {
   const btn =
     event.currentTarget;
@@ -2602,6 +3099,12 @@ async function abrirModalReserva(event) {
 
   const proveedor =
     btn.dataset.proveedor;
+
+  configurarBotonTotalProveedorDisco(
+    destino,
+    actividad,
+    proveedor
+  );
 
   /*
    * Cada vez que abrimos una reserva nueva,
