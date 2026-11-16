@@ -1,4 +1,4 @@
-import {instalarOrigenes} from './control-coordinadores-operacion-ui.js?v=20261116-v13';
+import {instalarOrigenes} from './control-coordinadores-operacion-ui.js?v=20261116-v15';
 // control-stock.js
 import { app, db } from './firebase-init.js';
 
