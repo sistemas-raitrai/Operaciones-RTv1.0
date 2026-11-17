@@ -34,6 +34,7 @@ const STAFF_EMAILS = new Set([
   "aleoperaciones@raitrai.cl",
   "tomas@raitrai.cl",
   "operaciones@raitrai.cl",
+  'victoria@raitrai.cl',
   "anamaria@raitrai.cl",
   "sistemas@raitrai.cl",
   "yenny@raitrai.cl",
