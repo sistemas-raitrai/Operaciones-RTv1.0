@@ -2355,6 +2355,43 @@ function construirTransportes(
    COORDINADORES
 ========================================================= */
 
+function unificarCoordinadores(lista) {
+  const perfiles = new Map();
+  const nombresAntiguos = new Map();
+  const clave = nombre => normalizarTexto(nombre).replace(/[^a-z0-9]/g, "");
+  const palabras = nombre => normalizarTexto(nombre).match(/[a-z0-9]+/g) || [];
+
+  for (const item of lista) {
+    const id = cleanText(item.coordinadorId || item.idOriginal);
+    const nombre = clave(item.nombre);
+    if (id) {
+      if (!perfiles.has(id)) perfiles.set(id, item);
+    } else if (nombre && !nombresAntiguos.has(nombre)) {
+      nombresAntiguos.set(nombre, item);
+    }
+  }
+
+  const asignados = [...perfiles.values()];
+  for (const [nombre, item] of nombresAntiguos) {
+    const abreviado = palabras(item.nombre);
+    const coincidencias = [...perfiles.values()].filter(perfil => {
+      if (clave(perfil.nombre) === nombre) return true;
+
+      const completo = palabras(perfil.nombre);
+      if (abreviado.length < 2 || abreviado[0] !== completo[0]) return false;
+
+      let posicion = 0;
+      for (const palabra of completo) {
+        if (palabra === abreviado[posicion]) posicion += 1;
+      }
+      return posicion === abreviado.length;
+    });
+    if (coincidencias.length !== 1) asignados.push(item);
+  }
+
+  return asignados;
+}
+
 async function cargarCoordinadores(
   grupo = {}
 ) {
@@ -2439,10 +2476,7 @@ async function cargarCoordinadores(
         continue;
       }
 
-      const key =
-        normalizarTexto(
-          nombre
-        );
+      const key = snap.id;
 
       if (
         vistos.has(key)
@@ -2916,7 +2950,12 @@ async function abrirGestionGrupo(
     ] = await Promise.all([
       cargarHoteles(grupo),
       cargarVuelosGrupo(grupo),
-      cargarCoordinadores(grupo)
+      Promise.all(
+        (state.encuestaActual?.grupoDocIds?.length
+          ? state.encuestaActual.grupoDocIds.map(id => state.grupos.find(item => item.id === id)).filter(Boolean)
+          : [grupo]
+        ).map(item => cargarCoordinadores(item))
+      ).then(listas => unificarCoordinadores(listas.flat()))
     ]);
 
     const transportesDetectados =
@@ -2963,11 +3002,11 @@ async function abrirGestionGrupo(
               ?.coordinadores ||
             []
           )
-        : combinarServiciosDetectados(
-            coordinadoresDetectados,
-            state.encuestaActual
-              ?.coordinadores ||
-            []
+        : unificarCoordinadores(
+            combinarServiciosDetectados(
+              coordinadoresDetectados,
+              state.encuestaActual?.coordinadores || []
+            )
           );
 
     /*
