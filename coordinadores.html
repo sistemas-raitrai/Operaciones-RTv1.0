@@ -266,9 +266,9 @@
         document.getElementById('encabezado').innerHTML =
           html;
   
-        await import('./firebase-init.js');
+        await import('./firebase-init.js?v=20261118-v18');
         await import('./script.js');
-        await import('./coordinadores.js');
+        await import('./coordinadores.js?v=20261118-v18');
   
       } catch (err) {
         console.error(
