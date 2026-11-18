@@ -6,7 +6,7 @@ import {exportarExcelActivos} from './control-coordinadores-excel.js?v=20261117-
 // Control de Coordinadores · v11 · Modo prueba · Requiere controlCoordinadoresApi (backend incluido).
 import {instalarContratos} from './control-coordinadores-contratos-ui.js?v=20261117-v17';
 import {instalarOperacion} from './control-coordinadores-operacion-ui.js?v=20261117-v17';
-import {app,db} from './firebase-init.js';
+import {app,db} from './firebase-init.js?v=20261118-firma-v17-1';
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {collection,query,where,getDocs,onSnapshot,doc,getDoc} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 const auth=getAuth(app), $=id=>document.getElementById(id);
