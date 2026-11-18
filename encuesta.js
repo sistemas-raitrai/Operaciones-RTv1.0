@@ -1546,6 +1546,8 @@ function crearPreguntaDesdeItem(
       ) ||
       `${tipo}:${idBase}`,
 
+    permiteNoMeToco: tipo === "coordinador" && item.permiteNoMeToco === true,
+
     /*
       Debe mandar el tipo de la sección:
       actividad, hotel, transporte, etc.
@@ -2145,9 +2147,11 @@ function renderPreguntas() {
                   : ""
               }
 
-              ${crearSelectorEstrellas(
-                pregunta
-              )}
+              ${crearSelectorEstrellas(pregunta)}
+              ${pregunta.permiteNoMeToco
+                ? `<button type="button" class="no-me-toco" aria-pressed="false"
+                     data-no-me-toco="${escapeHtml(pregunta.preguntaId)}">No me tocó</button>`
+                : ""}
 
             </article>
           `;
@@ -2216,8 +2220,12 @@ function seleccionarPuntuacion(
 
   if (
     !preguntaId ||
-    puntuacion < 1 ||
-    puntuacion > 5
+    !Number.isInteger(puntuacion) ||
+    puntuacion < 0 ||
+    puntuacion > 5 ||
+    (puntuacion === 0 && !state.preguntas.some(
+      pregunta => pregunta.preguntaId === preguntaId && pregunta.permiteNoMeToco
+    ))
   ) {
     return;
   }
@@ -2233,9 +2241,8 @@ function seleccionarPuntuacion(
         `[data-pregunta-id="${CSS.escape(preguntaId)}"]`
       );
 
-  card?.classList.remove(
-    "has-error"
-  );
+  card?.classList.remove("has-error");
+  card?.querySelector(".no-me-toco")?.setAttribute("aria-pressed", String(puntuacion === 0));
 
   pintarEstrellas(
     preguntaId,
@@ -2295,11 +2302,7 @@ function pintarEstrellas(
 
   if (descripcion) {
     descripcion.textContent =
-      `${valor} de 5 · ${
-        getDescripcionPuntuacion(
-          valor
-        )
-      }`;
+      valor === 0 ? "No me tocó" : `${valor} de 5 · ${getDescripcionPuntuacion(valor)}`;
   }
 }
 
@@ -2359,6 +2362,10 @@ function limpiarVistaPreviaEstrellas(
 }
 
 function conectarEventosEstrellas() {
+  contenedorPreguntas?.querySelectorAll(".no-me-toco").forEach(boton => {
+    boton.addEventListener("click", () => seleccionarPuntuacion(boton.dataset.noMeToco, 0));
+  });
+
   contenedorPreguntas
     ?.querySelectorAll(
       ".star-button"
