@@ -682,23 +682,17 @@ async function cargarDatosBase() {
 }
 
 function getEncuestaGrupo(grupoId) {
-  const candidatas =
-    state.encuestas
-      .filter(
-        encuesta =>
-          cleanText(
-            encuesta.grupoDocId
-          ) === cleanText(grupoId)
+  const id = cleanText(grupoId);
+
+  const candidatas = state.encuestas
+    .filter(encuesta =>
+      cleanText(encuesta.grupoDocId) === id ||
+      (
+        Array.isArray(encuesta.grupoDocIds) &&
+        encuesta.grupoDocIds.includes(id)
       )
-      .sort((a, b) => {
-        const va =
-          Number(a.version || 1);
-
-        const vb =
-          Number(b.version || 1);
-
-        return vb - va;
-      });
+    )
+    .sort((a, b) => Number(b.version || 1) - Number(a.version || 1));
 
   return candidatas[0] || null;
 }
@@ -850,64 +844,37 @@ function buscar() {
 }
 
 function actualizarKpis(filas) {
-  const activas =
-    filas.filter(
-      x => x.estado === "activa"
-    ).length;
+  const encuestasPorId = new Map();
 
-  const programadas =
-    filas.filter(
-      x => x.estado === "programada"
-    ).length;
+  for (const fila of filas) {
+    if (fila.encuesta?.id) {
+      encuestasPorId.set(fila.encuesta.id, fila);
+    }
+  }
 
-  const totalRespuestas =
-    filas.reduce(
-      (acc, x) =>
-        acc +
-        Number(
-          x.encuesta
-            ?.totalRespuestas ||
-          0
-        ),
-      0
-    );
+  const encuestas = [...encuestasPorId.values()];
+  const activas = encuestas.filter(fila => fila.estado === "activa").length;
+  const programadas = encuestas.filter(fila => fila.estado === "programada").length;
 
-  const totalParticipantes =
-    filas.reduce(
-      (acc, x) =>
-        acc +
-        Number(
-          x.encuesta
-            ?.totalParticipantes ||
-          0
-        ),
-      0
-    );
+  const totalRespuestas = encuestas.reduce(
+    (total, fila) => total + Number(fila.encuesta.totalRespuestas || 0),
+    0
+  );
 
-  const porcentaje =
-    totalParticipantes
-      ? Math.round(
-          (
-            totalRespuestas /
-            totalParticipantes
-          ) * 1000
-        ) / 10
-      : 0;
+  const totalParticipantes = encuestas.reduce(
+    (total, fila) => total + Number(fila.encuesta.totalParticipantes || 0),
+    0
+  );
 
-  $("kpiGrupos").textContent =
-    filas.length;
+  const porcentaje = totalParticipantes
+    ? Math.round((totalRespuestas / totalParticipantes) * 1000) / 10
+    : 0;
 
-  $("kpiActivas").textContent =
-    activas;
-
-  $("kpiProgramadas").textContent =
-    programadas;
-
-  $("kpiRespuestas").textContent =
-    totalRespuestas;
-
-  $("kpiAvance").textContent =
-    `${porcentaje}%`;
+  $("kpiGrupos").textContent = filas.length;
+  $("kpiActivas").textContent = activas;
+  $("kpiProgramadas").textContent = programadas;
+  $("kpiRespuestas").textContent = totalRespuestas;
+  $("kpiAvance").textContent = `${porcentaje}%`;
 }
 
 function renderTabla(filas) {
@@ -2866,16 +2833,19 @@ function contarServiciosPorModalidad(
 async function abrirGestionGrupo(
   grupoId
 ) {
-  const grupo =
-    state.grupos.find(
-      item =>
-        item.id ===
-        grupoId
-    );
+  const ficha = state.grupos.find(item => item.id === grupoId);
 
-  if (!grupo) {
+  if (!ficha) {
     return;
   }
+
+  const encuesta = getEncuestaGrupo(ficha.id);
+  const esCompartida = Array.isArray(encuesta?.grupoDocIds) &&
+    encuesta.grupoDocIds.length > 1;
+
+  const grupo = esCompartida
+    ? state.grupos.find(item => item.id === encuesta.grupoDocId) || ficha
+    : ficha;
 
   try {
     progressSet(
@@ -2887,10 +2857,7 @@ async function abrirGestionGrupo(
     state.grupoActual =
       grupo;
 
-    state.encuestaActual =
-      getEncuestaGrupo(
-        grupo.id
-      );
+    state.encuestaActual = encuesta;
 
     state.seguimiento =
       null;
