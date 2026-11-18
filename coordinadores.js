@@ -10,9 +10,9 @@ import {
   crearAmpliacionCoordinadores,
   destinoCoord,
   DESTINOS_COORD
-} from './coordinadores-ampliacion.js';
+} from './coordinadores-ampliacion.js?v=20261118-v18';
 
-import { app, db } from './firebase-init.js';
+import { app, db } from './firebase-init.js?v=20261118-v18';
 import {
   collection, collectionGroup, getDocs, addDoc, doc, updateDoc, setDoc, deleteDoc,
   query, where, getDoc, serverTimestamp, writeBatch
