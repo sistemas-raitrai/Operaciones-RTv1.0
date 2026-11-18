@@ -1,4 +1,4 @@
-import {montarPago} from './control-coordinadores-pago-ui.js?v=20261117-v17';
+import {montarPago} from './control-coordinadores-pago-ui.js?v=20261118-v18';
 // Módulo compartido por Control de Coordinadores y Control Stock · v11.
 const U=x=>String(x??'').trim().toUpperCase(),T=x=>String(x??'').trim();
 const FUNCIONES={coordinador_general:'Coordinador general',asistente_general:'Asistente de coordinación general',monitor:'Monitor de entretenimiento'};
