@@ -133,7 +133,7 @@ async function cargarResumenes() {
     state.costosAno=costos.docs.map(d=>({...d.data(),id:d.id}));
     if((preferenciasFinanzas().ocultos||[]).includes(state.destino))state.destino=null;
     renderDestinos();renderProveedores();
-    setEstado(`Información consultada a las ${new Date().toLocaleTimeString('es-CL')}.`);
+    setEstado(`Información consultada a las ${new Date().toLocaleTimeString('es-CL')}. Las cuentas compartidas conservan el origen de cada costo y pago.`);
     return true;
   } catch(error) {setEstado(`No se pudo actualizar: ${error.message}. Compruebe que esté desplegada gestionarCuentasProveedoresHoteles.`,true);return false;}
 }
@@ -200,7 +200,7 @@ function filaProveedor(resumen) {
   const leyenda=cuenta?(raiz?`CUENTA COMPARTIDA · ${cuenta.miembros.map(x=>x.nombre).join(' + ')}`:`Cuenta principal: ${cuenta.raizNombre}`):'';
   const avisos=[num(resumen.obligacionesSinTarifa)?`${num(resumen.obligacionesSinTarifa)} costo(s) pendientes`:'',num(resumen.abonosPendientesRevision)?`${num(resumen.abonosPendientesRevision)} pago(s) por revisar`:''].filter(Boolean);
   return `<tr class="cf-provider-total ${raiz?'cf-account-root':''}" data-key="${esc(clave)}">
-    <td class="cf-provider-name"><div class="cf-provider-fold"><button type="button" class="btn-desplegar-proveedor" aria-expanded="${abierto}" aria-label="${esc((abierto?'Ocultar':'Mostrar')+' servicios de '+resumen.proveedorNombre)}" title="${abierto?'Ocultar':'Mostrar'} servicios">${abierto?'−':'+'}</button><div><strong>${esc(resumen.proveedorNombre||resumen.proveedorId)}</strong><small>${norm(resumen.tipo)==='HOTEL'?'HOTEL':'ACTIVIDADES'}${avisos.length?' · '+esc(avisos.join(' · ')):''}</small>${leyenda?`<small class="cf-account-caption">${esc(leyenda)}</small>`:''}</div></div></td>
+    <td class="cf-provider-name"><div class="cf-provider-fold"><button type="button" class="btn-desplegar-proveedor" aria-expanded="${abierto}" aria-label="${esc((abierto?'Ocultar':'Mostrar')+' servicios de '+resumen.proveedorNombre)}" title="${abierto?'Ocultar':'Mostrar'} servicios">${abierto?'−':'+'}</button><div><strong>${esc(resumen.proveedorNombre||resumen.proveedorId)}</strong><small>${norm(resumen.tipo)==='HOTEL'?'HOTEL':resumen.tipo==='OTROS'?'OTROS':'ACTIVIDADES'}${avisos.length?' · '+esc(avisos.join(' · ')):''}</small>${leyenda?`<small class="cf-account-caption">${esc(leyenda)}</small>`:''}</div></div></td>
     <td class="cf-total-label">${resumen.sinteticoCuenta?'RAÍZ DE CUENTA · SIN COSTO PROPIO EN ESTA MONEDA':norm(resumen.tipo)==='HOTEL'?'TOTAL DEL HOTEL':'TOTAL PROVEEDOR'}<small>${hijos.length} servicio(s)</small></td>
     <td class="num">${fmtMoney(resumen.totalObligacion,monedaDeuda)}${pendiente?'<small class="cf-partial">PARCIAL</small>':''}${raiz?`<small class="cf-account-caption">Conjunto: ${fmtMoney(saldo.totalObligacion,monedaDeuda)}${saldo.requiereConfiguracion?' · PARCIAL':''}</small>`:''}</td>
     <td class="num multi-money">${dineroEnviadoTexto(resumen)}${raiz?`<small class="cf-account-caption">Conjunto: ${dineroEnviadoTexto(saldo)}</small>`:''}</td>
@@ -224,7 +224,7 @@ function renderProveedores() {
   prepararDesplegablesProveedores();
   const items=state.destino?filasConRaicesVisibles(proveedoresDestino()):[],todos=state.destino==='TODOS_DESTINOS';
   $('#tituloDestino').textContent=todos?'TODOS LOS DESTINOS':state.destino||'Selecciona un destino';
-  $('#subtituloDestino').textContent='Actividades y hoteles separados · proveedores A–Z · monedas originales primero.';
+  $('#subtituloDestino').textContent='Actividades, hoteles y otros · proveedores A–Z · monedas originales primero.';
   const etiqueta=todos?'todos los destinos':state.destino||'la selección';
   $('#btnExportarTodo').textContent=`Exportar ${etiqueta} a Excel`;
   $('#btnExportarTodo').disabled=!items.length;
@@ -1272,10 +1272,12 @@ function renderAbonos() {
             class="cf-btn btn-editar-abono"
             data-id="${esc(a.id)}"
             type="button"
-            ${a.requiereVinculacion ? 'disabled title="Primero debe vincularse el pago"' : ''}
+            ${a.requiereVinculacion && !a.centralPath ? 'disabled title="Primero debe vincularse el pago"' : ''}
           >
             Editar
           </button>
+          ${!a.requiereVinculacion && num(a.montoAplicado)>0?`<button class="cf-btn" type="button" data-repartir="${esc(a.id)}">Asignar a grupos</button>
+            <small>${fmtMoney(a.montoAsignado||0,a.monedaObligacion)} asignados · ${fmtMoney(a.montoSinAsignar??a.montoAplicado,a.monedaObligacion)} sin asignar</small>`:''}
         </td>
       </tr>
     `;
@@ -1323,6 +1325,7 @@ function renderAbonos() {
     }
   `;
 
+  $$('[data-repartir]', $('#panel-abonos')).forEach(btn=>btn.onclick=()=>editarRepartoAbono(btn.dataset.repartir));
   $('#abSoloListos').onchange = e => { state.soloListos=e.target.checked; renderAbonos(); };
   $('#abRevisarLote').onclick = () => confirmarAbonosUI($$('.ab-listo:checked').map(input=>input.value));
   $$('[data-revisar]', $('#panel-abonos')).forEach(btn=>btn.onclick=()=>confirmarAbonosUI([btn.dataset.revisar]));
@@ -1419,7 +1422,12 @@ function cerrarDetalle() {
 
 function abrirEditorAbono(id) {
   const a = state.abonos.find(x => x.id === id); if (!a) return;
-  if(a.tipo==='OTROS') return setEstado('Edita este pago en Abonos para cambiar su aplicación o gasto asociado.',false,'#detalleEstado');
+  if (a.abonoOperacionId && a.centralPath) {
+    const url=new URL('./abonos.html',location.href);
+    url.searchParams.set('editar',a.abonoOperacionId);
+    window.open(url.href,'_blank','noopener');
+    return;
+  }
   if (a.requiereVinculacion) {
     setEstado('Este pago está registrado, pero falta vincularlo a un servicio o costo hotelero. Corrige la vinculación antes de aplicar dinero al saldo.', true, '#detalleEstado');
     return;
@@ -2307,11 +2315,15 @@ function crearLibroFinanzas(lista,costos,abonos) {
   if(!window.ExcelJS)throw new Error('No se cargó ExcelJS. Recarga la página y vuelve a exportar.');
   const libro=new window.ExcelJS.Workbook();libro.creator='Rai Trai · Control Finanzas';libro.created=new Date();libro.calcProperties.fullCalcOnLoad=true;
   hojaExcelFinanzas(libro,'Paquetes de discos',filasPaquetesLiquidacion(costos));
-  hojaExcelFinanzas(libro,'Otros por grupo',costos.filter(o=>o.fuente==='GASTO_OTROS').flatMap(o=>
+  hojaExcelFinanzas(libro,'Otros por grupo',costos.filter(o=>o.fuente==='GASTO_OTROS' && !o.incluidoCostoCuenta).flatMap(o=>
     (o.reparto?.length?o.reparto:[{grupoId:'Sin grupo',monto:o.monto}]).map(g=>({
       Destino:o.destinoFinanciero,Categoria:categoriaOtros(o.categoriaOtro),Proveedor:o.proveedorNombre,
       Asunto:o.asunto,Moneda:o.monedaObligacion,Grupo:g.grupoId,Pax:g.pax??null,Costo:g.monto??null
     }))));
+  hojaExcelFinanzas(libro,'Abonos por grupo',abonos.flatMap(a=>(a.repartoGrupos||[]).map(g=>({
+    Proveedor:a.proveedorNombre,Destino:a.destinoFinanciero,Fecha:a.fecha,Grupo:g.grupoId,
+    Moneda:a.monedaObligacion,Monto:g.monto,'Abono original ID':a.abonoOperacionId||a.id
+  }))));
   const resumen=hojaExcelFinanzas(libro,'Resumen proveedores',filasResumenes(lista));
   const detalle=hojaExcelFinanzas(libro,'Costos',filasCostosExcel(costos),Object.keys(filasCostosExcel([{id:'',resumenId:''}])[0]));
   const pagos=hojaExcelFinanzas(libro,'Abonos',filasAbonosExcel(abonos),Object.keys(filasAbonosExcel([{id:'',resumenId:''}])[0]));
@@ -2993,99 +3005,120 @@ function categoriaOtros(valor) {
   return etiquetas[clave] || clave;
 }
 
-function seccionOtros(destino, resumenes) {
-  const categorias=[...new Set(resumenes.map(r=>r.categoriaOtro||'otro'))];
-  return categorias.map(categoria=>{
-    const items=resumenes.filter(r=>(r.categoriaOtro||'otro')===categoria);
-    return `<section class="cf-type-section"><header class="cf-type-heading"><h3>${esc(categoriaOtros(categoria))}</h3></header>
-      ${monedasDestino(destino,items.map(r=>r.monedaObligacion)).filter(codigo=>items.some(r=>moneda(r.monedaObligacion)===codigo)).map(codigo=>bloqueMoneda({destino},{codigo,items:items.filter(r=>moneda(r.monedaObligacion)===codigo)})).join('')}</section>`;
-  }).join('');
+function seccionOtros(destino, items) {
+  return monedasDestino(destino,items.map(r=>r.monedaObligacion))
+    .map(codigo=>({codigo,items:items.filter(r=>moneda(r.monedaObligacion)===codigo)}))
+    .filter(grupo=>grupo.items.length)
+    .map(grupo=>bloqueMoneda({destino},grupo)).join('');
 }
 
 function renderGastosOtros() {
+  const proveedor=state.proveedor;
+  const monedaDeuda=proveedor.monedaObligacion;
+  const costo=state.obligaciones.find(o=>o.fuente==='COSTO_CUENTA_OTROS');
   const gastos=state.obligaciones.filter(o=>o.fuente==='GASTO_OTROS');
-  const monedaDeuda=state.proveedor.monedaObligacion;
   const panel=$('#panel-obligaciones');
-  panel.innerHTML=`<div class="cf-section-head"><h3>Otros · ${esc(categoriaOtros(state.proveedor.categoriaOtro))}</h3>
-    ${gastos.length?'<button type="button" class="cf-btn" data-gasto-nuevo>Agregar gasto sin abono</button>':''}</div>
-    <div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Asunto y abonos</th><th>Reparto</th><th>Costo acordado</th><th>Abonos aplicados</th><th>Saldo</th><th></th></tr></thead>
-    <tbody>${gastos.map(g=>{
-      const pagos=state.abonos.filter(a=>a.gastoOtroId===g.id);
-      const aplicado=pagos.reduce((s,a)=>s+num(a.montoAplicado),0);
-      return `<tr><td><details><summary>${esc(g.asunto)} · ${pagos.length} abono(s)</summary>
-        <ul>${pagos.map(a=>`<li>${esc(a.fecha)} · ${fmtMoney(a.montoAplicado,monedaDeuda)}${a.pendienteVincularGasto?' · Gasto por confirmar':''}</li>`).join('')}</ul></details></td>
-        <td>${g.reparto?.length?`<details><summary>${g.reparto.length} grupo(s)</summary><ul>${g.reparto.map(r=>`<li>${esc(r.grupoId)} · ${fmtMoney(r.monto,monedaDeuda)}</li>`).join('')}</ul></details>`:'Sin grupo asignado'}</td>
-        <td>${g.requiereConfiguracion?'Pendiente de configurar':fmtMoney(g.totalObligacion,monedaDeuda)}</td>
-        <td>${fmtMoney(aplicado,monedaDeuda)}</td><td>${g.requiereConfiguracion?'Pendiente':fmtMoney(g.totalObligacion-aplicado,monedaDeuda)}</td>
-        <td><button type="button" class="cf-btn" data-gasto-id="${esc(g.id)}">Editar gasto</button></td></tr>`;
-    }).join('')}</tbody></table></div>`;
-  const nuevo=$('[data-gasto-nuevo]',panel);
-  if(nuevo) nuevo.onclick=()=>editarGastoOtros(gastos[0],true);
-  $$('[data-gasto-id]',panel).forEach(b=>b.onclick=()=>editarGastoOtros(gastos.find(g=>g.id===b.dataset.gastoId),false));
+  panel.innerHTML=`<div class="cf-section-head"><h3>Cuenta del proveedor</h3>
+    <button type="button" class="cf-btn" data-costo-cuenta>Configurar costo del proveedor</button></div>
+    <div class="cf-table-wrap"><table class="cf-table">
+    <thead><tr><th>Costo conocido</th><th>Abonos aplicados</th><th>Saldo del proveedor</th></tr></thead>
+    <tbody><tr><td>${costo?fmtMoney(costo.monto,monedaDeuda):'Por confirmar · '+fmtMoney(proveedor.totalObligacion,monedaDeuda)+' histórico'}</td>
+    <td>${fmtMoney(proveedor.totalAplicado,monedaDeuda)}</td>
+    <td>${proveedor.requiereConfiguracion?'Pendiente de configurar':fmtMoney(proveedor.saldoPendiente,monedaDeuda)}</td></tr></tbody></table></div>
+    <h3>Categorías y conceptos</h3>
+    ${[...new Set(gastos.map(g=>g.categoriaOtro||'otro'))].map(categoria=>`<details><summary>${esc(categoriaOtros(categoria))}</summary>
+      <ul>${gastos.filter(g=>(g.categoriaOtro||'otro')===categoria).map(g=>`<li>${esc(g.asunto)} · ${state.abonos.filter(a=>a.gastoOtroId===g.id).length} abono(s)</li>`).join('')}</ul></details>`).join('')}`;
+  $('[data-costo-cuenta]',panel).onclick=()=>editarCostoCuentaOtros(proveedor,costo);
 }
 
-async function editarGastoOtros(gasto,nuevo) {
-  const proveedor=state.proveedor, ano=state.ano;
-  const dialog=dialogoLiquidacion(nuevo?'Nuevo gasto del proveedor':'Editar gasto',
-    `<form data-gasto-form>
-    <label>Asunto <input name="asunto" maxlength="160" required value="${esc(nuevo?'':gasto.asunto)}"></label>
-    <label>Costo en ${esc(proveedor.monedaObligacion)} <input name="monto" type="number" min="0" step="0.01" required value="${nuevo?'':gasto.monto??''}"></label>
-    <label>Distribución <select name="modo"><option value="LIBRE">Sin grupo</option><option value="MANUAL">Por monto</option><option value="PAX">Por pax</option></select></label>
-    <fieldset data-reparto hidden><legend>Grupos</legend><div data-grupos></div><button type="button" class="cf-btn" data-agregar>Agregar grupo</button></fieldset>
-    <button class="cf-btn blue" type="submit">Guardar y recalcular</button></form>`);
-  const form=$('[data-gasto-form]',dialog), campos=form.elements;
-  const estado=$('[data-estado]',dialog), filas=$('[data-grupos]',dialog), boton=$('button[type=submit]',form);
-  boton.disabled=true;
+function conectarGuardadoCuenta(dialog, formulario, accion, obtenerDatos, proveedor, pestana) {
+  const ano=state.ano;
+  const boton=$('button[type=submit]',formulario);
+  const estado=$('[data-estado]',dialog);
+  formulario.onsubmit=async e=>{
+    e.preventDefault();
+    if (boton.disabled) return;
+    boton.disabled=true;
+    estado.textContent='Guardando y recalculando…';
+    try {
+      const resultado=await liquidacion(accion,obtenerDatos(),ano);
+      dialog.close();
+      if (state.ano!==ano) return;
+      await cargarResumenes();
+      const vigente=filasConRaicesVisibles(state.resumenes).find(r=>r.id===proveedor.id);
+      if (vigente && state.proveedor===proveedor && $('#detalleBackdrop').classList.contains('open')) {
+        await abrirDetalle(vigente);
+        activarTab(pestana);
+      }
+      setEstado(resultado.recalculado?'Cambios guardados.':'Cambios guardados. El recálculo quedó pendiente.',!resultado.recalculado,'#detalleEstado');
+    } catch(error) {
+      estado.textContent=error.message;
+      boton.disabled=false;
+    }
+  };
+}
+
+function editarCostoCuentaOtros(proveedor,costo) {
+  const dialog=dialogoLiquidacion('Costo acordado del proveedor',`<form data-cuenta>
+    <p>${esc(proveedor.proveedorNombre)} · ${esc(proveedor.destinoFinanciero)} · ${esc(proveedor.monedaObligacion)}</p>
+    <label>Costo total <input name="monto" type="number" min="0" max="10000000000" step="0.01" value="${costo?.monto??''}" required></label>
+    <button type="submit" class="cf-btn blue">Guardar y recalcular</button></form>`);
+  const formulario=$('[data-cuenta]',dialog);
+  conectarGuardadoCuenta(dialog,formulario,'COSTO_CUENTA_OTROS',()=>({
+    id:proveedor.id,version:costo?.version||0,monto:Number(formulario.elements.monto.value)
+  }),proveedor,'obligaciones');
+}
+
+async function editarRepartoAbono(id) {
+  const abono=state.abonos.find(a=>a.id===id);
+  if (!abono) return;
+  const proveedor=state.proveedor, ano=state.ano, monedaDeuda=abono.monedaObligacion;
+  const dialog=dialogoLiquidacion('Asignar abono a grupos',`<form data-abono-grupos>
+    <p>Importe aplicado <strong>${fmtMoney(abono.montoAplicado,monedaDeuda)}</strong></p>
+    <div data-filas></div><p data-restante></p>
+    <button type="button" class="cf-btn" data-agregar>Agregar grupo</button>
+    <button type="submit" class="cf-btn blue" disabled>Guardar reparto</button></form>`);
+  const form=$('[data-abono-grupos]',dialog), filas=$('[data-filas]',form), estado=$('[data-estado]',dialog);
   estado.textContent='Cargando grupos…';
   try {
     const {grupos}=await liquidacion('GRUPOS_GASTO_OTRO',{},ano);
-    if(!dialog.open) return;
-    estado.textContent='';
-    const catalogo=new Map(grupos.map(g=>[g.id,g]));
+    if (!dialog.open) return;
     const opciones=grupos.map(g=>`<option value="${esc(g.id)}">${esc(g.numero+' · '+g.nombre)}</option>`).join('');
-    campos.modo.value=nuevo?'LIBRE':gasto.modo||'LIBRE';
-    function agregar(r={}) {
+    const leer=()=>[...filas.children].map(f=>({grupoId:$('select',f).value,monto:Number($('input',f).value)}));
+    function restante() {
+      return Math.round(num(abono.montoAplicado)*100)-leer().reduce((s,g)=>s+Math.round(g.monto*100),0);
+    }
+    function actualizar() {
+      const centavos=restante();
+      $('[data-restante]',form).textContent=centavos<0?'El reparto supera el importe aplicado.':'Sin asignar '+fmtMoney(centavos/100,monedaDeuda);
+      $('button[type=submit]',form).disabled=centavos<0;
+    }
+    function agregar(asignacion={}) {
       const fila=document.createElement('div');
       fila.innerHTML=`<label>Grupo <select required><option value="">Seleccionar</option>${opciones}</select></label>
-        <label>${campos.modo.value==='PAX'?'Pax':'Monto'} <input type="number" required min="${campos.modo.value==='PAX'?1:0}" step="${campos.modo.value==='PAX'?1:0.01}"></label>
-        <button type="button" class="cf-btn">Quitar</button>`;
-      const grupo=$('select',fila), valor=$('input',fila);
-      grupo.value=r.grupoId||'';
-      valor.value=(campos.modo.value==='PAX'?r.pax:r.monto)??'';
-      grupo.onchange=()=>{if(campos.modo.value==='PAX') valor.value=catalogo.get(grupo.value)?.pax||'';};
-      $('button',fila).onclick=()=>fila.remove();
+        <label>Monto aplicado <input type="number" min="0.01" step="0.01" required></label>
+        <button type="button" class="cf-btn" data-resto>Asignar restante</button>
+        <button type="button" class="cf-btn" data-quitar>Quitar</button>`;
+      const monto=$('input',fila);
+      $('select',fila).value=asignacion.grupoId||'';
+      monto.value=asignacion.monto??'';
+      monto.oninput=actualizar;
+      $('[data-resto]',fila).onclick=()=>{
+        const saldo=restante()+Math.round(Number(monto.value)*100);
+        if (saldo>0) monto.value=(saldo/100).toFixed(2);
+        actualizar();
+      };
+      $('[data-quitar]',fila).onclick=()=>{fila.remove();actualizar();};
       filas.append(fila);
+      actualizar();
     }
-    function mostrar() {
-      const libre=campos.modo.value==='LIBRE';
-      $('[data-reparto]',form).hidden=libre;
-      filas.replaceChildren();
-      if(!libre) {
-        const existentes=!nuevo && campos.modo.value===gasto.modo?gasto.reparto||[]:[];
-        if(existentes.length) existentes.forEach(agregar);
-        else agregar();
-      }
-    }
-    campos.modo.onchange=mostrar;
     $('[data-agregar]',form).onclick=()=>agregar();
-    mostrar();
-    boton.disabled=false;
-    form.onsubmit=async e=>{
-      e.preventDefault();
-      const reparto=[...filas.children].map(f=>({grupoId:$('select',f).value,valor:Number($('input',f).value)}));
-      boton.disabled=true;
-      estado.textContent='Guardando y recalculando…';
-      try {
-        const respuesta=await liquidacion('GUARDAR_GASTO_OTRO',{id:gasto.id,version:gasto.version||0,nuevo,
-          asunto:campos.asunto.value,monto:Number(campos.monto.value),modo:campos.modo.value,reparto},ano);
-        dialog.close();
-        if(state.ano!==ano) return;
-        await cargarResumenes();
-        const r=state.resumenes.find(r=>r.id===proveedor.id);
-        if(r && state.proveedor===proveedor) await abrirDetalle(r);
-        setEstado(respuesta.recalculado?'Gasto actualizado.':'Gasto guardado. El saldo quedó pendiente de recálculo.',!respuesta.recalculado,'#detalleEstado');
-      } catch(error) {estado.textContent=error.message;boton.disabled=false;}
-    };
+    (abono.repartoGrupos||[]).forEach(agregar);
+    estado.textContent=abono.repartoPorActualizar?'La aplicación del abono cambió. Guarda un reparto actualizado.':'';
+    actualizar();
+    conectarGuardadoCuenta(dialog,form,'REPARTIR_ABONO',()=>({
+      id:abono.id,version:abono.repartoVersion||0,moneda:monedaDeuda,montoAplicado:abono.montoAplicado,asignaciones:leer()
+    }),proveedor,'abonos');
   } catch(error) {estado.textContent=error.message;}
 }
 
