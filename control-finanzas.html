@@ -261,7 +261,13 @@ dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
 .cf-account-members input[type=checkbox]{width:17px;min-width:17px;height:17px;margin-top:2px}
 #formCuentaHoteles .cf-field{display:grid;gap:7px;margin:15px 0}
 #formCuentaHoteles select,#formCuentaHoteles textarea{padding:10px;border:1px solid #c9d4e2;border-radius:6px;max-width:750px;font:inherit}
-</style>
+
+    .cf-liquidacion-dialog { width:min(1050px,92vw); max-height:88vh; border:1px solid #d7e0eb; border-radius:12px; }
+    .cf-liquidacion-dialog label { display:inline-block; margin:6px 10px 6px 0; }
+    .cf-liquidacion-dialog input:not([type=checkbox]), .cf-liquidacion-dialog select { max-width:100%; padding:6px; }
+    .cf-liquidacion-dialog fieldset { margin:10px 0; }
+    .cf-liquidacion-dialog details, .cf-detail-service > summary { cursor:pointer; }
+  </style>
 </head>
 <body style="visibility: hidden;">
   <main class="cf-shell">
@@ -273,7 +279,9 @@ dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
       <div class="cf-row">
         <span id="usuarioConectado" class="cf-muted"></span>
         <a class="cf-btn" href="index.html">Volver</a>
-        <button id="btnExportarTodo" class="cf-btn primary" type="button">Exportar todo a Excel</button>
+        <button id="btnGuardarVersion" type="button" class="cf-btn">Guardar versión</button>
+          <button id="btnVerVersiones" type="button" class="cf-btn">Versiones guardadas</button>
+          <button id="btnExportarTodo" class="cf-btn primary" type="button">Exportar todo a Excel</button>
       </div>
     </header>
 
@@ -346,6 +354,7 @@ dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
         <div class="cf-field"><label for="abMontoEnviado">Monto enviado</label><input id="abMontoEnviado" type="number" readonly></div>
         <div class="cf-field"><label for="abMonedaAplicada">Moneda aplicada</label><select id="abMonedaAplicada"><option>CLP</option><option>USD</option><option>BRL</option><option>ARS</option></select></div>
         <div class="cf-field"><label for="abTipoCambio">Tipo de cambio aplicado</label><input id="abTipoCambio" type="number" min="0" step="0.0001"></div>
+        <div class="cf-field"><label for="abSentidoCambio">Sentido del tipo de cambio</label><select id="abSentidoCambio"><option value="PAGO_A_DEUDA">Pago → deuda</option><option value="DEUDA_A_PAGO">Deuda → pago</option></select></div>
         <div class="cf-field"><label for="abMontoAplicado">Monto reconocido/aplicado</label><input id="abMontoAplicado" type="number" min="0" step="0.01" required></div>
         <div class="cf-field"><label for="abCoberturaUnidad">Unidad de cobertura</label><select id="abCoberturaUnidad" disabled><option value="PAX">Pax / cupos de esta actividad</option><option value="PAX_NOCHE">Personas-noches del hotel</option></select></div><div class="cf-field"><label for="abUnidadesCubiertas">Pax / cupos cubiertos por este abono</label><input id="abUnidadesCubiertas" type="number" min="0" step="1" placeholder="Vacío = por confirmar"><small>Informar la cobertura real del pago. No se calcula desde el dinero.</small></div>
         <div class="cf-field wide"><label for="abMotivo">Motivo u observación de la revisión</label><textarea id="abMotivo" rows="3" required></textarea></div>
