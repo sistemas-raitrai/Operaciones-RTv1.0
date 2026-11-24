@@ -267,6 +267,64 @@ dialog .cf-form-grid fieldset input[type=number] {max-width:110px}
     .cf-liquidacion-dialog input:not([type=checkbox]), .cf-liquidacion-dialog select { max-width:100%; padding:6px; }
     .cf-liquidacion-dialog fieldset { margin:10px 0; }
     .cf-liquidacion-dialog details, .cf-detail-service > summary { cursor:pointer; }
+  
+    /* Detalle de costos con la paleta y densidad de la tabla de proveedores. */
+    .cf-detail-service {
+      margin: 0;
+      border: 1px solid #c9d5e4;
+      border-radius: 0;
+    }
+    .cf-detail-service + .cf-detail-service { border-top: 0; }
+    .cf-detail-service > summary {
+      display: grid;
+      grid-template-columns: 21px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #eef3f9;
+      color: #304d71;
+      list-style: none;
+    }
+    .cf-detail-service > summary::-webkit-details-marker { display: none; }
+    .cf-detail-service > summary::before {
+      content: "+";
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      border: 1px solid #c4d2e4;
+      border-radius: 5px;
+      background: #e8eff8;
+      font-weight: 800;
+    }
+    .cf-detail-service[open] > summary { background: #e6edf6; }
+    .cf-detail-service[open] > summary::before { content: "−"; }
+    .cf-detail-service > summary:hover { background: #e2ebf6; }
+    .cf-detail-service > summary:focus-visible { outline: 2px solid #41658d; outline-offset: -2px; }
+    .cf-detail-service > summary > header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 4px 14px;
+    }
+    .cf-detail-service > summary h3 { margin: 0; font-size: 13px; color: inherit; overflow-wrap: anywhere; }
+    .cf-detail-service > summary span { font-size: 12px; font-weight: 650; text-align: right; }
+    .cf-detail-service .cf-table-wrap { max-height: 52vh; }
+    [data-liquidacion] {
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      border: 1px solid #c9d5e4;
+      border-radius: 6px;
+      background: #f4f7fb;
+    }
+    [data-liquidacion] > .cf-section-head { justify-content: flex-end; gap: 8px; margin-bottom: 8px; }
+    [data-liquidacion] > .cf-section-head h3 { margin-right: auto; }
+    [data-liquidacion] > p { margin: 6px 0 0; }
+    [data-liquidacion] > ul:empty { display: none; }
+    @media (max-width: 600px) {
+      .cf-detail-service > summary > header { grid-template-columns: 1fr; }
+      .cf-detail-service > summary span { text-align: left; }
+    }
   </style>
 </head>
 <body style="visibility: hidden;">
