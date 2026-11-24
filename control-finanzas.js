@@ -297,7 +297,7 @@ function renderMetricas() {
   $('#metricasProveedor').innerHTML=filas.map(([l,v,c])=>`<div class="cf-metric"><span class="cf-metric-label">${l}</span><strong class="cf-metric-value">${v}</strong><small class="cf-pax-line">${esc(c)}</small></div>`).join('');
 }
 
-function renderDetalle() { renderObligaciones(); renderAbonos(); renderCuentaProveedor(); renderReglas(); renderHistorial(); }
+function renderDetalle() { renderObligaciones(); renderLiquidacionProveedor(); renderAbonos(); renderCuentaProveedor(); renderReglas(); renderHistorial(); }
 
 function valorPaxReal(obligacion) {
   const valor = obligacion.paxReales;
@@ -324,9 +324,10 @@ function renderObligaciones() {
   const esHotel =
     norm(state.proveedor?.tipo) === 'HOTEL';
 
+  const servicios = rows.filter(o=>!['AJUSTE_PROVEEDOR','PAQUETE_DISCO'].includes(o.fuente));
   const tabla = esHotel
-    ? renderCostosHoteles(rows)
-    : renderCostosActividades(rows);
+    ? renderCostosHoteles(servicios)
+    : renderCostosActividades(servicios);
 
   let editores = '';
 
@@ -1184,7 +1185,7 @@ async function guardarCondicionesHotelFinanzas(
 }
 
 function renderAbonos() {
-  const rows = [...state.abonos].sort(
+  const rows = state.abonos.filter(a => !state.soloListos || abonoListo(a)).sort(
     (a, b) =>
       String(b.fecha || '').localeCompare(
         String(a.fecha || '')
@@ -1242,6 +1243,9 @@ function renderAbonos() {
           >
             ${a.requiereVinculacion ? 'PENDIENTE DE VINCULACIÓN' : esc(estado)}
           </span>
+          ${a.revisadoPor ? `<small style="display:block">${esc(a.revisadoPor)} · ${esc(fechaRevisionTexto(a.revisadoAt))}</small>` : ''}
+          ${abonoListo(a) ? `<label><input type="checkbox" class="ab-listo" value="${esc(a.id)}"> Seleccionar</label>
+          <button class="cf-btn" type="button" data-revisar="${esc(a.id)}">Marcar revisado</button>` : ''}
           ${a.motivoPendiente ? `<small style="display:block">${esc(a.motivoPendiente.replaceAll('_', ' '))}</small>` : ''}
         </td>
 
@@ -1278,6 +1282,8 @@ function renderAbonos() {
   $('#panel-abonos').innerHTML = `
     <div class="cf-section-head">
       <h3>Abonos y aplicaciones</h3>
+      <label><input id="abSoloListos" type="checkbox" ${state.soloListos?'checked':''}> Listos para revisar</label>
+      <button type="button" class="cf-btn" id="abRevisarLote">Revisar seleccionados</button>
 
       <span class="cf-muted">
         El dinero enviado nunca se reemplaza
@@ -1294,7 +1300,7 @@ function renderAbonos() {
             <th class="num">Tipo de cambio</th>
             <th class="num">Aplicado</th>
             <th class="num">Cobertura</th>
-            <th>Estado</th>
+            <th>Revisión financiera</th>
             <th>Comprobante</th>
             <th></th>
           </tr>
@@ -1314,6 +1320,10 @@ function renderAbonos() {
         `
     }
   `;
+
+  $('#abSoloListos').onchange = e => { state.soloListos=e.target.checked; renderAbonos(); };
+  $('#abRevisarLote').onclick = () => confirmarAbonosUI($$('.ab-listo:checked').map(input=>input.value));
+  $$('[data-revisar]', $('#panel-abonos')).forEach(btn=>btn.onclick=()=>confirmarAbonosUI([btn.dataset.revisar]));
 
   $$(
     '.btn-editar-abono',
@@ -1412,17 +1422,36 @@ function abrirEditorAbono(id) {
     return;
   }
   $('#abonoId').value = a.id; $('#abMonedaEnviada').value = moneda(a.monedaEnviada); $('#abMontoEnviado').value = num(a.montoEnviado);
-  $('#abMonedaAplicada').value = moneda(a.monedaAplicada || a.monedaObligacion); $('#abTipoCambio').value = a.tipoCambioAplicado ?? '';
+  $('#abMonedaAplicada').value = moneda(a.monedaObligacion || a.monedaAplicada); $('#abTipoCambio').value = a.tipoCambioAplicado ?? '';
   $('#abMontoAplicado').value = num(a.montoAplicado); $('#abUnidadesCubiertas').value = a.coberturaPax?.estado==='INFORMADA' ? a.coberturaPax.cantidad : '';
   $('#abCoberturaUnidad').value = norm(a.tipo)==='HOTEL'?'PAX_NOCHE':'PAX';
-  $('#abMotivo').value = ''; $('#errorEditarAbono').textContent = ''; $('#dialogEditarAbono').showModal();
+  const tipoCambio = $('#abTipoCambio');
+  tipoCambio.step = 'any';
+  const aplicacion = a.aplicacionFinancieraOrigen;
+  $('#abSentidoCambio').value = aplicacion?.sentidoTipoCambio === 'DEUDA_A_PAGO' && aplicacion.tipoCambioIngresado > 0 ? 'DEUDA_A_PAGO' : 'PAGO_A_DEUDA';
+  if (aplicacion?.tipoCambioIngresado > 0) tipoCambio.value = aplicacion.tipoCambioIngresado;
+  $('#abSentidoCambio').disabled = $('#abMonedaEnviada').value === $('#abMonedaAplicada').value;
+  if ($('#abMonedaEnviada').value === $('#abMonedaAplicada').value) {
+    tipoCambio.value = '1';
+    if (a.aplicacionFinancieraOrigen?.modo !== 'MANUAL') recalcularMontoDesdeTC();
+  } else if (!tipoCambio.value && !num(a.montoAplicado) && a.aplicacionFinancieraOrigen?.modo !== 'MANUAL') {
+    $('#abMontoAplicado').value = '';
+  }
+  $('#abMotivo').value = '';
+  $('#errorEditarAbono').textContent = '';
+  $('#dialogEditarAbono').showModal();
 }
 
 function recalcularMontoDesdeTC() {
-  const enviada = $('#abMonedaEnviada').value, aplicada = $('#abMonedaAplicada').value;
-  const monto = num($('#abMontoEnviado').value), tc = num($('#abTipoCambio').value);
-  if (!monto || !tc) return;
-  if (enviada === 'USD' && aplicada !== 'USD') $('#abMontoAplicado').value = (monto * tc).toFixed(2);
+  const enviada = $('#abMonedaEnviada').value;
+  const aplicada = $('#abMonedaAplicada').value;
+  const monto = Number($('#abMontoEnviado').value);
+  const tipoCambio = $('#abTipoCambio');
+  if (enviada === aplicada) tipoCambio.value = '1';
+  const factor = factorAbonoControl(tipoCambio.value);
+  $('#abMontoAplicado').value = factor > 0 && Number.isFinite(monto * factor)
+    ? (monto * factor).toFixed(2)
+    : '';
 }
 
 async function guardarRevisionAbono(event) {
@@ -1453,7 +1482,7 @@ async function guardarRevisionAbono(event) {
 
   const tc = tcTexto === ''
     ? null
-    : Number(tcTexto);
+    : factorAbonoControl(tcTexto);
 
   const cantidadCoberturaTexto=$('#abUnidadesCubiertas').value.trim();
   const unidadesCubiertas=Number(cantidadCoberturaTexto||0);
@@ -1820,14 +1849,10 @@ async function guardarRevisionAbono(event) {
           tipoCambioGuardado = tc;
         }
 
-        if (
-          modo === 'MANUAL' &&
-          tc !== null &&
-          monedaEnviada !== monedaDeuda
-        ) {
+        if (modo === 'MANUAL' && monedaEnviada !== monedaDeuda) {
           throw new Error(
             'El monto aplicado no coincide con monto enviado × TC. ' +
-            'Corrija el TC o déjelo vacío para registrar un monto reconocido manualmente.'
+            'Ingresa un TC válido y recalcula el monto aplicado.'
           );
         }
 
@@ -1836,6 +1861,8 @@ async function guardarRevisionAbono(event) {
         const aplicacionFinanciera = {
           versionEsquema: 1,
           modo,
+          tipoCambioIngresado:modo==='TC'?Number(tcTexto):null,
+          sentidoTipoCambio:modo==='TC'?$('#abSentidoCambio').value:null,
           monedaDeuda,
 
           tipoCambio:
@@ -1882,7 +1909,7 @@ async function guardarRevisionAbono(event) {
           tipoCambioAplicado: tipoCambioGuardado,
           montoAplicado: aplicado,
           unidadesCubiertas,
-          estadoRevision: 'REVISADO'
+          estadoRevision: 'PENDIENTE', aplicacionLista:aplicado>0
         };
 
         const diferencia =
@@ -1926,7 +1953,7 @@ async function guardarRevisionAbono(event) {
           abonosPendientesRevision: Math.max(
             0,
             num(resumen.abonosPendientesRevision) -
-            (estabaPendiente ? 1 : 0)
+            (estabaPendiente ? 0 : -1)
           )
         };
 
@@ -1996,8 +2023,8 @@ async function guardarRevisionAbono(event) {
             aplicacionFinanciera,
 
           motivoPendiente: '',
-          revisadoAt: serverTimestamp(),
-          revisadoPor: email
+          revisadoAt: null,
+          revisadoPor: ''
         });
 
         tx.update(resumenRef, {
@@ -2071,7 +2098,7 @@ async function guardarRevisionAbono(event) {
     const siguiente=filasConRaicesVisibles(state.resumenes).find(r=>r.id===proveedorActual.id);
     if(siguiente){await abrirDetalle(siguiente);activarTab('abonos');}else cerrarDetalle();
   }
-  setEstado(actualizado?'Revisión guardada y sincronizada con el pago de origen y la cuenta del proveedor.':'Revisión guardada. Actualice la información para consultar el saldo.',!actualizado,'#detalleEstado');
+  setEstado(actualizado?'Aplicación guardada. El abono quedó pendiente de revisión.':'Aplicación guardada. Actualiza la información para consultar el saldo.',!actualizado,'#detalleEstado');
 }
 
 function filasResumenes(lista) {
@@ -2223,7 +2250,7 @@ function tablaCostosAgrupados(rows,esHotel) {
   return [...grupos.values()].sort((a,b)=>compararNombre(a[0].servicioNombre||a[0].hotelNombre,b[0].servicioNombre||b[0].hotelNombre)).map(items=>{
     items.sort(ordenarCostosGrupo);const nombre=items[0].servicioNombre||items[0].hotelNombre||'Servicio';
     const costo=items.reduce((s,o)=>s+num(o.totalObligacion),0),pendientes=items.filter(o=>o.requiereConfiguracion).length,m=items[0].monedaObligacion;
-    return `<section class="cf-detail-service"><header><h3>${esc(nombre)}</h3><span>${items.length} registro(s) · ${pendientes?'TOTAL PARCIAL':'TOTAL'} ${fmtMoney(costo,m)}</span></header>${cabeceraCoberturaServicio(items)}<div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>${esHotel?'Entrada / salida':'Fecha'}</th><th>N.º negocio</th><th>Grupo</th>${esHotel?'<th class="num">Noches</th>':''}<th class="num">Pax acordados</th><th class="num">Pax reales</th><th class="num">Pax cobrados</th><th>Forma de cobro</th><th class="num">Tarifa</th><th class="num">Costo</th><th>Estado</th></tr></thead><tbody>${items.map(o=>`<tr><td class="cf-date">${fechaTexto(o.fechaServicio||o.checkIn)}${esHotel?' → '+fechaTexto(o.checkOut):''}</td><td>${esc(o.numeroNegocio||'')}</td><td>${esc(o.nombreGrupo||'')}</td>${esHotel?`<td class="num">${fmtNum(o.noches)}</td>`:''}<td class="num">${fmtNum(o.paxAcordados??o.paxReservados)}</td><td class="num">${valorPaxReal(o)}</td><td class="num">${o.paxCobrados==null?'—':fmtNum(o.paxCobrados)}</td><td>${esc(norm(o.tipoCobro).replaceAll('_',' '))}</td><td class="num">${o.requiereConfiguracion?'PENDIENTE':fmtMoney(o.tarifaBase,m)}</td><td class="num">${o.requiereConfiguracion?'PENDIENTE':fmtMoney(o.totalObligacion,m)}</td><td>${estadoCosto(o)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="${esHotel?9:8}">TOTAL DEL SERVICIO${pendientes?' · PARCIAL':''}</th><th class="num">${fmtMoney(costo,m)}</th><th>${pendientes?pendientes+' pendiente(s)':''}</th></tr></tfoot></table></div></section>`;
+    return `<details class="cf-detail-service"${esHotel ? ' open' : ''}><summary><header><h3>${esc(nombre)}</h3><span>${items.length} registro(s) · ${pendientes?'TOTAL PARCIAL':'TOTAL'} ${fmtMoney(costo,m)}</span></header></summary>${cabeceraCoberturaServicio(items)}<div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>${esHotel?'Entrada / salida':'Fecha'}</th><th>N.º negocio</th><th>Grupo</th>${esHotel?'<th class="num">Noches</th>':''}<th class="num">Pax acordados</th><th class="num">Pax reales</th><th class="num">Pax cobrados</th><th>Forma de cobro</th><th class="num">Tarifa</th><th class="num">Costo</th><th>Estado</th></tr></thead><tbody>${items.map(o=>`<tr><td class="cf-date">${fechaTexto(o.fechaServicio||o.checkIn)}${esHotel?' → '+fechaTexto(o.checkOut):''}</td><td>${esc(o.numeroNegocio||'')}</td><td>${esc(o.nombreGrupo||'')}</td>${esHotel?`<td class="num">${fmtNum(o.noches)}</td>`:''}<td class="num">${fmtNum(o.paxAcordados??o.paxReservados)}</td><td class="num">${valorPaxReal(o)}</td><td class="num">${o.paxCobrados==null?'—':fmtNum(o.paxCobrados)}</td><td>${esc(norm(o.tipoCobro).replaceAll('_',' '))}</td><td class="num">${o.requiereConfiguracion?'PENDIENTE':fmtMoney(o.tarifaBase,m)}</td><td class="num">${o.paqueteDisco?'Incluido en paquete':o.paqueteDiscoPendiente?fmtMoney(o.totalObligacion,m)+' · Paquete pendiente':o.requiereConfiguracion?'PENDIENTE':fmtMoney(o.totalObligacion,m)}</td><td>${estadoCosto(o)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="${esHotel?9:8}">TOTAL DEL SERVICIO${pendientes?' · PARCIAL':''}</th><th class="num">${fmtMoney(costo,m)}</th><th>${pendientes?pendientes+' pendiente(s)':''}</th></tr></tfoot></table></div></details>`;
   }).join('');
 }
 
@@ -2247,7 +2274,7 @@ function filasAbonosExcel(lista) {
     Fecha:a.fecha||'',Servicio:a.servicioNombre||'', 'Moneda enviada':a.monedaEnviada,
     'Monto enviado':num(a.montoEnviado), 'Tipo de cambio histórico':a.tipoCambioAplicado??null,
     'Moneda aplicada':a.monedaAplicada||a.monedaObligacion, 'Monto aplicado':num(a.montoAplicado),
-    'Cobertura informada':a.coberturaPax?.estado==='INFORMADA'?a.coberturaPax.cantidad:null,'Unidad de cobertura':a.coberturaPax?.unidad||'','Estado cobertura':a.coberturaPax?.estado||'PENDIENTE', Estado:a.estadoRevision,
+    'Cobertura informada':a.coberturaPax?.estado==='INFORMADA'?a.coberturaPax.cantidad:null,'Unidad de cobertura':a.coberturaPax?.unidad||'','Estado cobertura':a.coberturaPax?.estado||'PENDIENTE', Estado:a.estadoRevision, 'Revisado por':a.revisadoPor||'', 'Fecha revisión':fechaRevisionTexto(a.revisadoAt),
     'Pendiente de vinculación':a.requiereVinculacion?'SÍ':'NO',Motivo:a.motivoPendiente||'',
     Observación:a.nota||'',Comprobante:a.comprobanteURL||'',
     'Resumen ID':a.resumenId,'Abono original ID':a.abonoOperacionId||'', 'Origen':a.origenPath||'','Registro ID':a.id
@@ -2276,6 +2303,7 @@ function hojaExcelFinanzas(libro,nombre,filas,camposVacios=['Información']) {
 function crearLibroFinanzas(lista,costos,abonos) {
   if(!window.ExcelJS)throw new Error('No se cargó ExcelJS. Recarga la página y vuelve a exportar.');
   const libro=new window.ExcelJS.Workbook();libro.creator='Rai Trai · Control Finanzas';libro.created=new Date();libro.calcProperties.fullCalcOnLoad=true;
+  hojaExcelFinanzas(libro,'Paquetes de discos',filasPaquetesLiquidacion(costos));
   const resumen=hojaExcelFinanzas(libro,'Resumen proveedores',filasResumenes(lista));
   const detalle=hojaExcelFinanzas(libro,'Costos',filasCostosExcel(costos),Object.keys(filasCostosExcel([{id:'',resumenId:''}])[0]));
   const pagos=hojaExcelFinanzas(libro,'Abonos',filasAbonosExcel(abonos),Object.keys(filasAbonosExcel([{id:'',resumenId:''}])[0]));
@@ -2635,6 +2663,320 @@ function bindUI() {
   $$('.cf-tab').forEach(btn => btn.addEventListener('click', () => activarTab(btn.dataset.tab)));
   $('#btnCancelarEdicion').addEventListener('click', () => $('#dialogEditarAbono').close());
   $('#formEditarAbono').addEventListener('submit', guardarRevisionAbono); $('#abTipoCambio').addEventListener('change', recalcularMontoDesdeTC);
+  $('#abSentidoCambio').addEventListener('change', e => {
+    const input=$('#abTipoCambio'), valor=Number(input.value);
+    if (valor>0) input.value=String(1/valor);
+    recalcularMontoDesdeTC();
+  });
+  $('#btnGuardarVersion').onclick=guardarVersionUI;
+  $('#btnVerVersiones').onclick=verVersionesUI;
+}
+
+const llamarLiquidacion=httpsCallable(getFunctions(app,'southamerica-west1'),'gestionarLiquidacionFinanzas',{timeout:540000});
+const liquidacion = async (accion, datos={}, ano=Number(state.ano)) =>
+  (await llamarLiquidacion({accion,anoViaje:ano,...datos})).data;
+
+function factorAbonoControl(valor) {
+  const numero=Number(valor);
+  if (!(numero>0)) return 0;
+  return $('#abSentidoCambio').value==='DEUDA_A_PAGO'?1/numero:numero;
+}
+
+function abonoListo(a) {
+  return a.estadoSolicitudPago==='FINALIZADO' && a.aplicacionLista &&
+    !a.requiereVinculacion && a.estadoRevision!=='REVISADO' && Number(a.montoAplicado)>0;
+}
+
+function fechaRevisionTexto(valor) {
+  const ms=typeof valor==='object' && valor && Number.isFinite(valor._seconds) ? valor._seconds*1000 : valor?fechaMillis(valor):0;
+  return ms?new Intl.DateTimeFormat('es-CL',{dateStyle:'short',timeStyle:'short',timeZone:'America/Santiago'}).format(ms):'';
+}
+
+async function confirmarAbonosUI(ids) {
+  if (!ids.length || state.revisandoLote) return;
+  state.revisandoLote=true;
+  const proveedor=state.proveedor, ano=state.ano;
+  try {
+    const {cantidad}=await liquidacion('REVISAR',{ids});
+    if (state.ano===ano && state.proveedor===proveedor) {
+      activarTab('abonos');
+      await cargarResumenes();
+      const r=filasConRaicesVisibles(state.resumenes).find(o=>o.id===proveedor.id);
+      if (r && state.proveedor===proveedor) {
+        await abrirDetalle(r);
+        activarTab('abonos');
+      }
+      setEstado(cantidad+' abono(s) revisados.',false,'#detalleEstado');
+    }
+  } catch(error) {
+    setEstado(error.message,true,'#detalleEstado');
+  } finally {
+    state.revisandoLote=false;
+  }
+}
+
+function dialogoLiquidacion(titulo, cuerpo) {
+  const dialog=document.createElement('dialog');
+  dialog.className='cf-liquidacion-dialog';
+  dialog.innerHTML=`<header class="cf-dialog-head"><h3>${esc(titulo)}</h3></header>
+    <div class="cf-dialog-body">${cuerpo}<p role="status" data-estado></p>
+    <form method="dialog"><button class="cf-btn">Cerrar</button></form></div>`;
+  document.body.append(dialog);
+  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  dialog.showModal();
+  return dialog;
+}
+
+function filasPaquetesLiquidacion(costos) {
+  return costos.filter(o=>o.fuente==='PAQUETE_DISCO').map(o=>({
+    Destino:o.destinoFinanciero,Proveedor:o.proveedorNombre,Moneda:o.monedaObligacion,
+    Paquete:o.paquete.noches,'Noches programadas':o.paquete.nochesProgramadas,Negocio:o.numeroNegocio,
+    Grupo:o.nombreGrupo,Pax:o.paquete.pax,'Fuente pax':o.paquete.fuentePax||'Planificados',
+    Tarifa:o.paquete.tarifa,'Descuento %':o.paquete.descuento,'Tarifa neta':o.paquete.tarifaNeta,
+    Subtotal:o.totalObligacion,Fiestas:o.paquete.fiestas.map(f=>f.fecha+' · '+f.servicio).join(' / ')
+  }));
+}
+
+function mostrarResumenDiscos(costos, monedaDeuda) {
+  const agrupados=new Map();
+  for (const o of costos.filter(o=>o.fuente==='PAQUETE_DISCO')) {
+    const p=o.paquete, clave=[p.noches,p.tarifa,p.descuento].join('|');
+    if (!agrupados.has(clave)) agrupados.set(clave,{...p,grupos:[],pax:0,total:0});
+    const conjunto=agrupados.get(clave);
+    conjunto.grupos.push(o);
+    conjunto.pax+=p.pax;
+    conjunto.total+=o.totalObligacion;
+  }
+  if (!agrupados.size) return '';
+  const filas=[...agrupados.values()].sort((a,b)=>b.noches-a.noches);
+  const total=filas.reduce((s,o)=>s+o.total,0);
+  return `<section><h3>Discotecas · Pax planificados</h3><div class="cf-table-wrap"><table class="cf-table">
+    <thead><tr><th>Paquete / grupos</th><th>Pax</th><th>Tarifario</th><th>Descuento</th><th>Tarifa neta</th><th>Subtotal</th></tr></thead>
+    <tbody>${filas.map(f=>`<tr><td><details><summary>${f.noches} noche(s) · ${f.grupos.length} grupo(s)</summary>
+      <ul>${f.grupos.map(o=>`<li>${esc(o.numeroNegocio)} · ${esc(o.nombreGrupo)} · ${fmtNum(o.paquete.pax)} pax
+      <br>${o.paquete.fiestas.map(x=>esc(x.fecha+' · '+x.servicio)).join('<br>')}</li>`).join('')}</ul></details></td>
+      <td>${fmtNum(f.pax)}</td><td>${fmtMoney(f.tarifa,monedaDeuda)}</td><td>${f.descuento}%</td>
+      <td>${fmtMoney(f.tarifaNeta,monedaDeuda)}</td><td>${fmtMoney(f.total,monedaDeuda)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><th colspan="5">Subtotal discotecas</th><th>${fmtMoney(total,monedaDeuda)}</th></tr></tfoot>
+    </table></div></section>`;
+}
+
+function renderLiquidacionProveedor() {
+  const proveedor=state.proveedor;
+  const panel=$('#panel-obligaciones');
+  if (!proveedor || !panel) return;
+  $('[data-liquidacion]',panel)?.remove();
+  const bloque=document.createElement('div');
+  bloque.dataset.liquidacion='';
+  bloque.innerHTML=`<div class="cf-section-head"><h3>Liquidación</h3>
+    <button type="button" class="cf-btn" data-ajustes>Ajustes del proveedor</button>
+    ${proveedor.tipo==='ACTIVIDAD'?'<button type="button" class="cf-btn" data-discos>Configurar discotecas</button>':''}</div>
+    ${mostrarResumenDiscos(state.obligaciones,proveedor.monedaObligacion)}
+    ${state.obligaciones.some(o=>o.paqueteDiscoPendiente)?'<p>Hay fiestas sin tarifa de paquete. Se muestran con su costo individual hasta que configures el paquete.</p>':''}
+    <ul>${state.obligaciones.filter(o=>o.fuente==='AJUSTE_PROVEEDOR').map(o=>`<li>${esc(o.servicioNombre)} · ${fmtMoney(o.totalObligacion,o.monedaObligacion)}</li>`).join('')}</ul>
+    <p>Total proveedor <strong>${fmtMoney(proveedor.totalObligacion,proveedor.monedaObligacion)}</strong>
+    · Saldo pendiente <strong>${fmtMoney(proveedor.saldoPendiente,proveedor.monedaObligacion)}</strong></p>`;
+  panel.prepend(bloque);
+  $('[data-ajustes]',bloque).onclick=()=>abrirConfiguracionLiquidacion('AJUSTE');
+  const boton=$('[data-discos]',bloque);
+  if (boton) boton.onclick=()=>abrirConfiguracionLiquidacion('DISCOS');
+}
+
+async function abrirConfiguracionLiquidacion(accion) {
+  const proveedor=state.proveedor, ano=state.ano;
+  const resumenes=proveedor.esDetalleCuenta?proveedor.cuentaCompartida.miembros.map(m=>m.proveedorId):[proveedor.proveedorId];
+  const elegibles=state.resumenes.filter(r=>resumenes.includes(r.proveedorId) &&
+    r.destinoFinanciero===proveedor.destinoFinanciero && r.monedaObligacion===proveedor.monedaObligacion && r.tipo===proveedor.tipo &&
+    !r.sinteticoCuenta);
+  if (!elegibles.length) return setEstado('Selecciona un proveedor con deuda configurada.',true,'#detalleEstado');
+  const dialog=dialogoLiquidacion(accion==='AJUSTE'?'Ajustes del proveedor':'Configurar discotecas',
+    `<label>Proveedor <select data-proveedor>${elegibles.map(r=>`<option value="${esc(r.id)}">${esc(r.proveedorNombre)}</option>`).join('')}</select></label><div data-editor></div>`);
+  const selector=$('[data-proveedor]',dialog), nodo=$('[data-editor]',dialog), estado=$('[data-estado]',dialog);
+  async function cargar() {
+    const resumenId=selector.value;
+    nodo.replaceChildren();
+    estado.textContent='Cargando…';
+    try {
+      const {config}=await liquidacion('CONSULTAR',{resumenId},ano);
+      if (selector.value!==resumenId || !dialog.open) return;
+      estado.textContent='';
+      const guardar=async datos=>{
+        if (selector.disabled) return;
+        selector.disabled=true;
+        $$('button,input,select',nodo).forEach(e=>e.disabled=true);
+        estado.textContent='Guardando y recalculando…';
+        try {
+          const resultado=await liquidacion(accion,{resumenId,version:config?.version||0,...datos},ano);
+          dialog.close();
+          if (state.ano===ano) {
+            await cargarResumenes();
+            const r=filasConRaicesVisibles(state.resumenes).find(x=>x.id===proveedor.id);
+            if (r && state.proveedor===proveedor) await abrirDetalle(r);
+            setEstado(resultado.recalculado?'Liquidación actualizada.':'Cambio guardado. El saldo quedó pendiente de recálculo.',!resultado.recalculado,'#detalleEstado');
+          }
+        } catch(error) {
+          estado.textContent=error.message;
+          $$('button,input,select',nodo).forEach(e=>e.disabled=false);
+        } finally {selector.disabled=false;}
+      };
+      if (accion==='AJUSTE') editarAjustesLiquidacion(nodo,config?.ajustes||[],guardar);
+      else editarPaquetesLiquidacion(nodo,config?.discos||{},state.obligaciones.filter(o=>o.resumenId===resumenId),guardar);
+    } catch(error) {estado.textContent=error.message;}
+  }
+  selector.onchange=cargar;
+  await cargar();
+}
+
+function editarAjustesLiquidacion(nodo, ajustes, guardar) {
+  const activos=ajustes.filter(a=>!a.anulado);
+  nodo.innerHTML=`<form>
+    <label>Ajuste <select name="id"><option value="">Agregar ajuste</option>
+    ${activos.map(a=>`<option value="${esc(a.id)}">${esc(a.asunto)}</option>`).join('')}</select></label>
+    <label>Tipo <select name="tipo"><option value="CARGO">Cargo adicional</option><option value="DESCUENTO">Descuento</option></select></label>
+    <label>Asunto <input name="asunto" maxlength="140" required></label>
+    <label>Fecha <input name="fecha" type="date" required></label>
+    <label>Monto en moneda de la deuda <input name="monto" type="number" min="0.01" step="0.01" required></label>
+    <button type="submit" class="cf-btn blue">Guardar ajuste</button>
+    <button type="button" data-anular class="cf-btn" hidden>Anular ajuste</button></form>`;
+  const form=$('form',nodo), campos=form.elements, anular=$('[data-anular]',nodo);
+  function precargar() {
+    const ajuste=activos.find(a=>a.id===campos.id.value);
+    campos.asunto.value=ajuste?.asunto||'';
+    campos.tipo.value=ajuste?.tipo||'CARGO';
+    campos.fecha.value=ajuste?.fecha||new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago'}).format(new Date());
+    campos.monto.value=ajuste?.monto??'';
+    anular.hidden=!ajuste;
+  }
+  campos.id.onchange=precargar;
+  precargar();
+  form.onsubmit=e=>{
+    e.preventDefault();
+    guardar({id:campos.id.value,tipo:campos.tipo.value,asunto:campos.asunto.value,fecha:campos.fecha.value,monto:Number(campos.monto.value)});
+  };
+  anular.onclick=()=>{if (window.confirm('¿Anular este ajuste?')) guardar({id:campos.id.value,anular:true});};
+}
+
+function editarPaquetesLiquidacion(nodo, config, obligaciones, guardar) {
+  const actividades=obligaciones.filter(o=>o.fuente==='ITINERARIO');
+  const servicios=new Map(actividades.map(o=>[o.servicioId,o.servicioNombre]));
+  const grupos=new Map(actividades.map(o=>[o.grupoId,(o.numeroNegocio||'')+' · '+o.nombreGrupo]));
+  const excepciones=new Map(Object.entries(config.excepciones||{}));
+  nodo.innerHTML=`<form>
+    <fieldset><legend>Servicios que cuentan como fiestas</legend>${[...servicios].map(([id,nombre])=>`<label>
+    <input type="checkbox" name="servicio" value="${esc(id)}" ${config.servicios?.includes(id)?'checked':''}> ${esc(nombre)}</label>`).join('')}</fieldset>
+    <fieldset><legend>Tarifas por paquete</legend>
+    ${[1,2,3,4].map(n=>`<div><label>${n} noche(s) · Tarifa por pax <input type="number" name="tarifa${n}" min="0" step="0.01" value="${config.tarifas?.[n]?.tarifa??''}"></label>
+    <label>Descuento % <input type="number" name="descuento${n}" min="0" max="100" step="0.01" value="${config.tarifas?.[n]?.descuento??0}"></label></div>`).join('')}
+    </fieldset>
+    <fieldset><legend>Excepción por grupo</legend>
+    <label>Grupo <select name="grupo"><option value="">Selecciona un grupo</option>${[...grupos].map(([id,nombre])=>`<option value="${esc(id)}">${esc(nombre)}</option>`).join('')}</select></label>
+    <label>Noches cobradas <input name="noches" type="number" min="1" max="4" step="1"></label>
+    <label>Tarifa por pax <input name="exTarifa" type="number" min="0" step="0.01"></label>
+    <label>Descuento % <input name="exDescuento" type="number" min="0" max="100" step="0.01"></label>
+    <button type="button" class="cf-btn" data-excepcion>Agregar o actualizar excepción</button>
+    <button type="button" class="cf-btn" data-quitar>Quitar excepción</button>
+    <ul data-excepciones></ul></fieldset>
+    <button type="submit" class="cf-btn blue">Guardar y recalcular</button></form>`;
+  const form=$('form',nodo), campos=form.elements;
+  function mostrarExcepciones() {
+    $('[data-excepciones]',nodo).innerHTML=[...excepciones].map(([id,e])=>`<li>${esc(grupos.get(id)||id)} · ${e.noches} noche(s) · ${e.tarifa} · ${e.descuento}%</li>`).join('');
+  }
+  mostrarExcepciones();
+  campos.grupo.onchange=()=>{
+    const e=excepciones.get(campos.grupo.value);
+    campos.noches.value=e?.noches??'';
+    campos.exTarifa.value=e?.tarifa??'';
+    campos.exDescuento.value=e?.descuento??0;
+  };
+  $('[data-excepcion]',nodo).onclick=()=>{
+    if (!campos.grupo.value || ![1,2,3,4].includes(Number(campos.noches.value)) || campos.exTarifa.value==='' || !form.reportValidity()) return;
+    excepciones.set(campos.grupo.value,{noches:Number(campos.noches.value),tarifa:Number(campos.exTarifa.value),descuento:Number(campos.exDescuento.value)});
+    mostrarExcepciones();
+  };
+  $('[data-quitar]',nodo).onclick=()=>{excepciones.delete(campos.grupo.value); mostrarExcepciones();};
+  form.onsubmit=e=>{
+    e.preventDefault();
+    const tarifas={};
+    for (const n of [1,2,3,4]) if (campos['tarifa'+n].value!=='') {
+      tarifas[n]={tarifa:Number(campos['tarifa'+n].value),descuento:Number(campos['descuento'+n].value)};
+    }
+    guardar({discos:{servicios:$$('[name=servicio]:checked',nodo).map(x=>x.value),tarifas,excepciones:Object.fromEntries(excepciones)}});
+  };
+}
+
+function guardarVersionUI() {
+  const seleccion=state.destino?seleccionResumenes().filter(r=>!r.sinteticoCuenta):[];
+  if (!seleccion.length) return setEstado('Selecciona un destino con proveedores.',true);
+  const ano=state.ano, destino=state.destino;
+  const dialog=dialogoLiquidacion('Guardar versión',`<p>${esc(ano+' · '+destino)} · ${seleccion.length} proveedor(es)</p>
+    <form data-guardar><label>Nombre opcional <input name="nombre" maxlength="100"></label>
+    <button class="cf-btn blue">Guardar versión</button></form>`);
+  const form=$('[data-guardar]',dialog);
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    const boton=$('button',form), estado=$('[data-estado]',dialog);
+    if (boton.disabled) return;
+    boton.disabled=true;
+    estado.textContent='Guardando la versión…';
+    try {
+      await liquidacion('GUARDAR_VERSION',{ids:seleccion.map(r=>r.id),nombre:form.elements.nombre.value,destino},ano);
+      dialog.close();
+      setEstado('Versión guardada.');
+    } catch(error) {
+      estado.textContent=error.message;
+      boton.disabled=false;
+    }
+  };
+}
+
+async function verVersionesUI() {
+  const ano=state.ano;
+  const dialog=dialogoLiquidacion('Versiones guardadas', '<div data-versiones></div>');
+  const lista=$('[data-versiones]',dialog), estado=$('[data-estado]',dialog);
+  estado.textContent='Cargando versiones…';
+  try {
+    const {versiones}=await liquidacion('LISTAR_VERSIONES',{},ano);
+    estado.textContent=versiones.length?'':'No hay versiones guardadas para este año.';
+    lista.innerHTML=versiones.map(v=>`<p><button class="cf-btn" data-version="${esc(v.id)}">${esc(v.nombre||v.destino)}</button>
+      ${esc(v.destino)} · ${esc(fechaRevisionTexto(v.fecha))} · ${esc(v.email)}</p>`).join('');
+    $$('[data-version]',lista).forEach(btn=>btn.onclick=()=>abrirVersionUI(btn.dataset.version,ano,dialog));
+  } catch(error) {estado.textContent=error.message;}
+}
+
+async function abrirVersionUI(id, ano, dialog) {
+  const estado=$('[data-estado]',dialog);
+  if (dialog.dataset.cargando) return;
+  dialog.dataset.cargando='1';
+  estado.textContent='Cargando la versión…';
+  try {
+    const datos={finanzas_resumenes:[],finanzas_obligaciones:[],finanzas_abonos:[]};
+    let desde='';
+    do {
+      const pagina=await liquidacion('ABRIR_VERSION',{id,desde},ano);
+      for (const {coleccion,fila} of pagina.filas) datos[coleccion].push(fila);
+      desde=pagina.siguiente;
+    } while (desde && dialog.open);
+    if (!dialog.open) return;
+    const {finanzas_resumenes:resumenes,finanzas_obligaciones:costos,finanzas_abonos:abonos}=datos;
+    $('[data-versiones]',dialog).innerHTML=`<button class="cf-btn" data-xlsx>Exportar esta versión</button>${resumenes.map(r=>`
+      <details><summary>${esc(r.destinoFinanciero)} · ${esc(r.proveedorNombre)} · ${fmtMoney(r.saldoPendiente,r.monedaObligacion)}</summary>
+      ${mostrarResumenDiscos(costos.filter(o=>o.resumenId===r.id),r.monedaObligacion)}
+      ${tablaCostosAgrupados(costos.filter(o=>o.resumenId===r.id),r.tipo==='HOTEL')}
+      <ul>${abonos.filter(a=>a.resumenId===r.id).map(a=>`<li>${esc(a.fecha)} · ${fmtMoney(a.montoAplicado,a.monedaObligacion)} · ${esc(a.estadoRevision)}</li>`).join('')}</ul></details>`).join('')}`;
+    estado.textContent='';
+    $('[data-xlsx]',dialog).onclick=async()=>{
+      try {
+        const buffer=await crearLibroFinanzas(resumenes,costos,abonos).xlsx.writeBuffer();
+        const url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+        const enlace=document.createElement('a');
+        enlace.href=url;
+        enlace.download='control-finanzas-version-'+ano+'-'+id+'.xlsx';
+        enlace.click();
+        setTimeout(()=>URL.revokeObjectURL(url),10000);
+      } catch(error) {estado.textContent=error.message;}
+    };
+  } catch(error) {estado.textContent=error.message;}
+  finally {delete dialog.dataset.cargando;}
 }
 
 onAuthStateChanged(auth, async user => {
