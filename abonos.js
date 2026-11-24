@@ -28,7 +28,8 @@ import {
 const auth = getAuth(app);
 const storage = getStorage(app);
 
-const ES_VISTA_MOVIL =
+const EDITAR_ABONO_DESDE_FINANZAS = new URLSearchParams(location.search).get('editar');
+const ES_VISTA_MOVIL = !EDITAR_ABONO_DESDE_FINANZAS &&
   document.documentElement.classList.contains(
     'abonos-mobile'
   );
@@ -7050,6 +7051,12 @@ async function inicializarEscritorio() {
       .classList.remove('open');
 
     document.body.style.overflow = '';
+
+    if (EDITAR_ABONO_DESDE_FINANZAS) {
+      const original=ABONOS.find(abono=>abono.id===EDITAR_ABONO_DESDE_FINANZAS);
+      if (original) iniciarEdicion(original);
+      else window.alert('No se encontró el abono original disponible para editar.');
+    }
 
     console.log(
       '✅ Abonos escritorio inicializado'
