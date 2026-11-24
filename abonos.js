@@ -4,7 +4,7 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
+  getDocs, query, where,
   setDoc,
   updateDoc,
   addDoc,
@@ -1102,6 +1102,8 @@ function actualizarVistaTipo() {
 
   if (esOtro) {
     limpiarSeleccionEntidad();
+    refrescarOtros();
+    void cargarGastosOtros();
   }
 }
 
@@ -2107,7 +2109,8 @@ function obtenerDatosFormulario() {
   return {
     ...datosComunes,
 
-    proveedorId: slug(destinatario),
+    proveedorId: el('abOtroProveedorPrevio').value || otroEditado?.proveedorId || slug(destinatario),
+    gastoOtroId: el('abOtroGastoPrevio').value || otroEditado?.vinculo || crypto.randomUUID(),
     proveedorNombre: destinatario,
 
     servicioId: '',
@@ -5011,6 +5014,9 @@ function limpiarFormulario() {
   
   pintarArchivosFormulario();
 
+  otroEditado=null;
+  el('abOtroProveedorPrevio').value='';
+  el('abOtroGastoPrevio').value='';
   el('abOtroDestinatario').value = '';
   el('abOtroCategoria').value = 'transporte';
   el('abOtroConcepto').value = '';
@@ -5222,6 +5228,9 @@ function iniciarEdicion(abono) {
   }
 
   if (tipo === 'otro') {
+    otroEditado={proveedorId:abono.proveedorId,vinculo:abono.gastoOtroId||abono.id};
+    el('abOtroProveedorPrevio').value='';
+    el('abOtroGastoPrevio').value='';
     limpiarSeleccionEntidad();
 
     el('abOtroDestinatario').value =
@@ -6549,6 +6558,7 @@ async function mostrarHistorialMovil() {
 }
 
 function conectarEventos() {
+  eventosOtros();
   document
     .querySelectorAll('input[name="abTipo"]')
     .forEach(radio => {
@@ -7791,6 +7801,82 @@ migrarIdsRegistroAbonos({ confirmar: true })
     );
   }
 };
+
+let gastosOtrosCatalogo=[];
+let otroEditado=null;
+
+function destinoComparableOtros(valor) {
+  const d=norm(valor);
+  if (d.includes('SUR DE CHILE') && d.includes('BARILOCHE')) return d;
+  return ['BARILOCHE','BRASIL','NORTE DE CHILE','SUR DE CHILE'].find(destino=>d.includes(destino))||d;
+}
+
+function refrescarOtros() {
+  if (getTipoSeleccionado()!=='otro') return;
+  const proveedor=el('abOtroProveedorPrevio'), gasto=el('abOtroGastoPrevio');
+  const categoria=slug(el('abOtroCategoria').value), ano=el('abAno').value, destino=destinoComparableOtros(el('abDestino').value);
+  const registros=[...ABONOS.filter(a=>['OTRO','OTROS'].includes(norm(a.tipo)) && norm(a.estado)!=='ARCHIVADO' && norm(a.estadoSolicitudPago)!=='ANULADO')
+    .map(a=>({...a,vinculo:a.gastoOtroId||a.id,asunto:a.servicioNombre,monedaDeuda:a.aplicacionFinanciera?.monedaDeuda||a.moneda})),
+    ...gastosOtrosCatalogo.map(a=>({...a,ano:a.anoViaje,destino:a.destinoFinanciero,monedaDeuda:a.monedaObligacion}))]
+    .filter(a=>slug(a.categoriaOtro||'otro')===categoria && a.proveedorNombre);
+  const proveedores=new Map(registros.map(a=>[a.proveedorId||slug(a.proveedorNombre),a.proveedorNombre]));
+  const anterior=proveedor.value;
+  proveedor.replaceChildren(new Option('Escribir proveedor',''),...[...proveedores].sort((a,b)=>a[1].localeCompare(b[1],'es')).map(([id,n])=>new Option(n,id)));
+  proveedor.value=proveedores.has(anterior)?anterior:'';
+  const id=proveedor.value||otroEditado?.proveedorId||slug(el('abOtroDestinatario').value);
+  const opciones=new Map(registros.filter(a=>String(a.ano)===ano && destinoComparableOtros(a.destino)===destino &&
+    (a.proveedorId||slug(a.proveedorNombre))===id && a.vinculo && a.asunto).map(a=>[a.vinculo,a]));
+  const vinculo=gasto.value || otroEditado?.vinculo;
+  gasto.replaceChildren(new Option('Gasto nuevo / asunto libre',''),...[...opciones].map(([k,a])=>{
+    const opcion=new Option(a.asunto+' · '+k.slice(-6),k);
+    opcion.dataset.asunto=a.asunto;
+    opcion.dataset.moneda=a.monedaDeuda||'';
+    return opcion;
+  }));
+  gasto.value=opciones.has(vinculo)?vinculo:'';
+  el('abOtroConcepto').readOnly=!!gasto.value;
+  if(gasto.value) el('abOtroConcepto').value=opciones.get(gasto.value).asunto;
+}
+
+async function cargarGastosOtros() {
+  const ano=el('abAno').value;
+  try {
+    const snap=await getDocs(query(collection(db,'finanzas_obligaciones'),where('anoViaje','==',Number(ano)),where('tipo','==','OTROS')));
+    if (el('abAno').value!==ano) return;
+    gastosOtrosCatalogo=snap.docs.map(d=>d.data()).filter(o=>o.fuente==='GASTO_OTROS');
+    refrescarOtros();
+  } catch(e) { console.warn('Catálogo de Otros no disponible.',e); }
+}
+
+function eventosOtros() {
+  const proveedor=el('abOtroProveedorPrevio'), gasto=el('abOtroGastoPrevio');
+  const limpiar=()=>{otroEditado=null;gasto.value='';refrescarOtros();};
+  proveedor.onchange=()=>{
+    if(proveedor.value) el('abOtroDestinatario').value=proveedor.selectedOptions[0].text;
+    limpiar();
+  };
+  gasto.onchange=()=>{
+    if(otroEditado) otroEditado={...otroEditado,vinculo:''};
+    el('abOtroConcepto').readOnly=!!gasto.value;
+    if(!gasto.value) return;
+    const {asunto,moneda}=gasto.selectedOptions[0].dataset;
+    el('abOtroConcepto').value=asunto;
+    const deuda=monedaAplicacionAbono(moneda);
+    if(deuda) {
+      el('abFinMoneda').value=deuda;
+      el('abFinModo').value=monedaAplicacionAbono(el('abMoneda').value)===deuda?'MISMA_MONEDA':'TC';
+      el('abFinTC').value='';
+      actualizarAplicacionAbono();
+    }
+  };
+  for(const id of ['abOtroDestinatario','abOtroCategoria','abDestino','abAno']) {
+    el(id).addEventListener(id==='abOtroDestinatario'?'input':'change',()=>{
+      proveedor.value='';
+      limpiar();
+      if(id==='abAno') void cargarGastosOtros();
+    });
+  }
+}
 
 async function inicializar() {
   if (ES_VISTA_MOVIL) {
