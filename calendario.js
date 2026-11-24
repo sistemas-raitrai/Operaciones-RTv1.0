@@ -27,14 +27,15 @@ const COLECCION_RESUMEN =
 const COLECCION_GRUPOS =
   'grupos';
 
-const INDICE_COLUMNA_COORDINADORES = 6;
+const INDICE_COLUMNA_PAX = 3;
+const ANCHOS_COLUMNAS_FIJAS = [90, 225, 225, 100, 190, 225, 320];
 const COLUMNAS_FIJAS = 7;
 const INDICE_COLUMNA_ANO = COLUMNAS_FIJAS;
 
 const ESTILOS_ESTADO_COORDINADORES = {
-  aprobado: { pantalla: 'rgba(16,185,129,.18)', excel: 'FFD4F2E8' },
-  rechazado: { pantalla: 'rgba(239,68,68,.18)', excel: 'FFFCDDDD' },
-  pendiente: { pantalla: 'rgba(234,179,8,.22)', excel: 'FFFAEEC9' }
+  aprobado: { pantalla: '#d4f2e8', excel: 'FFD4F2E8' },
+  rechazado: { pantalla: '#fcdddd', excel: 'FFFCDDDD' },
+  pendiente: { pantalla: '#faeec9', excel: 'FFFAEEC9' }
 };
 
 let dtHist = null;
@@ -1577,11 +1578,11 @@ function construirEncabezado(
   $encabezado.append(`
     <th>N° Negocio</th>
     <th>Grupo</th>
+    <th class="col-coordinadores">Coordinadores</th>
     <th>Pax</th>
     <th>Destino / Programa</th>
     <th>Hoteles</th>
     <th>Vuelos</th>
-    <th class="col-coordinadores">Coordinadores</th>
     <th>Año</th>
   `);
 
@@ -1681,6 +1682,13 @@ function construirCuerpo(
           ),
 
         $('<td>')
+          .text(grupo.coordTexto)
+          .attr('data-doc-id', grupo.id)
+          .attr('data-estado-coord', grupo.estadoCoord)
+          .attr('title', 'Estado: ' + grupo.estadoCoord.toUpperCase())
+          .css('--fondo-coordinadores', ESTILOS_ESTADO_COORDINADORES[grupo.estadoCoord].pantalla),
+
+        $('<td>')
           .text(
             formatearPax(
               grupo.pax
@@ -1721,13 +1729,6 @@ function construirCuerpo(
             'data-order',
             String(vuelos.orden)
           ),
-
-        $('<td>')
-          .text(grupo.coordTexto)
-          .attr('data-doc-id', grupo.id)
-          .attr('data-estado-coord', grupo.estadoCoord)
-          .attr('title', 'Estado: ' + grupo.estadoCoord.toUpperCase())
-          .css('background-color', ESTILOS_ESTADO_COORDINADORES[grupo.estadoCoord].pantalla),
 
         $('<td>')
           .text(
@@ -1847,34 +1848,10 @@ function inicializarDataTable(
       ],
 
       columnDefs: [
-        {
-          targets: [0],
-          width: '90px'
-        },
-        {
-          targets: [1],
-          width: '225px'
-        },
-        {
-          targets: [2],
-          width: '100px'
-        },
-        {
-          targets: [3],
-          width: '190px'
-        },
-        {
-          targets: [4],
-          width: '225px'
-        },
-        {
-          targets: [5],
-          width: '320px'
-        },
-        {
-          targets: [INDICE_COLUMNA_COORDINADORES],
-          width: '225px'
-        },
+        ...ANCHOS_COLUMNAS_FIJAS.map((ancho, indice) => ({
+          targets: indice,
+          width: `${ancho}px`
+        })),
         {
           targets: [
             INDICE_COLUMNA_ANO
@@ -1981,33 +1958,7 @@ function sincronizarAnchosEncabezadoYCuerpo() {
         return;
       }
 
-      let ancho = 210;
-
-      if (posicionVisible === 0) {
-        ancho = 90;
-      } else if (
-        posicionVisible === 1
-      ) {
-        ancho = 225;
-      } else if (
-        posicionVisible === 2
-      ) {
-        ancho = 100;
-      } else if (
-        posicionVisible === 3
-      ) {
-        ancho = 190;
-      } else if (
-        posicionVisible === 4
-      ) {
-        ancho = 225;
-      } else if (
-        posicionVisible === 5
-      ) {
-        ancho = 320;
-      } else if (encabezado.classList.contains('col-coordinadores')) {
-        ancho = 225;
-      }
+      const ancho = ANCHOS_COLUMNAS_FIJAS[posicionVisible] ?? 210;
 
       encabezado.style.width =
         `${ancho}px`;
@@ -2028,6 +1979,16 @@ function sincronizarAnchosEncabezadoYCuerpo() {
         `${ancho}px`;
     }
   );
+
+  // Usa el ancho renderizado para respetar el zoom y el ajuste de la tabla.
+  const anchosFijos = celdas.slice(0, COLUMNAS_FIJAS)
+    .map(celda => celda.getBoundingClientRect().width);
+  let desplazamiento = 0;
+
+  anchosFijos.forEach((ancho, indice) => {
+    wrapper.style.setProperty(`--calendario-fija-${indice + 1}`, `${desplazamiento}px`);
+    desplazamiento += ancho;
+  });
 
   const anchoCuerpo =
     tablaCuerpo.scrollWidth;
@@ -3598,14 +3559,14 @@ function aplicarEstiloFilaExcel(
         vertical: 'top',
         horizontal:
           posicionColumna === 0 ||
-          posicionColumna === 2
+          indiceColumna === INDICE_COLUMNA_PAX
             ? 'center'
             : 'left',
 
         wrapText: true,
         indent:
           posicionColumna === 0 ||
-          posicionColumna === 2
+          indiceColumna === INDICE_COLUMNA_PAX
             ? 0
             : 1
       };
@@ -3722,11 +3683,11 @@ function obtenerAnchoExcel(
   const anchos = [
     14,
     34,
+    34,
     15,
     29,
     34,
-    48,
-    34
+    48
   ];
 
   if (
