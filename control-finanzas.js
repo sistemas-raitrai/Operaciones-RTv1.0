@@ -167,7 +167,7 @@ function estadoFinancieroResumen(resumen) {
 }
 
 function agruparPorTipoYMoneda(items) {
-  const tipos = ['ACTIVIDAD', 'HOTEL'];
+  const tipos = ['ACTIVIDAD', 'HOTEL','OTROS'];
   return tipos.map(tipo => {
     const delTipo = items.filter(item => norm(item.tipo) === tipo);
     const monedasEncontradas = [...new Set(delTipo.map(item => moneda(item.monedaObligacion)))];
@@ -236,8 +236,9 @@ function renderProveedores() {
   const contenedor=$('#gruposFinancieros');
   contenedor.innerHTML=destinos.map(dest=>{
     const delDestino=items.filter(r=>destinoVista(r.destinoFinanciero)===dest);
-    return `<section class="cf-destination-section">${todos?`<h2 class="cf-destination-heading">${esc(dest)}</h2>`:''}${['ACTIVIDAD','HOTEL'].map(tipo=>{
+    return `<section class="cf-destination-section">${todos?`<h2 class="cf-destination-heading">${esc(dest)}</h2>`:''}${['ACTIVIDAD','HOTEL','OTROS'].map(tipo=>{
       const rs=delDestino.filter(r=>norm(r.tipo)===tipo);if(!rs.length)return '';
+      if(tipo==='OTROS') return '<article class="cf-type-section"><header class="cf-type-heading"><h3>OTROS</h3></header>'+seccionOtros(dest,rs)+'</article>';
       const orden=monedasDestino(dest,rs.map(r=>r.monedaObligacion));
       return `<article class="cf-type-section"><header class="cf-type-heading"><h3>${tipo==='HOTEL'?'HOTELES':'ACTIVIDADES'}</h3><span>${esc(dest)} · ${rs.length} registro(s) de proveedor</span></header>${orden.filter(m=>rs.some(r=>moneda(r.monedaObligacion)===m)).map(m=>bloqueMoneda({destino:dest},{codigo:m,items:rs.filter(r=>moneda(r.monedaObligacion)===m)})).join('')}</article>`;
     }).join('')}</section>`;
@@ -256,7 +257,7 @@ async function consultarColeccionDetalle(nombre,proveedorId,monedaObligacion,tip
   if(monedaObligacion)condiciones.push(where('monedaObligacion','==',monedaObligacion));
   if(tipo&&[COLECCIONES.OBLIGACIONES,COLECCIONES.ABONOS].includes(nombre))condiciones.push(where('tipo','==',tipo));
   const snap=await getDocs(query(collection(db,nombre),...condiciones));
-  return snap.docs.map(d=>({...d.data(),id:d.id})).filter(r=>!r.destinoFinanciero||norm(r.destinoFinanciero)===norm(p?.destinoFinanciero));
+  return snap.docs.map(d=>({...d.data(),id:d.id})).filter(r=>(!r.destinoFinanciero||norm(r.destinoFinanciero)===norm(p?.destinoFinanciero)) && (tipo!=='OTROS'||nombre===COLECCIONES.REGLAS||r.resumenId===p.id));
 }
 
 async function abrirDetalle(resumen) {
@@ -319,6 +320,7 @@ function renderCostosActividades(rows) { return tablaCostosAgrupados(rows,false)
 function renderCostosHoteles(rows) { return tablaCostosAgrupados(rows,true); }
 
 function renderObligaciones() {
+  if(state.proveedor?.tipo==='OTROS') return renderGastosOtros();
   const rows = [...state.obligaciones].sort(ordenarCostosGrupo);
 
   const esHotel =
@@ -1417,6 +1419,7 @@ function cerrarDetalle() {
 
 function abrirEditorAbono(id) {
   const a = state.abonos.find(x => x.id === id); if (!a) return;
+  if(a.tipo==='OTROS') return setEstado('Edita este pago en Abonos para cambiar su aplicación o gasto asociado.',false,'#detalleEstado');
   if (a.requiereVinculacion) {
     setEstado('Este pago está registrado, pero falta vincularlo a un servicio o costo hotelero. Corrige la vinculación antes de aplicar dinero al saldo.', true, '#detalleEstado');
     return;
@@ -2304,6 +2307,11 @@ function crearLibroFinanzas(lista,costos,abonos) {
   if(!window.ExcelJS)throw new Error('No se cargó ExcelJS. Recarga la página y vuelve a exportar.');
   const libro=new window.ExcelJS.Workbook();libro.creator='Rai Trai · Control Finanzas';libro.created=new Date();libro.calcProperties.fullCalcOnLoad=true;
   hojaExcelFinanzas(libro,'Paquetes de discos',filasPaquetesLiquidacion(costos));
+  hojaExcelFinanzas(libro,'Otros por grupo',costos.filter(o=>o.fuente==='GASTO_OTROS').flatMap(o=>
+    (o.reparto?.length?o.reparto:[{grupoId:'Sin grupo',monto:o.monto}]).map(g=>({
+      Destino:o.destinoFinanciero,Categoria:categoriaOtros(o.categoriaOtro),Proveedor:o.proveedorNombre,
+      Asunto:o.asunto,Moneda:o.monedaObligacion,Grupo:g.grupoId,Pax:g.pax??null,Costo:g.monto??null
+    }))));
   const resumen=hojaExcelFinanzas(libro,'Resumen proveedores',filasResumenes(lista));
   const detalle=hojaExcelFinanzas(libro,'Costos',filasCostosExcel(costos),Object.keys(filasCostosExcel([{id:'',resumenId:''}])[0]));
   const pagos=hojaExcelFinanzas(libro,'Abonos',filasAbonosExcel(abonos),Object.keys(filasAbonosExcel([{id:'',resumenId:''}])[0]));
@@ -2764,7 +2772,7 @@ function mostrarResumenDiscos(costos, monedaDeuda) {
 function renderLiquidacionProveedor() {
   const proveedor=state.proveedor;
   const panel=$('#panel-obligaciones');
-  if (!proveedor || !panel) return;
+  if (!proveedor || !panel || proveedor.tipo==='OTROS') return;
   $('[data-liquidacion]',panel)?.remove();
   const bloque=document.createElement('div');
   bloque.dataset.liquidacion='';
@@ -2977,6 +2985,108 @@ async function abrirVersionUI(id, ano, dialog) {
     };
   } catch(error) {estado.textContent=error.message;}
   finally {delete dialog.dataset.cargando;}
+}
+
+function categoriaOtros(valor) {
+  const clave=String(valor||'otro').toLowerCase().replaceAll('_','-');
+  const etiquetas={'transporte':'Transporte','alimentacion':'Alimentación','actividad-no-registrada':'Actividad no registrada','hotel-no-registrado':'Hotel no registrado','anticipo':'Anticipo','reembolso':'Reembolso','otro':'Otro'};
+  return etiquetas[clave] || clave;
+}
+
+function seccionOtros(destino, resumenes) {
+  const categorias=[...new Set(resumenes.map(r=>r.categoriaOtro||'otro'))];
+  return categorias.map(categoria=>{
+    const items=resumenes.filter(r=>(r.categoriaOtro||'otro')===categoria);
+    return `<section class="cf-type-section"><header class="cf-type-heading"><h3>${esc(categoriaOtros(categoria))}</h3></header>
+      ${monedasDestino(destino,items.map(r=>r.monedaObligacion)).filter(codigo=>items.some(r=>moneda(r.monedaObligacion)===codigo)).map(codigo=>bloqueMoneda({destino},{codigo,items:items.filter(r=>moneda(r.monedaObligacion)===codigo)})).join('')}</section>`;
+  }).join('');
+}
+
+function renderGastosOtros() {
+  const gastos=state.obligaciones.filter(o=>o.fuente==='GASTO_OTROS');
+  const monedaDeuda=state.proveedor.monedaObligacion;
+  const panel=$('#panel-obligaciones');
+  panel.innerHTML=`<div class="cf-section-head"><h3>Otros · ${esc(categoriaOtros(state.proveedor.categoriaOtro))}</h3>
+    ${gastos.length?'<button type="button" class="cf-btn" data-gasto-nuevo>Agregar gasto sin abono</button>':''}</div>
+    <div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Asunto y abonos</th><th>Reparto</th><th>Costo acordado</th><th>Abonos aplicados</th><th>Saldo</th><th></th></tr></thead>
+    <tbody>${gastos.map(g=>{
+      const pagos=state.abonos.filter(a=>a.gastoOtroId===g.id);
+      const aplicado=pagos.reduce((s,a)=>s+num(a.montoAplicado),0);
+      return `<tr><td><details><summary>${esc(g.asunto)} · ${pagos.length} abono(s)</summary>
+        <ul>${pagos.map(a=>`<li>${esc(a.fecha)} · ${fmtMoney(a.montoAplicado,monedaDeuda)}${a.pendienteVincularGasto?' · Gasto por confirmar':''}</li>`).join('')}</ul></details></td>
+        <td>${g.reparto?.length?`<details><summary>${g.reparto.length} grupo(s)</summary><ul>${g.reparto.map(r=>`<li>${esc(r.grupoId)} · ${fmtMoney(r.monto,monedaDeuda)}</li>`).join('')}</ul></details>`:'Sin grupo asignado'}</td>
+        <td>${g.requiereConfiguracion?'Pendiente de configurar':fmtMoney(g.totalObligacion,monedaDeuda)}</td>
+        <td>${fmtMoney(aplicado,monedaDeuda)}</td><td>${g.requiereConfiguracion?'Pendiente':fmtMoney(g.totalObligacion-aplicado,monedaDeuda)}</td>
+        <td><button type="button" class="cf-btn" data-gasto-id="${esc(g.id)}">Editar gasto</button></td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  const nuevo=$('[data-gasto-nuevo]',panel);
+  if(nuevo) nuevo.onclick=()=>editarGastoOtros(gastos[0],true);
+  $$('[data-gasto-id]',panel).forEach(b=>b.onclick=()=>editarGastoOtros(gastos.find(g=>g.id===b.dataset.gastoId),false));
+}
+
+async function editarGastoOtros(gasto,nuevo) {
+  const proveedor=state.proveedor, ano=state.ano;
+  const dialog=dialogoLiquidacion(nuevo?'Nuevo gasto del proveedor':'Editar gasto',
+    `<form data-gasto-form>
+    <label>Asunto <input name="asunto" maxlength="160" required value="${esc(nuevo?'':gasto.asunto)}"></label>
+    <label>Costo en ${esc(proveedor.monedaObligacion)} <input name="monto" type="number" min="0" step="0.01" required value="${nuevo?'':gasto.monto??''}"></label>
+    <label>Distribución <select name="modo"><option value="LIBRE">Sin grupo</option><option value="MANUAL">Por monto</option><option value="PAX">Por pax</option></select></label>
+    <fieldset data-reparto hidden><legend>Grupos</legend><div data-grupos></div><button type="button" class="cf-btn" data-agregar>Agregar grupo</button></fieldset>
+    <button class="cf-btn blue" type="submit">Guardar y recalcular</button></form>`);
+  const form=$('[data-gasto-form]',dialog), campos=form.elements;
+  const estado=$('[data-estado]',dialog), filas=$('[data-grupos]',dialog), boton=$('button[type=submit]',form);
+  boton.disabled=true;
+  estado.textContent='Cargando grupos…';
+  try {
+    const {grupos}=await liquidacion('GRUPOS_GASTO_OTRO',{},ano);
+    if(!dialog.open) return;
+    estado.textContent='';
+    const catalogo=new Map(grupos.map(g=>[g.id,g]));
+    const opciones=grupos.map(g=>`<option value="${esc(g.id)}">${esc(g.numero+' · '+g.nombre)}</option>`).join('');
+    campos.modo.value=nuevo?'LIBRE':gasto.modo||'LIBRE';
+    function agregar(r={}) {
+      const fila=document.createElement('div');
+      fila.innerHTML=`<label>Grupo <select required><option value="">Seleccionar</option>${opciones}</select></label>
+        <label>${campos.modo.value==='PAX'?'Pax':'Monto'} <input type="number" required min="${campos.modo.value==='PAX'?1:0}" step="${campos.modo.value==='PAX'?1:0.01}"></label>
+        <button type="button" class="cf-btn">Quitar</button>`;
+      const grupo=$('select',fila), valor=$('input',fila);
+      grupo.value=r.grupoId||'';
+      valor.value=(campos.modo.value==='PAX'?r.pax:r.monto)??'';
+      grupo.onchange=()=>{if(campos.modo.value==='PAX') valor.value=catalogo.get(grupo.value)?.pax||'';};
+      $('button',fila).onclick=()=>fila.remove();
+      filas.append(fila);
+    }
+    function mostrar() {
+      const libre=campos.modo.value==='LIBRE';
+      $('[data-reparto]',form).hidden=libre;
+      filas.replaceChildren();
+      if(!libre) {
+        const existentes=!nuevo && campos.modo.value===gasto.modo?gasto.reparto||[]:[];
+        if(existentes.length) existentes.forEach(agregar);
+        else agregar();
+      }
+    }
+    campos.modo.onchange=mostrar;
+    $('[data-agregar]',form).onclick=()=>agregar();
+    mostrar();
+    boton.disabled=false;
+    form.onsubmit=async e=>{
+      e.preventDefault();
+      const reparto=[...filas.children].map(f=>({grupoId:$('select',f).value,valor:Number($('input',f).value)}));
+      boton.disabled=true;
+      estado.textContent='Guardando y recalculando…';
+      try {
+        const respuesta=await liquidacion('GUARDAR_GASTO_OTRO',{id:gasto.id,version:gasto.version||0,nuevo,
+          asunto:campos.asunto.value,monto:Number(campos.monto.value),modo:campos.modo.value,reparto},ano);
+        dialog.close();
+        if(state.ano!==ano) return;
+        await cargarResumenes();
+        const r=state.resumenes.find(r=>r.id===proveedor.id);
+        if(r && state.proveedor===proveedor) await abrirDetalle(r);
+        setEstado(respuesta.recalculado?'Gasto actualizado.':'Gasto guardado. El saldo quedó pendiente de recálculo.',!respuesta.recalculado,'#detalleEstado');
+      } catch(error) {estado.textContent=error.message;boton.disabled=false;}
+    };
+  } catch(error) {estado.textContent=error.message;}
 }
 
 onAuthStateChanged(auth, async user => {
