@@ -306,41 +306,6 @@
       background: #f5f8fb;
     }
 
-    /*
-      Las primeras seis columnas corresponden a:
-      N° Negocio, Grupo, Pax, Destino, Hoteles y Vuelos.
-    */
-
-    #tablaCalendario thead th:nth-child(-n+6) {
-      background: #dce9f5;
-    }
-
-    #tablaCalendario tbody tr:nth-child(odd) td:nth-child(-n+6) {
-      background: #f1f6fb;
-    }
-
-    #tablaCalendario tbody tr:nth-child(even) td:nth-child(-n+6) {
-      background: #e8f0f7;
-    }
-
-    #tablaCalendario thead th:nth-child(-n+6) {
-      background: #dce9f5 !important;
-    }
-    
-    #tablaCalendario tbody tr:nth-child(odd) td:nth-child(-n+6) {
-      background: #f1f6fb !important;
-    }
-    
-    #tablaCalendario tbody tr:nth-child(even) td:nth-child(-n+6) {
-      background: #e8f0f7 !important;
-    }
-
-    #tablaCalendario th:nth-child(6),
-    #tablaCalendario td:nth-child(6) {
-      border-right: 3px solid #7d97b0 !important;
-      box-shadow: 7px 0 10px -9px rgba(15, 23, 42, 0.75);
-    }
-
     #tablaCalendario td[data-fecha],
     #tablaCalendario th[data-fechaiso] {
       width: 210px;
@@ -377,216 +342,76 @@
     }
 
 
-    /* ==================================================
-       ANCHOS DE COLUMNAS FIJAS
-    ================================================== */
-
-    /* N° Negocio */
-    #tablaCalendario th:nth-child(1),
-    #tablaCalendario td:nth-child(1) {
-      width: 90px !important;
-      min-width: 90px !important;
-      max-width: 90px !important;
-    }
-
-    /* ==================================================
-       PRIMERAS 6 COLUMNAS FIJAS CON CSS STICKY
-       Compatible con scrollX de DataTables
-    ================================================== */
-    
-    /* N° Negocio */
-    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(1),
-    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(1) {
-      position: sticky !important;
-      left: 0 !important;
-    }
-    
-    /* Grupo */
-    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(2),
-    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(2) {
-      position: sticky !important;
-      left: 90px !important;
-    }
-    
-    /* Pax */
-    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(3),
-    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(3) {
-      position: sticky !important;
-      left: 315px !important;
-    }
-    
-    /* Destino / Programa */
-    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(4),
-    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(4) {
-      position: sticky !important;
-      left: 415px !important;
-    }
-    
-    /* Hoteles */
-    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(5),
-    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(5) {
-      position: sticky !important;
-      left: 605px !important;
-    }
-    
-    /* Vuelos */
-    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(6),
-    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(6) {
-      position: sticky !important;
-      left: 830px !important;
-    }
-
-    /* Encabezados fijos por encima del contenido */
-    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(-n+6) {
-      z-index: 50 !important;
-      background: #dce9f5 !important;
-    }
-    
-    /* Celdas fijas del cuerpo */
-    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(-n+6) {
-      z-index: 20 !important;
-      background-clip: padding-box !important;
-    }
-    
-    /* Filas impares */
-    #tablaCalendario_wrapper .dataTables_scrollBody
-    tbody tr:nth-child(odd) td:nth-child(-n+6) {
-      background: #f1f6fb !important;
-    }
-    
-    /* Filas pares */
-    #tablaCalendario_wrapper .dataTables_scrollBody
-    tbody tr:nth-child(even) td:nth-child(-n+6) {
-      background: #e8f0f7 !important;
-    }
-    
-    /* Separación después de Vuelos */
-    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(6),
-    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(6) {
-      border-right: 3px solid #7d97b0 !important;
-    
-      box-shadow:
-        8px 0 12px -10px
-        rgba(15, 23, 42, 0.9);
-    }
-    
-    /* Grupo */
-    #tablaCalendario th:nth-child(2),
-    #tablaCalendario td:nth-child(2) {
-      width: 225px !important;
-      min-width: 225px !important;
-      max-width: 225px !important;
-    }
-    
-    /* Pax */
-    #tablaCalendario th:nth-child(3),
-    #tablaCalendario td:nth-child(3) {
-      width: 100px !important;
-      min-width: 100px !important;
-      max-width: 100px !important;
-    }
-    
-    /* Destino / Programa */
-    #tablaCalendario th:nth-child(4),
-    #tablaCalendario td:nth-child(4) {
-      width: 190px !important;
-      min-width: 190px !important;
-      max-width: 190px !important;
-    }
-    
-    /* Hoteles */
-    #tablaCalendario th:nth-child(5),
-    #tablaCalendario td:nth-child(5) {
-      width: 225px !important;
-      min-width: 225px !important;
-      max-width: 225px !important;
-    }
-    
-    /* Vuelos */
-    #tablaCalendario th:nth-child(6),
-    #tablaCalendario td:nth-child(6) {
-      width: 320px !important;
-      min-width: 320px !important;
-      max-width: 320px !important;
-    }
-    
-    /* Fechas */
-    #tablaCalendario th[data-fechaiso],
-    #tablaCalendario td[data-fecha] {
-      width: 210px !important;
-      min-width: 210px !important;
-      max-width: 210px !important;
-    }
-
-
-    /* ==================================================
-       COLUMNAS FIJAS CON CSS STICKY
-       No usamos el plugin FixedColumns.
-    ================================================== */
-    
+    /* Columnas fijas de N° Negocio a Vuelos. */
     #tablaCalendario th,
     #tablaCalendario td {
       box-sizing: border-box;
     }
-    
-    /* Columna 1: N° Negocio */
-    #tablaCalendario th:nth-child(1),
-    #tablaCalendario td:nth-child(1) {
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(-n+7),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(-n+7):not(.dataTables_empty) {
       position: sticky;
-      left: 0;
+      left: var(--calendario-columna-fija, auto);
     }
-    
-    /* Columna 2: Grupo */
-    #tablaCalendario th:nth-child(2),
-    #tablaCalendario td:nth-child(2) {
-      position: sticky;
-      left: 90px;
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(-n+7) {
+      z-index: 50;
+      background: #dce9f5;
     }
-    
-    /* Columna 3: Pax */
-    #tablaCalendario th:nth-child(3),
-    #tablaCalendario td:nth-child(3) {
-      position: sticky;
-      left: 315px;
+
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(-n+7):not(.dataTables_empty) {
+      z-index: 20;
+      background: var(--fondo-coordinadores, var(--fondo-columna-fija));
+      background-clip: padding-box;
     }
-    
-    /* Columna 4: Destino / Programa */
-    #tablaCalendario th:nth-child(4),
-    #tablaCalendario td:nth-child(4) {
-      position: sticky;
-      left: 415px;
+
+    #tablaCalendario_wrapper .dataTables_scrollBody tbody tr:nth-child(odd) {
+      --fondo-columna-fija: #f1f6fb;
     }
-    
-    /* Columna 5: Hoteles */
-    #tablaCalendario th:nth-child(5),
-    #tablaCalendario td:nth-child(5) {
-      position: sticky;
-      left: 605px;
+
+    #tablaCalendario_wrapper .dataTables_scrollBody tbody tr:nth-child(even) {
+      --fondo-columna-fija: #e8f0f7;
     }
-    
-    /* Columna 6: Vuelos */
-    #tablaCalendario th:nth-child(6),
-    #tablaCalendario td:nth-child(6) {
-      position: sticky;
-      left: 830px;
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(1),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(1) {
+      --calendario-columna-fija: var(--calendario-fija-1);
     }
-    
-    /* Encabezados fijos por encima de las celdas */
-    #tablaCalendario thead th:nth-child(-n+6) {
-      z-index: 40;
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(2),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(2) {
+      --calendario-columna-fija: var(--calendario-fija-2);
     }
-    
-    /* Celdas fijas por encima de las fechas */
-    #tablaCalendario tbody td:nth-child(-n+6) {
-      z-index: 12;
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(3),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(3) {
+      --calendario-columna-fija: var(--calendario-fija-3);
     }
-    
-    /* Separación visual después de Vuelos */
-    #tablaCalendario th:nth-child(6),
-    #tablaCalendario td:nth-child(6) {
-      border-right: 3px solid #7d97b0 !important;
-      box-shadow:
-        8px 0 12px -10px rgba(15, 23, 42, 0.9);
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(4),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(4) {
+      --calendario-columna-fija: var(--calendario-fija-4);
+    }
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(5),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(5) {
+      --calendario-columna-fija: var(--calendario-fija-5);
+    }
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(6),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(6) {
+      --calendario-columna-fija: var(--calendario-fija-6);
+    }
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(7),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(7) {
+      --calendario-columna-fija: var(--calendario-fija-7);
+    }
+
+    #tablaCalendario_wrapper .dataTables_scrollHead th:nth-child(7),
+    #tablaCalendario_wrapper .dataTables_scrollBody td:nth-child(7) {
+      border-right: 3px solid #7d97b0;
+      box-shadow: 8px 0 12px -10px rgba(15, 23, 42, 0.9);
     }
 
 
@@ -917,7 +742,7 @@
 
         scriptModule.textContent = `
           import './script.js';
-          import './calendario.js';
+          import './calendario.js?v=coordinadores-fijos-1';
         `;
 
         document.body.appendChild(scriptModule);
