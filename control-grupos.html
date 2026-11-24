@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es-CL">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control Grupos | Rai Trai</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f5f9;color:#16263a;font:16px system-ui,sans-serif}
+main{max-width:1280px;margin:auto;padding:24px}header,.toolbar,.rates,dialog footer{display:flex;gap:16px;flex-wrap:wrap;align-items:end}
+header{justify-content:space-between;align-items:center}h1{margin:0}a{color:#17579b}
+section{background:white;border:1px solid #d8e1ec;border-radius:12px;margin:16px 0;padding:16px}
+label{display:grid;gap:5px;font-weight:600}input,select,button{font:inherit;padding:8px;border:1px solid #9babbe;border-radius:6px}
+button{background:#184d81;color:white;cursor:pointer}button:disabled{opacity:.55;cursor:wait}
+.scroll{overflow:auto}table{width:100%;border-collapse:collapse}td,th{padding:10px;text-align:left;border-bottom:1px solid #e0e7ee}
+.money{white-space:nowrap;text-align:right}dialog{width:min(850px,95vw);max-height:90vh;border:1px solid #a8b8ca;border-radius:12px}
+dialog::backdrop{background:#13263c99}form{display:grid;gap:12px}.assignment{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+[role=alert]{color:#9b3026}output{display:block;margin-top:12px;font-weight:600}
+</style>
+<script type="module" src="./control-grupos.js"></script>
+</head>
+<body>
+<main>
+<header><h1>Control Grupos</h1><a href="./control-finanzas.html">Control Finanzas</a></header>
+<p id="estado" role="status"></p>
+<section class="toolbar" aria-label="Filtros">
+<label>Año del viaje<input id="ano" type="number" min="2000" max="2100"></label>
+<button id="cargar" type="button">Cargar año</button>
+<label>Destino<select id="destino"></select></label>
+<label>Buscar grupo<input id="buscar" type="search" placeholder="Colegio o N.º de negocio"></label>
+<label>Grupo<select id="grupo"></select></label>
+</section>
+<section aria-label="Costos del grupo">
+<h2 id="titulo">Costos del grupo</h2>
+<div id="totales" class="scroll"></div>
+<p id="avisos"></p>
+<div class="rates">
+<label>Convertir costo a<select id="conversion"><option value="">Moneda original</option><option>CLP</option><option>USD</option></select></label>
+<div id="tasas" class="rates"></div>
+</div>
+<output id="convertido"></output>
+</section>
+<section>
+<h2>Detalle del grupo</h2>
+<div class="scroll"><table><thead><tr><th>Tipo</th><th>Proveedor</th><th>Concepto</th><th class="money">Costo del grupo</th><th>Acciones</th></tr></thead><tbody id="detalle"></tbody></table></div>
+</section>
+<section>
+<h2>Gastos compartidos del destino</h2>
+<p id="destinoAviso"></p>
+<div class="scroll"><table><thead><tr><th>Proveedor</th><th>Concepto</th><th class="money">Costo del destino</th><th class="money">Sin asignar</th><th>Acciones</th></tr></thead><tbody id="compartidos"></tbody></table></div>
+</section>
+</main>
+<dialog id="editor">
+<form id="formulario">
+<h2 id="editorTitulo"></h2>
+<label>Asunto<input name="asunto" required maxlength="160"></label>
+<label id="montoEtiqueta">Costo total<input name="monto" type="number" min="0" max="10000000000" step="0.01" required></label>
+<label>Reparto<select name="modo"><option value="MANUAL">Manual</option><option value="IGUAL">Por grupo</option><option value="PAX">Por persona</option><option value="LIBRE">Sin asignar</option></select></label>
+<div id="asignaciones"></div>
+<button id="agregar" type="button">Agregar grupo al reparto</button>
+<output id="repartoEstado"></output>
+<p id="editorError" role="alert"></p>
+<footer><button id="cancelar" type="button">Cancelar</button><button id="guardar" type="submit">Guardar en Finanzas</button></footer>
+</form>
+</dialog>
+</body>
+</html>
