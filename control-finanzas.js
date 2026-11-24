@@ -133,7 +133,7 @@ async function cargarResumenes() {
     state.costosAno=costos.docs.map(d=>({...d.data(),id:d.id}));
     if((preferenciasFinanzas().ocultos||[]).includes(state.destino))state.destino=null;
     renderDestinos();renderProveedores();
-    setEstado(`Información consultada a las ${new Date().toLocaleTimeString('es-CL')}. Las cuentas compartidas conservan el origen de cada costo y pago.`);
+    setEstado(`Información consultada a las ${new Date().toLocaleTimeString('es-CL')}.`);
     return true;
   } catch(error) {setEstado(`No se pudo actualizar: ${error.message}. Compruebe que esté desplegada gestionarCuentasProveedoresHoteles.`,true);return false;}
 }
