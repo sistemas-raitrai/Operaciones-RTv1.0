@@ -2,6 +2,7 @@ import { app, db } from './firebase-init.js';
 
 import {
   collection,
+  collectionGroup,
   getDocs,
   doc,
   getDoc,
@@ -26,13 +27,21 @@ const COLECCION_RESUMEN =
 const COLECCION_GRUPOS =
   'grupos';
 
-const COLUMNAS_FIJAS = 6;
-const INDICE_COLUMNA_ANO = 6;
+const INDICE_COLUMNA_COORDINADORES = 6;
+const COLUMNAS_FIJAS = 7;
+const INDICE_COLUMNA_ANO = COLUMNAS_FIJAS;
+
+const ESTILOS_ESTADO_COORDINADORES = {
+  aprobado: { pantalla: 'rgba(16,185,129,.18)', excel: 'FFD4F2E8' },
+  rechazado: { pantalla: 'rgba(239,68,68,.18)', excel: 'FFFCDDDD' },
+  pendiente: { pantalla: 'rgba(234,179,8,.22)', excel: 'FFFAEEC9' }
+};
 
 let dtHist = null;
 let editMode = false;
 let unsubscribeCalendario = null;
 let refrescandoCalendario = false;
+let snapshotCalendarioPendiente = null;
 let cargaInicialRealizada = false;
 let sincronizandoScroll = false;
 
@@ -1134,6 +1143,7 @@ function escucharCambiosCalendario(
       ),
 
       async snapshot => {
+        snapshotCalendarioPendiente = snapshot;
         if (refrescandoCalendario) {
           return;
         }
@@ -1141,12 +1151,12 @@ function escucharCambiosCalendario(
         refrescandoCalendario = true;
 
         try {
-          await generarTablaCalendario(
-            userEmail,
-            snapshot
-          );
-
-          cargaInicialRealizada = true;
+          while (snapshotCalendarioPendiente) {
+            const resumen = snapshotCalendarioPendiente;
+            snapshotCalendarioPendiente = null;
+            await generarTablaCalendario(userEmail, resumen);
+            cargaInicialRealizada = true;
+          }
         } finally {
           refrescandoCalendario = false;
         }
@@ -1240,6 +1250,8 @@ async function generarTablaCalendario(
         grupos.push(grupo);
       }
     );
+
+    await cargarCoordinadoresCalendario(grupos);
 
     grupos.sort(
       (grupoA, grupoB) => {
@@ -1474,6 +1486,87 @@ function prepararFiltroAno(
 // ENCABEZADO
 // ======================================================
 
+async function cargarCoordinadoresCalendario(grupos) {
+  if (!grupos.length) return;
+
+  const gruposPorId = new Map(grupos.map(grupo => [grupo.id, grupo]));
+  const [docsGrupos, catalogo, conjuntos] = await Promise.allSettled([
+    getDocs(collection(db, COLECCION_GRUPOS)),
+    getDocs(collection(db, 'coordinadores')),
+    getDocs(collectionGroup(db, 'conjuntos'))
+  ]);
+
+  for (const resultado of [docsGrupos, catalogo, conjuntos]) {
+    if (resultado.status === 'rejected') {
+      console.warn('Calendario: lectura de coordinadores incompleta.', resultado.reason);
+    }
+  }
+
+  const datosPorGrupo = new Map();
+  docsGrupos.value?.forEach(docSnap => {
+    if (gruposPorId.has(docSnap.id)) datosPorGrupo.set(docSnap.id, docSnap.data());
+  });
+
+  const nombresPorId = new Map();
+  catalogo.value?.forEach(docSnap => {
+    nombresPorId.set(docSnap.id, String(docSnap.data().nombre || '').trim());
+  });
+
+  const asignacionesPorGrupo = new Map();
+  conjuntos.value?.forEach(docSnap => {
+    const coordinadorId = docSnap.ref.parent.parent?.id;
+    const { viajes, estadoCoord, anoViaje } = docSnap.data();
+    if (!coordinadorId || !Array.isArray(viajes)) return;
+
+    for (const viaje of viajes) {
+      const grupo = gruposPorId.get(String(viaje));
+      if (!grupo || (Number(anoViaje) && Number(grupo.anoViaje)
+        && Number(anoViaje) !== Number(grupo.anoViaje))) continue;
+
+      if (!asignacionesPorGrupo.has(grupo.id)) {
+        asignacionesPorGrupo.set(grupo.id, new Map());
+      }
+
+      const asignaciones = asignacionesPorGrupo.get(grupo.id);
+      if (!asignaciones.has(coordinadorId)) {
+        asignaciones.set(coordinadorId, estadoCoord || 'pendiente');
+      }
+    }
+  });
+
+  for (const grupo of grupos) {
+    const datos = datosPorGrupo.get(grupo.id) || grupo;
+    const asignaciones = asignacionesPorGrupo.get(grupo.id);
+    const idsGuardados = Array.isArray(datos.coordinadorIds)
+      ? datos.coordinadorIds.map(String).filter(Boolean)
+      : datos.coordinadorId ? [String(datos.coordinadorId)] : [];
+    const ids = new Set([...idsGuardados, ...(asignaciones?.keys() || [])]);
+    const nombres = [...ids].map(id => nombresPorId.get(id)).filter(Boolean);
+    const nombresGuardados = Array.isArray(datos.coordinadores)
+      ? datos.coordinadores
+      : [datos.coordinador];
+    const estados = Array.isArray(datos.coordinadoresAsignados)
+      ? datos.coordinadoresAsignados.map(asignacion => asignacion?.estadoCoord)
+      : asignaciones ? [...asignaciones.values()] : [datos.coordEstado];
+    const estadosNormalizados = estados.map(estado =>
+      String(estado || 'pendiente').trim().toLowerCase()
+    );
+
+    grupo.coordTexto = (nombres.length ? nombres : nombresGuardados)
+      .map(valor => typeof valor === 'string' ? valor.trim() : String(valor?.nombre || '').trim())
+      .filter(Boolean)
+      .join(' / ')
+      .toUpperCase();
+
+    grupo.estadoCoord = 'pendiente';
+    if (estadosNormalizados.includes('rechazado')) {
+      grupo.estadoCoord = 'rechazado';
+    } else if (estadosNormalizados.length && estadosNormalizados.every(estado => estado === 'aprobado')) {
+      grupo.estadoCoord = 'aprobado';
+    }
+  }
+}
+
 function construirEncabezado(
   fechasOrdenadas
 ) {
@@ -1488,6 +1581,7 @@ function construirEncabezado(
     <th>Destino / Programa</th>
     <th>Hoteles</th>
     <th>Vuelos</th>
+    <th class="col-coordinadores">Coordinadores</th>
     <th>Año</th>
   `);
 
@@ -1629,6 +1723,13 @@ function construirCuerpo(
           ),
 
         $('<td>')
+          .text(grupo.coordTexto)
+          .attr('data-doc-id', grupo.id)
+          .attr('data-estado-coord', grupo.estadoCoord)
+          .attr('title', 'Estado: ' + grupo.estadoCoord.toUpperCase())
+          .css('background-color', ESTILOS_ESTADO_COORDINADORES[grupo.estadoCoord].pantalla),
+
+        $('<td>')
           .text(
             grupo.anoViaje
           )
@@ -1741,7 +1842,7 @@ function inicializarDataTable(
             'dt-button',
 
           columns:
-            ':gt(5)'
+            ':gt(' + (COLUMNAS_FIJAS - 1) + ')'
         }
       ],
 
@@ -1769,6 +1870,10 @@ function inicializarDataTable(
         {
           targets: [5],
           width: '320px'
+        },
+        {
+          targets: [INDICE_COLUMNA_COORDINADORES],
+          width: '225px'
         },
         {
           targets: [
@@ -1900,6 +2005,8 @@ function sincronizarAnchosEncabezadoYCuerpo() {
         posicionVisible === 5
       ) {
         ancho = 320;
+      } else if (encabezado.classList.contains('col-coordinadores')) {
+        ancho = 225;
       }
 
       encabezado.style.width =
@@ -3466,6 +3573,11 @@ function aplicarEstiloFilaExcel(
           'FFE1EFFF';
       }
 
+      const estadoCoord = nodo?.dataset.estadoCoord;
+      if (estadoCoord) {
+        colorFondo = ESTILOS_ESTADO_COORDINADORES[estadoCoord].excel;
+      }
+
       cell.fill = {
         type: 'pattern',
         pattern: 'solid',
@@ -3613,7 +3725,8 @@ function obtenerAnchoExcel(
     15,
     29,
     34,
-    48
+    48,
+    34
   ];
 
   if (
