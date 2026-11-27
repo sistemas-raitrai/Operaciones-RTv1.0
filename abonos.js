@@ -78,6 +78,132 @@ function getTipoSeleccionado() {
   return document.querySelector('input[name="abTipo"]:checked')?.value || 'actividad';
 }
 
+const TIPO_CAJA_COORDINADOR = 'caja_coordinador';
+const BANCOS_CAJA = new Map(Object.entries({
+  '001':'BANCO DE CHILE', '009':'BANCO INTERNACIONAL', '012':'BANCO ESTADO',
+  '014':'BANCO SCOTIABANK', '016':'BANCO BCI', '028':'BANCO BICE', '031':'HSBC',
+  '037':'BANCO SANTANDER', '039':'BANCO ITAU', '049':'BANCO SECURITY',
+  '051':'BANCO FALABELLA', '053':'BANCO RIPLEY', '055':'CONSORCIO',
+  '504':'BANCO SCOTIABANK AZUL', '059':'BANCO BTG PACTUAL', '057':'BANCO PARIS',
+  '054':'RABOBANK', '017':'BANCO DO_BRASIL', '041':'JP_MORGAN', '043':'ARGENTINA',
+  '045':'MUFG_BANK', '060':'CHINA_CONSTRUCTION', '061':'CHINA', '671':'COOCRETAL',
+  '672':'COOPEUCH', '673':'ORIENCOOP', '674':'CAPUAL', '675':'DETACOOP',
+  '676':'AHORROCOOP', '677':'LAUTARO_ROSAS', '682':'ISWITCH', '267':'TRANSBANK',
+  '295':'RED_GLOBAL', '729':'LOS_HEROES', '730':'TENPO', '732':'TAPP',
+  '875':'MERCADO_PAGO', '738':'GLOBAL66', '741':'COPEC_PAY',
+  '697':'LA_POLAR_PREPAGO', '744':'SUMUP', '699':'TRICARD', '746':'FINTUAL',
+  '743':'PREX'
+}));
+let cajaEditada = null;
+let gruposCaja = [];
+let coordinadoresCaja = [];
+let cargaCaja = 0;
+
+function esCajaCoordinador(abono) {
+  return (abono ? abono.tipo : getTipoSeleccionado()) === TIPO_CAJA_COORDINADOR;
+}
+
+function opcionesCaja(select, placeholder, filas) {
+  select.replaceChildren(new Option(placeholder, ''),
+    ...filas.map(([label, value]) => new Option(label, value)));
+}
+
+async function cargarSelectoresCaja() {
+  const secuencia = ++cargaCaja;
+  const ano = el('abAno').value;
+  const coordinador = el('abCajaCoordinador');
+  const grupo = el('abCajaGrupo');
+  const estado = el('abCajaEstado');
+  gruposCaja = [];
+  coordinadoresCaja = [];
+  el('abDestino').replaceChildren();
+  opcionesCaja(coordinador, 'Selecciona un coordinador', []);
+  opcionesCaja(grupo, 'Selecciona un grupo', []);
+  if (cajaEditada) {
+    const { coordinadorId, coordinadorNombre, grupoId, numeroNegocio } = cajaEditada.cajaCoordinador;
+    coordinador.add(new Option(coordinadorNombre, coordinadorId, true, true));
+    grupo.add(new Option(numeroNegocio, grupoId, true, true));
+    el('abDestino').add(new Option(cajaEditada.destino, cajaEditada.destino));
+    estado.textContent = '';
+    return;
+  }
+  if (!ano) return;
+  estado.textContent = 'Cargando coordinadores y grupos…';
+  try {
+    const [personas, viajes] = await Promise.all([
+      getDocs(collection(db, 'coordinadores')),
+      getDocs(query(collection(db, 'coordinacion_grupos_resumen'),
+        where('anoViaje', 'in', [Number(ano), ano])))
+    ]);
+    if (secuencia !== cargaCaja || !esCajaCoordinador()) return;
+    coordinadoresCaja = personas.docs.map(d => ({ nombre: d.data().nombre, id: d.id }))
+      .filter(c => c.id !== '_borradores' && c.nombre)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    gruposCaja = viajes.docs.map(d => ({ ...d.data(), id: d.id }))
+      .filter(g => String(g.numeroNegocio ?? '').trim() && (g.destino || g.destinoPrincipal))
+      .sort((a, b) => String(a.numeroNegocio).localeCompare(String(b.numeroNegocio), 'es', { numeric: true }));
+    opcionesCaja(coordinador, 'Selecciona un coordinador',
+      coordinadoresCaja.map(c => [c.nombre, c.id]));
+    opcionesCaja(grupo, 'Selecciona un grupo', gruposCaja.map(g => [
+      [g.numeroNegocio, g.nombreGrupo || g.colegio || g.nombre || g.destino || g.destinoPrincipal]
+        .filter(Boolean).join(' · '), g.id
+    ]));
+    estado.textContent = coordinadoresCaja.length && gruposCaja.length
+      ? '' : 'No se encontraron coordinadores o grupos con número de negocio para este año.';
+  } catch (error) {
+    if (secuencia === cargaCaja && esCajaCoordinador()) {
+      estado.textContent = 'No se pudieron cargar los coordinadores o viajes. Revisa el acceso y vuelve a seleccionar el año.';
+      console.warn(error);
+    }
+  }
+}
+
+function sincronizarGrupoCaja() {
+  const grupo = gruposCaja.find(g => g.id === el('abCajaGrupo').value);
+  const destino = grupo ? (grupo.destino || grupo.destinoPrincipal) : '';
+  el('abDestino').replaceChildren(new Option(destino, destino));
+  const referencia = el('abReferencia');
+  const sugerencia = grupo ? `GASTOS GRUPOS ${grupo.numeroNegocio}` : '';
+  if (!referencia.value || referencia.value === referencia.dataset.glosaCaja) {
+    referencia.value = sugerencia;
+  }
+  referencia.dataset.glosaCaja = sugerencia;
+}
+
+function datosBancariosCaja(perfil = {}) {
+  const texto = String(perfil.datosTransferir || '').trim();
+  const legado = /^BANCO:\s*([^|\n]+?)\s*\|\s*TIPO DE CUENTA:\s*([^|\n]+?)\s*\|\s*N[ÚU]MERO DE CUENTA:\s*([^|\n]+?)\s*$/i.exec(texto);
+  const bancoFicha = String(perfil.banco || '').trim();
+  const cuentaFicha = String(perfil.numeroCuenta || '').trim();
+  const usarLegado = !bancoFicha && !cuentaFicha && legado;
+  const banco = usarLegado ? legado[1].trim() : bancoFicha;
+  const clave = valor => norm(valor).replace(/[_\s]+/g, ' ');
+  const codigoBanco = [...BANCOS_CAJA].find(([, nombre]) => clave(nombre) === clave(banco))?.[0] || '';
+  return {
+    banco,
+    codigoBanco,
+    cuentaDestino: usarLegado ? legado[3].trim() : cuentaFicha,
+    rutBeneficiario: String(perfil.rut || '').trim().replace(/[.\-\s]/g, '').toUpperCase()
+  };
+}
+
+function actualizarAvisoBancoCaja() {
+  const selector = el('spBancoCaja');
+  const aviso = el('spBancoCajaAviso');
+  el('spCodigoBanco').value = selector.value;
+  aviso.classList.toggle('hidden', Boolean(selector.value));
+}
+
+function validarEjecucionCaja(abono, solicitud = abono.solicitudPago || {}) {
+  if (!esCajaCoordinador(abono)) return '';
+  if (!BANCOS_CAJA.has(solicitud.codigoBanco)) return 'Confirma el banco del coordinador en la solicitud.';
+  if (Number(solicitud.montoTotal) !== Number(abono.monto)) return 'Guarda la solicitud con el monto actualizado del abono.';
+  if (normalizarMoneda(solicitud.moneda) !== normalizarMoneda(abono.moneda)) {
+    return 'Guarda la solicitud con la moneda actualizada del abono.';
+  }
+  return validarSolicitudPago(solicitud);
+}
+
 function slug(valor = '') {
   return String(valor || '')
     .normalize('NFD')
@@ -1066,6 +1192,7 @@ function poblarDestinosFormulario({
   }
 
   actualizarVistaTipo();
+  if (esCajaCoordinador()) void cargarSelectoresCaja();
 }
 
 function limpiarSeleccionEntidad() {
@@ -1090,10 +1217,23 @@ function limpiarSeleccionEntidad() {
 function actualizarVistaTipo() {
   const tipo = getTipoSeleccionado();
   const esOtro = tipo === 'otro';
+  const esCaja = esCajaCoordinador();
+  el('abCajaCampos').classList.toggle('hidden', !esCaja);
+  el('abAplicacionWrap').classList.toggle('hidden', esCaja);
+  el('abCoberturaPax')?.classList.toggle('hidden', esCaja);
+  el('abEstadoFactura').disabled = esCaja;
+  el('abDestino').disabled = esCaja;
+  el('abFormaPago').disabled = esCaja;
+  if (esCaja) {
+    el('abEstadoFactura').value = 'NO_APLICA';
+    el('abFormaPago').value = 'transferencia';
+  }
+  el('abCajaCoordinador').disabled = Boolean(cajaEditada);
+  el('abCajaGrupo').disabled = Boolean(cajaEditada);
 
   el('busquedaCatalogoWrap').classList.toggle(
     'hidden',
-    esOtro
+    esOtro || esCaja
   );
 
   el('otroManualWrap').classList.toggle(
@@ -1446,6 +1586,11 @@ function validarFormulario() {
     return 'Debe indicar el tipo de abono.';
   }
 
+  if (esCajaCoordinador() && !cajaEditada &&
+      (!el('abCajaCoordinador').value || !el('abCajaGrupo').value)) {
+    return 'Selecciona el coordinador y el grupo del viaje.';
+  }
+
   if (!destino) {
     return 'Debe seleccionar el destino.';
   }
@@ -1597,6 +1742,7 @@ function prepararFormularioCoberturaPax() {
     </div>
     <p style="font-size:13px;color:#475569">No modifica el dinero enviado ni los PAX operativos. La cobertura corresponde al servicio seleccionado; no se calcula dividiendo dinero por una tarifa.</p>`;
   const contenedor=base.closest('fieldset')||base.parentElement;contenedor.insertAdjacentElement('afterend',seccion);
+  seccion.classList.toggle('hidden', esCajaCoordinador());
   el('abCoberturaEstado').addEventListener('change',actualizarFormularioCoberturaPax);
   el('abCoberturaUnidad').addEventListener('change',actualizarFormularioCoberturaPax);
 }
@@ -2000,10 +2146,10 @@ function obtenerDatosFormulario() {
     tipo,
     ano,
     destino,
-    coberturaPax:leerCoberturaPaxAbono(),
+    coberturaPax: esCajaCoordinador() ? { estado: 'NO_APLICA' } : leerCoberturaPaxAbono(),
   
     aplicacionFinanciera:
-      obtenerAplicacionFinancieraAbono(),
+      esCajaCoordinador() ? null : obtenerAplicacionFinancieraAbono(),
 
     fechaPago: el('abFechaPago').value,
     moneda,
@@ -2095,6 +2241,28 @@ function obtenerDatosFormulario() {
           hotelKey: seleccion.hotelKey
         })}` +
         `/Abonos`
+    };
+  }
+
+  if (esCajaCoordinador()) {
+    const coordinador = coordinadoresCaja.find(c => c.id === el('abCajaCoordinador').value);
+    const grupo = gruposCaja.find(g => g.id === el('abCajaGrupo').value);
+    const cajaCoordinador = cajaEditada?.cajaCoordinador || {
+      coordinadorId: coordinador.id,
+      coordinadorNombre: String(coordinador.nombre).trim().toLocaleUpperCase('es-CL'),
+      grupoId: grupo.id,
+      numeroNegocio: String(grupo.numeroNegocio).trim()
+    };
+    const glosa = `GASTOS GRUPOS ${cajaCoordinador.numeroNegocio}`;
+    return {
+      ...datosComunes,
+      cajaCoordinador,
+      formaPago: 'transferencia',
+      referencia: datosComunes.referencia || glosa,
+      proveedorId: cajaCoordinador.coordinadorId,
+      proveedorNombre: `${cajaCoordinador.coordinadorNombre} / ${cajaCoordinador.numeroNegocio}`,
+      servicioNombre: glosa,
+      rutaDestino: ''
     };
   }
 
@@ -2470,6 +2638,8 @@ async function abrirSolicitudPago(abono) {
   const proveedorPagoId =
     obtenerProveedorPagoId(abono);
 
+  const esCaja = esCajaCoordinador(abono);
+  let bancoCaja = '';
   let datosProveedor = {};
   let configuracion = {};
 
@@ -2478,13 +2648,12 @@ async function abrirSolicitudPago(abono) {
       snapProveedor,
       snapConfiguracion
     ] = await Promise.all([
-      getDoc(
-        doc(
-          db,
-          RUTA_PROVEEDORES_PAGO,
-          proveedorPagoId
-        )
-      ),
+      esCaja
+        ? getDoc(doc(db, 'coordinadores', abono.cajaCoordinador.coordinadorId)).catch(error => {
+          console.warn('No se pudo leer la ficha del coordinador:', error);
+          return null;
+        })
+        : getDoc(doc(db, RUTA_PROVEEDORES_PAGO, proveedorPagoId)),
 
       getDoc(
         doc(
@@ -2495,9 +2664,11 @@ async function abrirSolicitudPago(abono) {
       )
     ]);
 
-    if (snapProveedor.exists()) {
-      datosProveedor =
-        snapProveedor.data() || {};
+    if (snapProveedor?.exists()) {
+      datosProveedor = esCaja
+        ? datosBancariosCaja(snapProveedor.data())
+        : snapProveedor.data() || {};
+      bancoCaja = datosProveedor.banco || '';
     }
 
     if (snapConfiguracion.exists()) {
@@ -2512,8 +2683,10 @@ async function abrirSolicitudPago(abono) {
     );
   }
 
-  const solicitud =
-    abono.solicitudPago || {};
+  if (ABONO_SOLICITUD_ACTUAL !== abono) return;
+  const solicitud = abono.solicitudPago || {};
+  const bancoParaCuenta = esCaja && solicitud.cuentaDestino &&
+    solicitud.cuentaDestino !== datosProveedor.cuentaDestino ? '' : datosProveedor.codigoBanco;
 
   const tipoEjecucion =
     obtenerTipoEjecucion(abono);
@@ -2540,6 +2713,12 @@ async function abrirSolicitudPago(abono) {
     el(id)?.classList.add('hidden');
   });
 
+  el('spCodigoBanco').classList.toggle('hidden', esCaja);
+  el('spBancoCaja').classList.toggle('hidden', !esCaja);
+  el('spBancoCajaAviso').classList.add('hidden');
+  el('spNombreBeneficiario').readOnly = esCaja;
+  el('spMonedaDestino').disabled = esCaja;
+
   if (tipoEjecucion === 'TRANSFERENCIA') {
     el('solicitudTransferencia')
       ?.classList.remove('hidden');
@@ -2563,15 +2742,24 @@ async function abrirSolicitudPago(abono) {
 
     el('spMonedaDestino').value =
       normalizarMoneda(
-        solicitud.monedaDestino ||
-        datosProveedor.monedaDestino ||
-        monedaAbono
+        esCaja ? monedaAbono : (solicitud.monedaDestino || datosProveedor.monedaDestino || monedaAbono)
       );
 
     el('spCodigoBanco').value =
       solicitud.codigoBanco ||
-      datosProveedor.codigoBanco ||
+      bancoParaCuenta ||
       '';
+
+    if (esCaja) {
+      const codigo = el('spCodigoBanco').value.padStart(3, '0');
+      opcionesCaja(el('spBancoCaja'), 'Confirma el banco',
+        [...BANCOS_CAJA].map(([id, nombre]) => [`${id} · ${nombre}`, id]));
+      el('spBancoCaja').value = BANCOS_CAJA.has(codigo) ? codigo : '';
+      el('spBancoCajaAviso').textContent = bancoCaja
+        ? `Confirma el banco de la ficha: ${bancoCaja}.`
+        : 'Confirma el banco. La ficha no tiene un nombre de banco disponible.';
+      actualizarAvisoBancoCaja();
+    }
 
     el('spRutBeneficiario').value =
       solicitud.rutBeneficiario ||
@@ -2579,9 +2767,8 @@ async function abrirSolicitudPago(abono) {
       '';
 
     el('spNombreBeneficiario').value =
-      solicitud.nombreBeneficiario ||
-      datosProveedor.nombreBeneficiario ||
-      obtenerNombreEntidadAbono(abono);
+      esCaja ? obtenerNombreEntidadAbono(abono)
+        : solicitud.nombreBeneficiario || datosProveedor.nombreBeneficiario || obtenerNombreEntidadAbono(abono);
 
     el('spMontoTotal').value =
       Number(abono.monto || 0);
@@ -2595,7 +2782,7 @@ async function abrirSolicitudPago(abono) {
     el('spCorreo').value =
       solicitud.correo ||
       datosProveedor.correo ||
-      '';
+      (esCaja ? 'OPERACIONES@RAITRAI.CL' : '');
 
     el('spGlosaCorreo').value =
       solicitud.glosaCorreo ||
@@ -2940,7 +3127,7 @@ function obtenerDatosSolicitudPago() {
   };
 }
 
-function validarSolicitudPago(datos) {
+function validarSolicitudPago(datos, permitirPendienteCaja = false) {
   if (!(Number(datos.montoTotal || 0) > 0)) {
     return 'El monto debe ser mayor que cero.';
   }
@@ -2949,6 +3136,7 @@ function validarSolicitudPago(datos) {
     datos.tipoEjecucion ===
     'TRANSFERENCIA'
   ) {
+    if (permitirPendienteCaja) return '';
     if (!datos.cuentaOrigen) {
       return 'Debe indicar la cuenta de origen.';
     }
@@ -3067,7 +3255,7 @@ async function guardarSolicitudPago() {
     obtenerDatosSolicitudPago();
 
   const error =
-    validarSolicitudPago(solicitud);
+    validarSolicitudPago(solicitud, esCajaCoordinador(abono));
 
   if (error) {
     alert(error);
@@ -3143,6 +3331,10 @@ async function guardarSolicitudPago() {
       normalizarEstadoEjecucion(
         estadoAnterior
       );
+
+    if (esCajaCoordinador(abonoActual) && estadoNormalizadoAnterior === 'FINALIZADO') {
+      throw new Error('Esta transferencia ya se registró como ejecutada.');
+    }
     
     const estadoNuevo =
       estadoNormalizadoAnterior ===
@@ -3353,13 +3545,9 @@ async function guardarSolicitudPago() {
     /*
      * Guardar datos reutilizables del proveedor.
      */
-    batch.set(
-      refProveedor,
-      datosProveedorGuardar,
-      {
-        merge: true
-      }
-    );
+    if (!esCajaCoordinador(abonoActual)) {
+      batch.set(refProveedor, datosProveedorGuardar, { merge: true });
+    }
     
     
     /*
@@ -3370,7 +3558,7 @@ async function guardarSolicitudPago() {
      */
     if (
       solicitud.tipoEjecucion ===
-      'TRANSFERENCIA'
+      'TRANSFERENCIA' && (!esCajaCoordinador(abonoActual) || solicitud.cuentaOrigen)
     ) {
       const refConfiguracion = doc(
         db,
@@ -3758,6 +3946,17 @@ async function descargarSolicitudActual() {
   const tipoEjecucion =
     obtenerTipoEjecucion(abono);
 
+  const errorCaja = validarEjecucionCaja(abono);
+  if (errorCaja) {
+    alert(errorCaja);
+    return;
+  }
+  if (esCajaCoordinador(abono) &&
+      normalizarEstadoEjecucion(abono.estadoSolicitudPago) === 'FINALIZADO') {
+    alert('Esta transferencia ya está finalizada.');
+    return;
+  }
+
   descargarArchivoSolicitudes(
     [abono],
     `solicitud_${tipoEjecucion.toLowerCase()}_${abono.id}.xlsx`,
@@ -3874,6 +4073,7 @@ async function exportarSolicitudesPago() {
     abonosFiltrados()
       .filter(abono =>
         Boolean(abono.solicitudPago) &&
+        !validarEjecucionCaja(abono) &&
         normalizarEstadoEjecucion(
           abono.estadoSolicitudPago
         ) === 'SOLICITADO' &&
@@ -4178,6 +4378,12 @@ async function confirmarPagoEjecutado() {
 
   const tipoEjecucion =
     obtenerTipoEjecucion(abono);
+
+  const errorCaja = nuevoEstado === 'FINALIZADO' ? validarEjecucionCaja(abono) : '';
+  if (errorCaja) {
+    alert(errorCaja);
+    return;
+  }
 
   if (
     tipoEjecucion === 'CHEQUE' &&
@@ -4574,6 +4780,11 @@ async function guardarRegistroAbonoConEspejo(datos, abonoId, archivos, email, es
     }
     let anteriorRef = null;
     const viejo = actual.exists() ? actual.data() : null;
+    if (viejo && esCajaCoordinador(viejo) &&
+        normalizarEstadoEjecucion(viejo.estadoSolicitudPago) === 'FINALIZADO' &&
+        (Number(viejo.monto) !== Number(datos.monto) || viejo.moneda !== datos.moneda)) {
+      throw new Error('El monto y la moneda de una transferencia finalizada no se pueden editar.');
+    }
     if (viejo?.rutaDestino && `${viejo.rutaDestino.replace(/\/+$/,'')}/${abonoId}` !== ruta) {
       // Solo se archiva una copia en una ruta reconocida; nunca un documento arbitrario.
       const anteriorPath = `${viejo.rutaDestino.replace(/\/+$/,'')}/${abonoId}`;
@@ -4951,6 +5162,14 @@ async function guardarAbono({
 }
 
 function limpiarFormulario() {
+  cajaEditada = null;
+  cargaCaja++;
+  el('abTipoCaja').disabled = false;
+  el('abAno').disabled = false;
+  el('abTipoActividad').disabled = false;
+  el('abTipoHotel').disabled = false;
+  el('abTipoOtro').disabled = false;
+  delete el('abReferencia').dataset.glosaCaja;
   abonoEditandoId = null;
   comprobanteActualURL = '';
   
@@ -5122,6 +5341,13 @@ function iniciarEdicion(abono) {
   el('motivoCambioWrap').classList.remove('hidden');
 
   const tipo = abono.tipo || 'actividad';
+  cajaEditada = esCajaCoordinador(abono) ? abono : null;
+  el('abTipoCaja').checked = Boolean(cajaEditada);
+  el('abTipoCaja').disabled = !cajaEditada;
+  el('abTipoActividad').disabled = Boolean(cajaEditada);
+  el('abTipoHotel').disabled = Boolean(cajaEditada);
+  el('abTipoOtro').disabled = Boolean(cajaEditada);
+  el('abAno').disabled = Boolean(cajaEditada);
 
   el('abTipoActividad').checked =
     tipo === 'actividad';
@@ -6137,7 +6363,7 @@ function renderAbonos() {
       </td>
 
       <td>
-        ${escapeHTML(abono.tipo || '')}
+        ${escapeHTML(esCajaCoordinador(abono) ? 'Fondos para gastos del viaje' : abono.tipo || '')}
       </td>
 
       <td>
@@ -6560,6 +6786,8 @@ async function mostrarHistorialMovil() {
 
 function conectarEventos() {
   eventosOtros();
+  el('abCajaGrupo').addEventListener('change', sincronizarGrupoCaja);
+  el('spBancoCaja').addEventListener('change', actualizarAvisoBancoCaja);
   document
     .querySelectorAll('input[name="abTipo"]')
     .forEach(radio => {
