@@ -182,8 +182,8 @@ function datosBancariosCaja(perfil = {}) {
   return {
     banco,
     codigoBanco,
-    cuentaDestino: usarLegado ? legado[3].trim() : cuentaFicha,
-    rutBeneficiario: String(perfil.rut || '').trim().replace(/[.\-\s]/g, '').toUpperCase()
+    cuentaDestino: limpiarIdentificadorPago(usarLegado ? legado[3] : cuentaFicha),
+    rutBeneficiario: limpiarIdentificadorPago(perfil.rut).toUpperCase()
   };
 }
 
@@ -202,6 +202,10 @@ function validarEjecucionCaja(abono, solicitud = abono.solicitudPago || {}) {
     return 'Guarda la solicitud con la moneda actualizada del abono.';
   }
   return validarSolicitudPago(solicitud);
+}
+
+function limpiarIdentificadorPago(valor) {
+  return String(valor ?? '').replace(/[.\s\p{Dash_Punctuation}]/gu, '');
 }
 
 function slug(valor = '') {
@@ -504,8 +508,7 @@ function cambiarNumeroDocumentoNuevo(
 
   ARCHIVOS_NUEVOS_CONFIG[index]
     .numeroDocumento =
-      String(numeroDocumento || '')
-        .trim();
+      limpiarIdentificadorPago(numeroDocumento);
 }
 
 function pintarArchivosFormulario() {
@@ -668,6 +671,9 @@ function pintarArchivosFormulario() {
       '.numero-documento'
     )
     .forEach(input => {
+      input.addEventListener('change', () => {
+        input.value = limpiarIdentificadorPago(input.value);
+      });
       input.addEventListener(
         'input',
         event => {
@@ -1668,10 +1674,7 @@ function validarFormulario() {
       );
   
     const numero =
-      String(
-        configuracion.numeroDocumento ||
-        ''
-      ).trim();
+      limpiarIdentificadorPago(configuracion.numeroDocumento);
   
     if (
       ['FACTURA', 'BOLETA', 'COMPROBANTE']
@@ -2319,10 +2322,7 @@ async function subirArchivosAbono(
       );
 
     const numeroDocumento =
-      String(
-        configuracion.numeroDocumento ||
-        ''
-      ).trim();
+      limpiarIdentificadorPago(configuracion.numeroDocumento);
 
     const nombreSeguro =
       file.name.replace(
@@ -2686,7 +2686,7 @@ async function abrirSolicitudPago(abono) {
   if (ABONO_SOLICITUD_ACTUAL !== abono) return;
   const solicitud = abono.solicitudPago || {};
   const bancoParaCuenta = esCaja && solicitud.cuentaDestino &&
-    solicitud.cuentaDestino !== datosProveedor.cuentaDestino ? '' : datosProveedor.codigoBanco;
+    limpiarIdentificadorPago(solicitud.cuentaDestino) !== datosProveedor.cuentaDestino ? '' : datosProveedor.codigoBanco;
 
   const tipoEjecucion =
     obtenerTipoEjecucion(abono);
@@ -2724,9 +2724,9 @@ async function abrirSolicitudPago(abono) {
       ?.classList.remove('hidden');
 
     el('spCuentaOrigen').value =
-      solicitud.cuentaOrigen ||
+      limpiarIdentificadorPago(solicitud.cuentaOrigen ||
       configuracion.cuentaOrigen ||
-      '4109651';
+      '4109651');
 
     el('spMonedaOrigen').value =
       normalizarMoneda(
@@ -2736,9 +2736,9 @@ async function abrirSolicitudPago(abono) {
       );
 
     el('spCuentaDestino').value =
-      solicitud.cuentaDestino ||
+      limpiarIdentificadorPago(solicitud.cuentaDestino ||
       datosProveedor.cuentaDestino ||
-      '';
+      '');
 
     el('spMonedaDestino').value =
       normalizarMoneda(
@@ -2762,9 +2762,9 @@ async function abrirSolicitudPago(abono) {
     }
 
     el('spRutBeneficiario').value =
-      solicitud.rutBeneficiario ||
+      limpiarIdentificadorPago(solicitud.rutBeneficiario ||
       datosProveedor.rutBeneficiario ||
-      '';
+      '');
 
     el('spNombreBeneficiario').value =
       esCaja ? obtenerNombreEntidadAbono(abono)
@@ -2818,7 +2818,7 @@ async function abrirSolicitudPago(abono) {
       afex.swiftIntermediario || '';
 
     el('spAfexCuentaIntermediario').value =
-      afex.cuentaIntermediario || '';
+      limpiarIdentificadorPago(afex.cuentaIntermediario || '');
 
     el('spAfexBancoBeneficiario').value =
       afex.bancoBeneficiario || '';
@@ -2837,10 +2837,10 @@ async function abrirSolicitudPago(abono) {
       afex.agencia || '';
 
     el('spAfexCuenta').value =
-      afex.cuenta || '';
+      limpiarIdentificadorPago(afex.cuenta || '');
 
     el('spAfexIban').value =
-      afex.iban || '';
+      limpiarIdentificadorPago(afex.iban || '');
 
     el('spAfexReferencia').value =
       afex.referencia ||
@@ -2891,16 +2891,16 @@ async function abrirSolicitudPago(abono) {
       {};
 
     el('spChequeCuentaOrigen').value =
-      cheque.cuentaOrigen ||
+      limpiarIdentificadorPago(cheque.cuentaOrigen ||
       configuracion.cuentaOrigen ||
-      '';
+      '');
 
     el('spChequeNombreBeneficiario').value =
       cheque.nombreBeneficiario ||
       obtenerNombreEntidadAbono(abono);
 
     el('spChequeRutBeneficiario').value =
-      cheque.rutBeneficiario || '';
+      limpiarIdentificadorPago(cheque.rutBeneficiario || '');
 
     el('spChequeMoneda').value =
       cheque.moneda ||
@@ -2976,7 +2976,7 @@ function obtenerDatosSolicitudPago() {
       ...base,
 
       cuentaOrigen:
-        el('spCuentaOrigen').value.trim(),
+        limpiarIdentificadorPago(el('spCuentaOrigen').value),
 
       monedaOrigen:
         normalizarMoneda(
@@ -2984,7 +2984,7 @@ function obtenerDatosSolicitudPago() {
         ),
 
       cuentaDestino:
-        el('spCuentaDestino').value.trim(),
+        limpiarIdentificadorPago(el('spCuentaDestino').value),
 
       monedaDestino:
         normalizarMoneda(
@@ -2995,7 +2995,7 @@ function obtenerDatosSolicitudPago() {
         el('spCodigoBanco').value.trim(),
 
       rutBeneficiario:
-        el('spRutBeneficiario').value.trim(),
+        limpiarIdentificadorPago(el('spRutBeneficiario').value),
 
       nombreBeneficiario:
         el('spNombreBeneficiario').value.trim(),
@@ -3034,7 +3034,7 @@ function obtenerDatosSolicitudPago() {
           el('spAfexSwiftIntermediario').value.trim(),
 
         cuentaIntermediario:
-          el('spAfexCuentaIntermediario').value.trim(),
+          limpiarIdentificadorPago(el('spAfexCuentaIntermediario').value),
 
         bancoBeneficiario:
           el('spAfexBancoBeneficiario').value.trim(),
@@ -3052,10 +3052,10 @@ function obtenerDatosSolicitudPago() {
           el('spAfexAgencia').value.trim(),
 
         cuenta:
-          el('spAfexCuenta').value.trim(),
+          limpiarIdentificadorPago(el('spAfexCuenta').value),
 
         iban:
-          el('spAfexIban').value.trim(),
+          limpiarIdentificadorPago(el('spAfexIban').value),
 
         referencia:
           el('spAfexReferencia').value.trim()
@@ -3096,13 +3096,13 @@ function obtenerDatosSolicitudPago() {
 
     cheque: {
       cuentaOrigen:
-        el('spChequeCuentaOrigen').value.trim(),
+        limpiarIdentificadorPago(el('spChequeCuentaOrigen').value),
 
       nombreBeneficiario:
         el('spChequeNombreBeneficiario').value.trim(),
 
       rutBeneficiario:
-        el('spChequeRutBeneficiario').value.trim(),
+        limpiarIdentificadorPago(el('spChequeRutBeneficiario').value),
 
       moneda:
         el('spChequeMoneda').value,
@@ -3696,13 +3696,13 @@ function construirFilaSolicitudExcel(
   if (tipoEjecucion === 'TRANSFERENCIA') {
     return {
       'Cta_origen':
-        solicitud.cuentaOrigen || '',
+        limpiarIdentificadorPago(solicitud.cuentaOrigen),
 
       'moneda_origen':
         solicitud.monedaOrigen || '',
 
       'Cta_destino':
-        solicitud.cuentaDestino || '',
+        limpiarIdentificadorPago(solicitud.cuentaDestino),
 
       'moneda_destino':
         solicitud.monedaDestino || '',
@@ -3711,7 +3711,7 @@ function construirFilaSolicitudExcel(
         solicitud.codigoBanco || '',
 
       'RUT benef':
-        solicitud.rutBeneficiario || '',
+        limpiarIdentificadorPago(solicitud.rutBeneficiario),
 
       'Nombre benef':
         solicitud.nombreBeneficiario || '',
@@ -3764,7 +3764,7 @@ function construirFilaSolicitudExcel(
         afex.swiftIntermediario || '',
 
       'Cuenta intermediario':
-        afex.cuentaIntermediario || '',
+        limpiarIdentificadorPago(afex.cuentaIntermediario),
 
       'Banco beneficiario':
         afex.bancoBeneficiario || '',
@@ -3782,10 +3782,10 @@ function construirFilaSolicitudExcel(
         afex.agencia || '',
 
       'Cuenta':
-        afex.cuenta || '',
+        limpiarIdentificadorPago(afex.cuenta),
 
       'IBAN':
-        afex.iban || '',
+        limpiarIdentificadorPago(afex.iban),
 
       'Referencia':
         afex.referencia || ''
@@ -3828,13 +3828,13 @@ function construirFilaSolicitudExcel(
 
   return {
     'Cuenta / banco':
-      cheque.cuentaOrigen || '',
+      limpiarIdentificadorPago(cheque.cuentaOrigen),
 
     'Beneficiario':
       cheque.nombreBeneficiario || '',
 
     'RUT beneficiario':
-      cheque.rutBeneficiario || '',
+      limpiarIdentificadorPago(cheque.rutBeneficiario),
 
     'Moneda':
       cheque.moneda ||
@@ -4326,9 +4326,7 @@ async function confirmarPagoEjecutado() {
     el('pagoTipoDocumento').value;
 
   const numeroDocumento =
-    el('pagoNumeroDocumento')
-      .value
-      .trim();
+    limpiarIdentificadorPago(el('pagoNumeroDocumento').value);
 
   const file =
     el('pagoArchivo').files[0] ||
@@ -6785,6 +6783,16 @@ async function mostrarHistorialMovil() {
 }
 
 function conectarEventos() {
+  for (const id of [
+    'spCuentaOrigen', 'spCuentaDestino', 'spRutBeneficiario',
+    'spChequeCuentaOrigen', 'spChequeRutBeneficiario',
+    'spAfexCuentaIntermediario', 'spAfexCuenta', 'spAfexIban', 'pagoNumeroDocumento'
+  ]) {
+    const campo = el(id);
+    campo?.addEventListener('change', () => {
+      campo.value = limpiarIdentificadorPago(campo.value);
+    });
+  }
   eventosOtros();
   el('abCajaGrupo').addEventListener('change', sincronizarGrupoCaja);
   el('spBancoCaja').addEventListener('change', actualizarAvisoBancoCaja);
