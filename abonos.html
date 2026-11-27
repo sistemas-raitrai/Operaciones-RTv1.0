@@ -635,7 +635,7 @@
 
     #abonoModal .type-row {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: .4rem;
       width: 100%;
     }
@@ -1545,7 +1545,7 @@
       }
 
       #abonoModal .type-row {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       #abonoModal .type-option label {
@@ -2324,6 +2324,7 @@
             Hoteles
           </option>
 
+          <option value="caja_coordinador">Fondos para gastos del viaje</option>
           <option value="otro">
             Otros
           </option>
@@ -2515,9 +2516,11 @@
                     value="otro"
                   />
 
-                  <label for="abTipoOtro">
-                    Otro
-                  </label>
+                  <label for="abTipoOtro">Otro</label>
+                </div>
+                <div class="type-option">
+                  <input id="abTipoCaja" type="radio" name="abTipo" value="caja_coordinador" />
+                  <label for="abTipoCaja">Fondos para gastos del viaje</label>
                 </div>
               </div>
             </div>
@@ -2529,6 +2532,14 @@
 
               <select id="abDestino" class="input"></select>
             </div>
+
+            <section id="abCajaCampos" class="field hidden">
+              <label for="abCajaCoordinador">Coordinador que recibe los fondos</label>
+              <select id="abCajaCoordinador" class="input"></select>
+              <label for="abCajaGrupo">Grupo (número de negocio)</label>
+              <select id="abCajaGrupo" class="input"></select>
+              <small id="abCajaEstado" role="status"></small>
+            </section>
 
             <div
               id="busquedaCatalogoWrap"
@@ -2714,7 +2725,7 @@
               />
             </div>
 
-            <fieldset class="abonos-aplicacion">
+            <fieldset id="abAplicacionWrap" class="abonos-aplicacion">
               <legend>Aplicación del abono a la deuda</legend>
             
               <p>
@@ -3165,6 +3176,8 @@
                 id="spCodigoBanco"
                 type="text"
               />
+              <select id="spBancoCaja" class="input hidden" aria-label="Banco del coordinador"></select>
+              <small id="spBancoCajaAviso" class="hidden" role="status" style="color:#b91c1c"></small>
             </div>
   
             <div class="field">
@@ -4179,7 +4192,7 @@
 
       await import('./firebase-init.js');
       await import('./script.js');
-      await import('./abonos.js');
+      await import('./abonos.js?v=caja-coordinador-1');
 
       console.log('✅ abonos.js cargado');
     })();
